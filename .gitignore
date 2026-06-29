@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Local QA screenshots are generated during visual checks.
+qa/*.png
