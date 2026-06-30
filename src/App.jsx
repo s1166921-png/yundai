@@ -378,9 +378,9 @@ function ColorDirectionLab() {
     <section id="colors" className="color-lab" aria-label="Color direction previews">
       <div className="section-heading">
         <p className="eyebrow">color direction lab</p>
-        <h2>先做一小部分配色试样，选舒服的方向再全站替换</h2>
+        <h2>当前整站已套用曜石玫瑰金，其他方向保留为备选</h2>
         <p className="section-copy">
-          金墨方向偏沉，我建议优先看前三个：更清透、更轻快、更正式。第四个保留暗色高级感，但把压迫感降下来。
+          先用曜石玫瑰金推进页面制作：暗底更柔和，主按钮与重点数据使用暖杏金，冰青只作为科技辅助色。
         </p>
       </div>
 
