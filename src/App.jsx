@@ -390,9 +390,9 @@ function ColorDirectionLab() {
     <section id="colors" className="color-lab" aria-label="Color direction previews">
       <div className="section-heading">
         <p className="eyebrow">color direction lab</p>
-        <h2>当前整站已套用曜石玫瑰金，其他方向保留为备选</h2>
+        <h2>当前整站已套用清透紫青蓝，其他方向保留为备选</h2>
         <p className="section-copy">
-          先用曜石玫瑰金推进页面制作：暗底更柔和，主按钮与重点数据使用暖杏金，冰青只作为科技辅助色。
+          以清透金融蓝为底，加入 90 度紫青渐变：页面更明亮、更现代，也保留银行科技产品需要的可信感。
         </p>
       </div>
 
