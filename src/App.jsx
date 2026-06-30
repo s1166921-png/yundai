@@ -143,6 +143,53 @@ const financingScenes = [
   },
 ];
 
+const colorDirections = [
+  {
+    id: "clear-blue",
+    name: "清透金融蓝",
+    mood: "更明亮、可信、银行科技感强",
+    bg: "linear-gradient(145deg, #f5fbff 0%, #e8f4ff 48%, #dff8f3 100%)",
+    ink: "#0f2542",
+    muted: "#506983",
+    accent: "#1e8fff",
+    second: "#20c6a8",
+    button: "linear-gradient(100deg, #1e8fff, #20c6a8)",
+  },
+  {
+    id: "mint-coral",
+    name: "薄荷青橙",
+    mood: "更年轻、跨境电商感更轻快",
+    bg: "linear-gradient(145deg, #f3fff9 0%, #e8fbf4 48%, #fff2e8 100%)",
+    ink: "#12332f",
+    muted: "#5b706b",
+    accent: "#00a98f",
+    second: "#ff8a5b",
+    button: "linear-gradient(100deg, #00a98f, #ff9b62)",
+  },
+  {
+    id: "soft-slate",
+    name: "云白深青",
+    mood: "高级、干净、适合正式官网",
+    bg: "linear-gradient(145deg, #f7f8f6 0%, #eef4f1 52%, #e3eee9 100%)",
+    ink: "#162923",
+    muted: "#64746d",
+    accent: "#0d7667",
+    second: "#c89b4f",
+    button: "linear-gradient(100deg, #0d7667, #d7ad62)",
+  },
+  {
+    id: "rose-gold",
+    name: "曜石玫瑰金",
+    mood: "保留高级暗色，但更柔和不压抑",
+    bg: "linear-gradient(145deg, #151617 0%, #1f2628 50%, #2b1f24 100%)",
+    ink: "#fff8ef",
+    muted: "#d7c9bd",
+    accent: "#f2b37d",
+    second: "#74d7ca",
+    button: "linear-gradient(100deg, #f2b37d, #74d7ca)",
+  },
+];
+
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -165,6 +212,7 @@ function Header() {
       <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Template navigation">
         <a className="active" href="#top">首页</a>
         <a href="#ecosystem">生态数据</a>
+        <a href="#colors">配色试样</a>
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -278,6 +326,65 @@ function HeroVisual({ type }) {
         </button>
       </div>
     </aside>
+  );
+}
+
+function ColorDirectionLab() {
+  return (
+    <section id="colors" className="color-lab" aria-label="Color direction previews">
+      <div className="section-heading">
+        <p className="eyebrow">color direction lab</p>
+        <h2>先做一小部分配色试样，选舒服的方向再全站替换</h2>
+        <p className="section-copy">
+          金墨方向偏沉，我建议优先看前三个：更清透、更轻快、更正式。第四个保留暗色高级感，但把压迫感降下来。
+        </p>
+      </div>
+
+      <div className="color-options">
+        {colorDirections.map((direction) => (
+          <article
+            key={direction.id}
+            className={`color-card color-${direction.id}`}
+            style={{
+              "--preview-bg": direction.bg,
+              "--preview-ink": direction.ink,
+              "--preview-muted": direction.muted,
+              "--preview-accent": direction.accent,
+              "--preview-second": direction.second,
+              "--preview-button": direction.button,
+            }}
+          >
+            <div className="color-preview">
+              <div className="preview-copy">
+                <span>{direction.name}</span>
+                <h3>美鸥平台云贷</h3>
+                <p>{direction.mood}</p>
+                <button type="button">查看产品方案</button>
+              </div>
+              <div className="preview-panel">
+                <div>
+                  <strong>1000 万</strong>
+                  <span>最高授信</span>
+                </div>
+                <div>
+                  <strong>80%</strong>
+                  <span>货值质押率</span>
+                </div>
+              </div>
+            </div>
+            <div className="color-meta">
+              <strong>{direction.name}</strong>
+              <p>{direction.mood}</p>
+              <div className="swatches" aria-label={`${direction.name} swatches`}>
+                <i style={{ background: direction.ink }} />
+                <i style={{ background: direction.accent }} />
+                <i style={{ background: direction.second }} />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -466,6 +573,8 @@ export function App() {
           </button>
         ))}
       </section>
+
+      <ColorDirectionLab />
 
       <FinancingScenes />
 

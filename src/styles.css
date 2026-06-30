@@ -978,7 +978,8 @@ h1 span {
 .workflow,
 .products,
 .footer-cta,
-.financing-scenes {
+.financing-scenes,
+.color-lab {
   width: min(1360px, calc(100% - 48px));
   margin: 0 auto;
 }
@@ -1047,6 +1048,179 @@ h1 span {
   grid-column: 1 / -1;
   color: #c6d4e8;
   text-align: center;
+}
+
+.color-lab {
+  padding: 78px 0 36px;
+}
+
+.color-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 38px;
+}
+
+.color-card {
+  overflow: hidden;
+  border: 1px solid rgba(230, 211, 160, 0.18);
+  border-radius: 24px;
+  background: rgba(8, 18, 15, 0.7);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+}
+
+.color-preview {
+  position: relative;
+  display: grid;
+  min-height: 290px;
+  padding: 22px;
+  color: var(--preview-ink);
+  background: var(--preview-bg);
+}
+
+.color-preview::before {
+  content: "";
+  position: absolute;
+  inset: -18% -22% auto auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--preview-accent) 34%, transparent), transparent 66%);
+}
+
+.color-preview::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  height: 86px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--preview-ink) 8%, transparent);
+  opacity: 0.45;
+}
+
+.preview-copy,
+.preview-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.preview-copy span {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--preview-accent) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, white 48%, transparent);
+  color: var(--preview-accent);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.preview-copy h3 {
+  margin-top: 18px;
+  max-width: 220px;
+  font-size: 30px;
+  line-height: 1.12;
+}
+
+.preview-copy p {
+  max-width: 230px;
+  margin-top: 12px;
+  color: var(--preview-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.preview-copy button {
+  margin-top: 18px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--preview-button);
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--preview-accent) 26%, transparent);
+}
+
+.color-soft-slate .preview-copy button,
+.color-clear-blue .preview-copy button,
+.color-mint-coral .preview-copy button {
+  color: #05221e;
+}
+
+.preview-panel {
+  align-self: end;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.preview-panel div {
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--preview-accent) 22%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, white 52%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.color-rose-gold .preview-panel div,
+.color-rose-gold .preview-copy span {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.preview-panel strong,
+.preview-panel span {
+  display: block;
+}
+
+.preview-panel strong {
+  color: var(--preview-accent);
+  font-size: 22px;
+}
+
+.preview-panel span {
+  margin-top: 5px;
+  color: var(--preview-muted);
+  font-size: 12px;
+}
+
+.color-meta {
+  padding: 18px;
+}
+
+.color-meta strong,
+.color-meta p {
+  display: block;
+}
+
+.color-meta strong {
+  color: #fff8ef;
+  font-size: 18px;
+}
+
+.color-meta p {
+  margin-top: 8px;
+  color: #b9c4b8;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.swatches i {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .financing-scenes {
@@ -1592,7 +1766,8 @@ h2 {
   .workflow,
   .loan-detail,
   .scene-panel,
-  .scene-panel.reverse {
+  .scene-panel.reverse,
+  .color-options {
     grid-template-columns: 1fr;
   }
 
@@ -1612,7 +1787,8 @@ h2 {
   .workflow,
   .products,
   .footer-cta,
-  .financing-scenes {
+  .financing-scenes,
+  .color-lab {
     width: min(100% - 32px, 1360px);
   }
 
