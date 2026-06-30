@@ -268,6 +268,7 @@ function Header() {
         <a className="active" href="#top">首页</a>
         <a href="#ecosystem">生态数据</a>
         <a href="#colors">配色试样</a>
+        <a href="#sample">页面样稿</a>
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -438,6 +439,89 @@ function ColorDirectionLab() {
             </div>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function VioletCyanSample() {
+  return (
+    <section id="sample" className="violet-sample" aria-label="Clear violet cyan page sample">
+      <div className="sample-hero">
+        <div className="sample-copy">
+          <p className="sample-kicker">清透紫青蓝页面样稿</p>
+          <h2>让跨境经营数据，直接变成可申请的银行授信</h2>
+          <p>
+            面向 Amazon、Temu、TikTok Shop 等跨境卖家，把店铺经营、物流履约、仓储货值与回款节奏整理成银行可识别的授信材料。
+          </p>
+          <div className="sample-actions">
+            <a className="sample-primary" href="#contact">预约融资顾问</a>
+            <a className="sample-secondary" href="#products">查看产品额度</a>
+          </div>
+        </div>
+
+        <div className="sample-console">
+          <div className="sample-console-head">
+            <span>MEIOU CREDIT SNAPSHOT</span>
+            <strong>READY</strong>
+          </div>
+          <div className="sample-limit">
+            <span>预估可申请额度</span>
+            <strong>¥ 1,000 万</strong>
+            <small>货押贷 / 应收贷 / 平台经营数据辅助授信</small>
+          </div>
+          <div className="sample-progress" aria-hidden="true">
+            <i />
+          </div>
+          <div className="sample-data-grid">
+            <div>
+              <strong>80%</strong>
+              <span>最高质押率</span>
+            </div>
+            <div>
+              <strong>9 个月</strong>
+              <span>最长周期</span>
+            </div>
+            <div>
+              <strong>线上化</strong>
+              <span>申请审批</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sample-bottom">
+        <div className="sample-steps">
+          {[
+            ["01", "提交经营信息", "店铺、物流、仓储、回款数据先完成基础核验。"],
+            ["02", "匹配云贷产品", "根据库存质押或应收账款场景选择合适融资路径。"],
+            ["03", "银行线上审批", "建行侧完成授信审批，形成可追踪的申请进度。"],
+          ].map(([step, title, body]) => (
+            <article key={step}>
+              <span>{step}</span>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+
+        <form className="sample-form" aria-label="Customer information sample form">
+          <div>
+            <label htmlFor="sample-company">企业名称</label>
+            <input id="sample-company" type="text" placeholder="请输入企业名称" />
+          </div>
+          <div>
+            <label htmlFor="sample-platform">主营平台</label>
+            <select id="sample-platform" defaultValue="">
+              <option value="" disabled>选择平台</option>
+              <option>Amazon</option>
+              <option>Temu</option>
+              <option>TikTok Shop</option>
+              <option>多平台经营</option>
+            </select>
+          </div>
+          <button type="button">获取初步方案</button>
+        </form>
       </div>
     </section>
   );
@@ -630,6 +714,8 @@ export function App() {
       </section>
 
       <ColorDirectionLab />
+
+      <VioletCyanSample />
 
       <FinancingScenes />
 
