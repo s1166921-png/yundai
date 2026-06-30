@@ -1057,7 +1057,7 @@ h1 span {
 .color-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
+  gap: 22px 18px;
   margin-top: 38px;
 }
 
@@ -1147,7 +1147,9 @@ h1 span {
 
 .color-soft-slate .preview-copy button,
 .color-clear-blue .preview-copy button,
-.color-mint-coral .preview-copy button {
+.color-mint-coral .preview-copy button,
+.color-coral-graphite .preview-copy button,
+.color-sunset-credit .preview-copy button {
   color: #05221e;
 }
 
@@ -1168,7 +1170,11 @@ h1 span {
 }
 
 .color-rose-gold .preview-panel div,
-.color-rose-gold .preview-copy span {
+.color-rose-gold .preview-copy span,
+.color-ember-orange .preview-panel div,
+.color-ember-orange .preview-copy span,
+.color-amber-tech .preview-panel div,
+.color-amber-tech .preview-copy span {
   background: rgba(255, 255, 255, 0.08);
 }
 
