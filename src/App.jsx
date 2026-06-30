@@ -156,6 +156,17 @@ const colorDirections = [
     button: "linear-gradient(100deg, #1e8fff, #20c6a8)",
   },
   {
+    id: "clear-violet-cyan",
+    name: "清透紫青蓝",
+    mood: "在清透金融蓝基础上加入现代紫青渐变，更有科技平台感",
+    bg: "linear-gradient(145deg, #f7fbff 0%, #edf4ff 42%, #e7fbfb 100%)",
+    ink: "#10244a",
+    muted: "#556d8d",
+    accent: "#8c52ff",
+    second: "#5ce1e6",
+    button: "linear-gradient(90deg, #8c52ff, #5ce1e6)",
+  },
+  {
     id: "mint-coral",
     name: "薄荷青橙",
     mood: "更年轻、跨境电商感更轻快",

@@ -1146,10 +1146,38 @@ h1 span {
 
 .color-soft-slate .preview-copy button,
 .color-clear-blue .preview-copy button,
+.color-clear-violet-cyan .preview-copy button,
 .color-mint-coral .preview-copy button,
 .color-coral-graphite .preview-copy button,
 .color-sunset-credit .preview-copy button {
   color: #05221e;
+}
+
+.color-clear-violet-cyan {
+  border-color: rgba(140, 82, 255, 0.22);
+}
+
+.color-clear-violet-cyan .color-preview::before {
+  background: radial-gradient(circle, rgba(140, 82, 255, 0.28), rgba(92, 225, 230, 0.1) 42%, transparent 68%);
+}
+
+.color-clear-violet-cyan .color-preview::after {
+  background: linear-gradient(90deg, rgba(140, 82, 255, 0.12), rgba(92, 225, 230, 0.14));
+}
+
+.color-clear-violet-cyan .preview-copy span {
+  border-color: rgba(140, 82, 255, 0.22);
+  background: rgba(255, 255, 255, 0.62);
+  color: #6f3ee6;
+}
+
+.color-clear-violet-cyan .preview-copy button {
+  box-shadow: 0 14px 30px rgba(140, 82, 255, 0.2), 0 10px 24px rgba(92, 225, 230, 0.16);
+}
+
+.color-clear-violet-cyan .preview-panel div {
+  border-color: rgba(140, 82, 255, 0.18);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(235, 250, 252, 0.58));
 }
 
 .preview-panel {
