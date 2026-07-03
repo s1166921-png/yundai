@@ -44,44 +44,15 @@ const products = [
 
 const platformTags = ["Amazon", "Temu", "TikTok Shop", "美鸥仓储", "跨境物流", "建行云贷"];
 
-const templates = [
-  {
-    id: "command",
-    nav: "云贷方案",
-    name: "云贷资金指挥舱",
-    description: "最接近之前 Dowsure 的科技感：首页用实时数据面板建立信任，适合作为正式官网首页方向。",
-    badge: "Meiou × CCB Cloud Loan",
-    title: "美鸥平台云贷，跨境卖家专属资金解决方案",
-    subtitle: "依托美鸥跨境物流、仓储、店铺经营全量真实数据做风控，联合建行为跨境小微商家提供货押贷与应收贷融资支持。",
-    cta: "查看两大产品",
-    altCta: "预约融资顾问",
-    visual: "dashboard",
-  },
-  {
-    id: "matrix",
-    nav: "模板 02",
-    name: "双产品对比矩阵",
-    description: "信息解释最清晰：把货押贷和应收贷并排讲透，适合销售转化页或投放落地页。",
-    badge: "Inventory + Receivable Financing",
-    title: "货物、应收、店铺数据，一次转成经营资金",
-    subtitle: "用一套云贷产品矩阵覆盖备货垫资、仓储周转、平台账期与多店铺扩张需求，让资金安排更有确定性。",
-    cta: "选择适合我的产品",
-    altCta: "下载产品方案",
-    visual: "matrix",
-  },
-  {
-    id: "flow",
-    nav: "模板 03",
-    name: "风控数据增长引擎",
-    description: "最强调美鸥数据能力：突出物流、仓储、店铺经营数据如何进入建行审批链路。",
-    badge: "Data Risk Engine",
-    title: "美鸥风控赋能云贷，专属融资护航跨境经营",
-    subtitle: "以真实经营数据连接银行授信，从申请、数据核验、审批放款到贷后管理，全链路线上化完成。",
-    cta: "查看办理流程",
-    altCta: "了解准入条件",
-    visual: "flow",
-  },
-];
+const heroContent = {
+  nav: "云贷方案",
+  name: "云贷资金指挥舱",
+  badge: "Meiou × CCB Cloud Loan",
+  title: "美鸥平台云贷，跨境卖家专属资金解决方案",
+  subtitle: "依托美鸥跨境物流、仓储、店铺经营全量真实数据做风控，联合建行为跨境小微商家提供货押贷与应收贷融资支持。",
+  cta: "查看两大产品",
+  altCta: "预约融资顾问",
+};
 
 const flowSteps = [
   ["01", "经营数据接入", "物流、仓储、店铺销售、回款等多维数据加固直连。"],
@@ -91,12 +62,6 @@ const flowSteps = [
 ];
 
 const proofBadges = ["建行联合方案", "美鸥数据风控", "最高 1000 万", "线上审批放款"];
-
-const liveSignals = [
-  ["库存水位", "78%", "货押贷"],
-  ["回款预测", "92%", "应收贷"],
-  ["准入评分", "A+", "风控"],
-];
 
 const financingScenes = [
   {
@@ -143,108 +108,6 @@ const financingScenes = [
   },
 ];
 
-const colorDirections = [
-  {
-    id: "clear-blue",
-    name: "清透金融蓝",
-    mood: "更明亮、可信、银行科技感强",
-    bg: "linear-gradient(145deg, #f5fbff 0%, #e8f4ff 48%, #dff8f3 100%)",
-    ink: "#0f2542",
-    muted: "#506983",
-    accent: "#1e8fff",
-    second: "#20c6a8",
-    button: "linear-gradient(100deg, #1e8fff, #20c6a8)",
-  },
-  {
-    id: "clear-violet-cyan",
-    name: "清透紫青蓝",
-    mood: "在清透金融蓝基础上加入现代紫青渐变，更有科技平台感",
-    bg: "linear-gradient(145deg, #f7fbff 0%, #edf4ff 42%, #e7fbfb 100%)",
-    ink: "#10244a",
-    muted: "#556d8d",
-    accent: "#8c52ff",
-    second: "#5ce1e6",
-    button: "linear-gradient(90deg, #8c52ff, #5ce1e6)",
-  },
-  {
-    id: "mint-coral",
-    name: "薄荷青橙",
-    mood: "更年轻、跨境电商感更轻快",
-    bg: "linear-gradient(145deg, #f3fff9 0%, #e8fbf4 48%, #fff2e8 100%)",
-    ink: "#12332f",
-    muted: "#5b706b",
-    accent: "#00a98f",
-    second: "#ff8a5b",
-    button: "linear-gradient(100deg, #00a98f, #ff9b62)",
-  },
-  {
-    id: "soft-slate",
-    name: "云白深青",
-    mood: "高级、干净、适合正式官网",
-    bg: "linear-gradient(145deg, #f7f8f6 0%, #eef4f1 52%, #e3eee9 100%)",
-    ink: "#162923",
-    muted: "#64746d",
-    accent: "#0d7667",
-    second: "#c89b4f",
-    button: "linear-gradient(100deg, #0d7667, #d7ad62)",
-  },
-  {
-    id: "rose-gold",
-    name: "曜石玫瑰金",
-    mood: "保留高级暗色，但更柔和不压抑",
-    bg: "linear-gradient(145deg, #151617 0%, #1f2628 50%, #2b1f24 100%)",
-    ink: "#fff8ef",
-    muted: "#d7c9bd",
-    accent: "#f2b37d",
-    second: "#74d7ca",
-    button: "linear-gradient(100deg, #f2b37d, #74d7ca)",
-  },
-  {
-    id: "ember-orange",
-    name: "曜石暖橙",
-    mood: "在暗色高级感里加入更现代的活力橙",
-    bg: "linear-gradient(145deg, #101418 0%, #172126 44%, #2a1c13 100%)",
-    ink: "#fff7eb",
-    muted: "#d9c8b5",
-    accent: "#ff8a35",
-    second: "#4ed6c7",
-    button: "linear-gradient(100deg, #ff8a35, #4ed6c7)",
-  },
-  {
-    id: "amber-tech",
-    name: "琥珀科技橙",
-    mood: "更像金融科技产品，橙色有温度但不土",
-    bg: "linear-gradient(145deg, #11191b 0%, #10282a 48%, #332312 100%)",
-    ink: "#fff9ef",
-    muted: "#c9d0c8",
-    accent: "#ffb13b",
-    second: "#32d0b2",
-    button: "linear-gradient(100deg, #ffb13b, #32d0b2)",
-  },
-  {
-    id: "coral-graphite",
-    name: "珊瑚石墨",
-    mood: "年轻、利落，适合跨境电商客户群",
-    bg: "linear-gradient(145deg, #f8f3ee 0%, #f0f6f3 46%, #ffe1cf 100%)",
-    ink: "#202a2c",
-    muted: "#65716f",
-    accent: "#ff7448",
-    second: "#0f9f8b",
-    button: "linear-gradient(100deg, #ff7448, #0f9f8b)",
-  },
-  {
-    id: "sunset-credit",
-    name: "日落信贷橙",
-    mood: "更有营销转化感，适合融资咨询落地页",
-    bg: "linear-gradient(145deg, #fff8ef 0%, #f7f1e9 45%, #ffd9b8 100%)",
-    ink: "#2b241f",
-    muted: "#716359",
-    accent: "#ff7a1a",
-    second: "#196f63",
-    button: "linear-gradient(100deg, #ff7a1a, #196f63)",
-  },
-];
-
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -264,11 +127,9 @@ function Header() {
         <span />
         <span />
       </button>
-      <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Template navigation">
+      <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Site navigation">
         <a className="active" href="#top">首页</a>
         <a href="#ecosystem">生态数据</a>
-        <a href="#colors">配色试样</a>
-        <a href="#sample">页面样稿</a>
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -281,61 +142,7 @@ function Header() {
   );
 }
 
-function HeroVisual({ type }) {
-  if (type === "matrix") {
-    return (
-      <aside className="loan-matrix" aria-label="Loan product comparison">
-        {products.map((product) => (
-          <article key={product.name} className="matrix-card">
-            <span>{product.tag}</span>
-            <h3>{product.name}</h3>
-            <p>{product.headline}</p>
-            <div className="matrix-stats">
-              <strong>{product.limit}</strong>
-              <strong>{product.period}</strong>
-            </div>
-          </article>
-        ))}
-        <div className="matrix-orbit">
-          <i />
-          <i />
-          <i />
-          <b>云贷</b>
-          <span>美鸥数据风控</span>
-        </div>
-      </aside>
-    );
-  }
-
-  if (type === "flow") {
-    return (
-      <aside className="flow-console" aria-label="Risk control workflow">
-        <div className="console-topline">
-          <span>ONLINE CREDIT FLOW</span>
-          <strong>LIVE</strong>
-        </div>
-        <div className="risk-radar" aria-hidden="true">
-          {liveSignals.map(([label, value, typeName]) => (
-            <div key={label}>
-              <strong>{value}</strong>
-              <span>{label}</span>
-              <small>{typeName}</small>
-            </div>
-          ))}
-        </div>
-        <div className="flow-lane">
-          {flowSteps.map(([step, title, body]) => (
-            <article key={step}>
-              <span>{step}</span>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </article>
-          ))}
-        </div>
-      </aside>
-    );
-  }
-
+function HeroVisual() {
   return (
     <aside className="command-center cloud-loan" aria-label="Meiou cloud loan command center">
       <div className="panel-header">
@@ -382,168 +189,6 @@ function HeroVisual({ type }) {
         </button>
       </div>
     </aside>
-  );
-}
-
-function ColorDirectionLab() {
-  return (
-    <section id="colors" className="color-lab" aria-label="Color direction previews">
-      <div className="section-heading">
-        <p className="eyebrow">color direction lab</p>
-        <h2>当前整站已套用清透紫青蓝，其他方向保留为备选</h2>
-        <p className="section-copy">
-          以清透金融蓝为底，加入 90 度紫青渐变：页面更明亮、更现代，也保留银行科技产品需要的可信感。
-        </p>
-      </div>
-
-      <div className="color-options">
-        {colorDirections.map((direction) => (
-          <article
-            key={direction.id}
-            className={`color-card color-${direction.id}`}
-            style={{
-              "--preview-bg": direction.bg,
-              "--preview-ink": direction.ink,
-              "--preview-muted": direction.muted,
-              "--preview-accent": direction.accent,
-              "--preview-second": direction.second,
-              "--preview-button": direction.button,
-            }}
-          >
-            <div className="color-preview">
-              <div className="preview-copy">
-                <span>{direction.name}</span>
-                <h3>美鸥平台云贷</h3>
-                <p>{direction.mood}</p>
-                <button type="button">查看产品方案</button>
-              </div>
-              <div className="preview-panel">
-                <div>
-                  <strong>1000 万</strong>
-                  <span>最高授信</span>
-                </div>
-                <div>
-                  <strong>80%</strong>
-                  <span>货值质押率</span>
-                </div>
-              </div>
-            </div>
-            <div className="color-meta">
-              <strong>{direction.name}</strong>
-              <p>{direction.mood}</p>
-              <div className="swatches" aria-label={`${direction.name} swatches`}>
-                <i style={{ background: direction.ink }} />
-                <i style={{ background: direction.accent }} />
-                <i style={{ background: direction.second }} />
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function VioletCyanSample() {
-  return (
-    <section id="sample" className="violet-sample" aria-label="Clear violet cyan page sample">
-      <div className="sample-hero">
-        <div className="sample-copy">
-          <p className="sample-kicker">清透紫青蓝页面样稿</p>
-          <h2>让跨境经营数据，直接变成可申请的银行授信</h2>
-          <p>
-            面向 Amazon、Temu、TikTok Shop 等跨境卖家，把店铺经营、物流履约、仓储货值与回款节奏整理成银行可识别的授信材料。
-          </p>
-          <div className="sample-actions">
-            <a className="sample-primary" href="#contact">预约融资顾问</a>
-            <a className="sample-secondary" href="#products">查看产品额度</a>
-          </div>
-        </div>
-
-        <div className="sample-console">
-          <div className="sample-console-head">
-            <span>MEIOU CREDIT SNAPSHOT</span>
-            <strong>READY</strong>
-          </div>
-          <div className="sample-limit">
-            <span>预估可申请额度</span>
-            <strong>¥ 1,000 万</strong>
-            <small>货押贷 / 应收贷 / 平台经营数据辅助授信</small>
-          </div>
-          <div className="sample-progress" aria-hidden="true">
-            <i />
-          </div>
-          <div className="sample-data-grid">
-            <div>
-              <strong>80%</strong>
-              <span>最高质押率</span>
-            </div>
-            <div>
-              <strong>9 个月</strong>
-              <span>最长周期</span>
-            </div>
-            <div>
-              <strong>线上化</strong>
-              <span>申请审批</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="sample-bottom">
-        <div className="sample-steps">
-          {[
-            ["01", "提交经营信息", "店铺、物流、仓储、回款数据先完成基础核验。"],
-            ["02", "匹配云贷产品", "根据库存质押或应收账款场景选择合适融资路径。"],
-            ["03", "银行线上审批", "建行侧完成授信审批，形成可追踪的申请进度。"],
-          ].map(([step, title, body]) => (
-            <article key={step}>
-              <span>{step}</span>
-              <strong>{title}</strong>
-              <p>{body}</p>
-            </article>
-          ))}
-        </div>
-
-        <form className="sample-form" aria-label="Customer information sample form">
-          <div>
-            <label htmlFor="sample-company">企业名称</label>
-            <input id="sample-company" type="text" placeholder="请输入企业名称" />
-          </div>
-          <div>
-            <label htmlFor="sample-platform">主营平台</label>
-            <select id="sample-platform" defaultValue="">
-              <option value="" disabled>选择平台</option>
-              <option>Amazon</option>
-              <option>Temu</option>
-              <option>TikTok Shop</option>
-              <option>多平台经营</option>
-            </select>
-          </div>
-          <button type="button">获取初步方案</button>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-function TemplateSection({ template, activeTemplate, setActiveTemplate }) {
-  return (
-    <section className="template-switcher" aria-label="Template selector">
-      {templates.map((item) => (
-        <button
-          key={item.id}
-          className={item.id === activeTemplate ? "selected" : ""}
-          type="button"
-          onClick={() => setActiveTemplate(item.id)}
-        >
-          <span>{item.nav}</span>
-          <strong>{item.name}</strong>
-          <small>{item.description}</small>
-        </button>
-      ))}
-      <p className="current-note">当前预览：{template.name}</p>
-    </section>
   );
 }
 
@@ -652,8 +297,6 @@ function FinancingScenes() {
 }
 
 export function App() {
-  const template = templates[0];
-
   return (
     <main className="site-shell template-command final-template">
       <div className="ambient-layer" aria-hidden="true">
@@ -666,18 +309,18 @@ export function App() {
       <section id="top" className="hero cloud-hero">
         <div className="hero-copy">
           <div className="template-status">
-            <span>{template.nav}</span>
-            <strong>{template.name}</strong>
+            <span>{heroContent.nav}</span>
+            <strong>{heroContent.name}</strong>
           </div>
           <div className="ai-pill">
-            <span>{template.badge}</span>
+            <span>{heroContent.badge}</span>
             <b>跨境卖家专属资金解决方案</b>
           </div>
           <h1>
-            {template.title.split("，")[0]}
-            <span>{template.title.split("，").slice(1).join("，") || "专属融资护航跨境经营"}</span>
+            {heroContent.title.split("，")[0]}
+            <span>{heroContent.title.split("，").slice(1).join("，") || "专属融资护航跨境经营"}</span>
           </h1>
-          <p className="hero-text">{template.subtitle}</p>
+          <p className="hero-text">{heroContent.subtitle}</p>
           <div className="feature-strip" aria-label="Core advantages">
             <span>真实数据风控</span>
             <span>最高 1000 万</span>
@@ -685,8 +328,8 @@ export function App() {
             <span>全流程线上化</span>
           </div>
           <div className="hero-actions">
-            <a className="hot-button" href="#products">{template.cta}</a>
-            <a className="outline-button" href="#contact">{template.altCta}</a>
+            <a className="hot-button" href="#products">{heroContent.cta}</a>
+            <a className="outline-button" href="#contact">{heroContent.altCta}</a>
           </div>
           <dl className="hero-metrics">
             {commonAdvantages.map(([value, label]) => (
@@ -698,7 +341,7 @@ export function App() {
           </dl>
         </div>
 
-        <HeroVisual type={template.visual} />
+        <HeroVisual />
       </section>
 
       <ProofRibbon />
@@ -712,10 +355,6 @@ export function App() {
           </button>
         ))}
       </section>
-
-      <ColorDirectionLab />
-
-      <VioletCyanSample />
 
       <FinancingScenes />
 
