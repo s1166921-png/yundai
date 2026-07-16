@@ -457,6 +457,68 @@ h1 span {
   border-radius: 28px;
 }
 
+.credit-orbit {
+  position: absolute;
+  right: 28px;
+  top: 84px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.82), rgba(92, 225, 230, 0.14) 54%, transparent 70%);
+  pointer-events: none;
+}
+
+.credit-orbit i {
+  position: absolute;
+  width: 100%;
+  height: 62%;
+  border: 1px solid rgba(140, 82, 255, 0.28);
+  border-radius: 50%;
+  animation: orbitTurn 8s linear infinite;
+}
+
+.credit-orbit i:nth-child(2) {
+  transform: rotate(58deg);
+  border-color: rgba(92, 225, 230, 0.34);
+  animation-duration: 11s;
+}
+
+.credit-orbit i:nth-child(3) {
+  transform: rotate(-58deg);
+  border-color: rgba(31, 111, 255, 0.22);
+  animation-duration: 14s;
+}
+
+.credit-orbit b,
+.credit-orbit span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+}
+
+.credit-orbit b {
+  background: linear-gradient(90deg, #8c52ff, #1f6fff, #5ce1e6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.credit-orbit span {
+  max-width: 96px;
+  margin-top: 8px;
+  color: #395170;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
 .command-center::before {
   content: "";
   position: absolute;
@@ -664,6 +726,186 @@ h1 span {
   padding: 22px max(24px, calc((100vw - 1360px) / 2));
   border-block: 1px solid rgba(140, 82, 255, 0.12);
   background: rgba(255, 255, 255, 0.58);
+}
+
+.advantage-engine {
+  position: relative;
+  overflow: hidden;
+  width: min(1360px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 86px 0 56px;
+}
+
+.advantage-engine::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 170px;
+  width: min(960px, 90vw);
+  height: 360px;
+  border-radius: 999px;
+  background: radial-gradient(ellipse, rgba(92, 225, 230, 0.2), rgba(140, 82, 255, 0.12) 42%, transparent 70%);
+  filter: blur(4px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.advantage-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 42px;
+}
+
+.advantage-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 300px;
+  padding: 22px;
+  border: 1px solid rgba(140, 82, 255, 0.16);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(237, 250, 252, 0.64));
+  box-shadow: 0 22px 54px rgba(35, 56, 104, 0.12);
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.advantage-card::before {
+  content: "";
+  position: absolute;
+  inset: -40% auto auto -40%;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(140, 82, 255, 0.18), transparent 68%);
+  transition: transform 500ms ease;
+}
+
+.advantage-card::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8c52ff, #5ce1e6);
+  transform: scaleX(0.28);
+  transform-origin: left;
+  transition: transform 260ms ease;
+}
+
+.advantage-card:hover {
+  transform: translateY(-10px);
+  border-color: rgba(140, 82, 255, 0.34);
+  box-shadow: 0 30px 80px rgba(35, 56, 104, 0.18);
+}
+
+.advantage-card:hover::before {
+  transform: translate3d(44px, 34px, 0) scale(1.15);
+}
+
+.advantage-card:hover::after {
+  transform: scaleX(1);
+}
+
+.advantage-topline {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.advantage-topline span {
+  color: rgba(16, 36, 74, 0.36);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.advantage-topline b {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--gold);
+  font-size: 13px;
+  box-shadow: 0 10px 24px rgba(140, 82, 255, 0.1);
+}
+
+.advantage-card h3,
+.advantage-card p {
+  position: relative;
+  z-index: 1;
+}
+
+.advantage-card h3 {
+  margin-top: 52px;
+  font-size: 26px;
+  line-height: 1.16;
+}
+
+.advantage-card p {
+  margin-top: 16px;
+  color: #566d8d;
+  line-height: 1.72;
+}
+
+.capital-flow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr) 90px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  margin-top: 28px;
+  padding: 18px;
+  border: 1px solid rgba(140, 82, 255, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.capital-flow div {
+  min-height: 88px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(237, 250, 252, 0.72));
+}
+
+.capital-flow span,
+.capital-flow strong {
+  display: block;
+}
+
+.capital-flow span {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.capital-flow strong {
+  margin-top: 8px;
+  color: #10244a;
+  line-height: 1.45;
+}
+
+.capital-flow i {
+  position: relative;
+  display: block;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(140, 82, 255, 0.16);
+}
+
+.capital-flow i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #8c52ff, #5ce1e6, transparent);
+  animation: linePulse 2.6s ease-in-out infinite;
 }
 
 .proof-ribbon {
@@ -1358,6 +1600,22 @@ h2 {
   }
 }
 
+@keyframes orbitTurn {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes linePulse {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
 @keyframes marquee {
   to {
     transform: translateX(-50%);
@@ -1437,6 +1695,21 @@ h2 {
   .flow-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .advantage-grid,
+  .capital-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .capital-flow i {
+    width: 2px;
+    height: 42px;
+    justify-self: center;
+  }
+
+  .capital-flow i::after {
+    animation-name: verticalLinePulse;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1445,6 +1718,7 @@ h2 {
   .workflow,
   .products,
   .lead-section,
+  .advantage-engine,
   .financing-scenes {
     width: min(100% - 32px, 1360px);
   }
@@ -1467,7 +1741,8 @@ h2 {
   .hero-metrics,
   .signal-cards,
   .flow-grid,
-  .scene-metrics {
+  .scene-metrics,
+  .advantage-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1487,6 +1762,29 @@ h2 {
 
   .marketplace-tags {
     display: none;
+  }
+
+  .credit-orbit {
+    right: 16px;
+    top: 74px;
+    width: 118px;
+    height: 118px;
+  }
+
+  .credit-orbit b {
+    font-size: 28px;
+  }
+
+  .credit-orbit span {
+    display: none;
+  }
+
+  .advantage-engine {
+    padding: 58px 0 42px;
+  }
+
+  .advantage-card {
+    min-height: auto;
   }
 
   .partner-rail {
@@ -1549,5 +1847,15 @@ h2 {
   .form-actions .hot-button {
     width: 100%;
     max-width: none;
+  }
+}
+
+@keyframes verticalLinePulse {
+  from {
+    transform: translateY(-100%);
+  }
+
+  to {
+    transform: translateY(100%);
   }
 }

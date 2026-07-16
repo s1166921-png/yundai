@@ -5,10 +5,10 @@ import receivablesFlow from "./assets/receivables-flow.png";
 import riskEngine from "./assets/risk-engine.png";
 
 const commonAdvantages = [
-  ["1000万", "单笔授信最高额度"],
-  ["全国办理", "一点对全国运营"],
-  ["全流程线上", "申请、核验、审批、放款"],
-  ["到期还本付息", "规则清晰，便于规划"],
+  ["2000万", "最高可贷额度"],
+  ["低至3%", "综合费率"],
+  ["最长1年", "灵活授信期限"],
+  ["循环授信", "随用随贷"],
 ];
 
 const products = [
@@ -16,28 +16,28 @@ const products = [
     name: "货押贷",
     tag: "盘活在库 + 在途货物",
     headline: "把沉睡库存变成流动资金",
-    limit: "最高 1000 万元",
-    period: "最长 6 个月",
+    limit: "最高 2000 万元",
+    period: "最长 1 年",
     bullets: [
       "以美鸥监管的在途货物、在仓库存质押融资",
       "出口满 1 年及以上，货值质押率最高 80%",
       "出口 3 个月至 1 年，货值质押率最高 60%",
       "受托支付结清仓储物流费用，剩余资金自主支配",
-      "最低货值水位线闭环监管，货权管控更稳健",
+      "额度循环可用，适配备货、物流与旺季扩张",
     ],
   },
   {
     name: "应收贷",
     tag: "盘活平台店铺回款",
     headline: "提前释放平台账期里的现金流",
-    limit: "最高 1000 万元",
-    period: "最长 9 个月",
+    limit: "最高 2000 万元",
+    period: "综合费率低至 3%",
     bullets: [
       "依托亚马逊、Temu、TikTok Shop 店铺真实回款授信",
       "授信额度按近 3 个月月均平台回款与动态系数核定",
       "放款采用自主支付，备货、广告、新品铺货都可使用",
-      "不用押货，不用额外不动产抵押",
-      "凭真实经营流水与应收数据审批，更适合轻资产卖家",
+      "一次授信、循环使用，无需反复提交资料",
+      "支持提前还款，无提前还款违约金",
     ],
   },
 ];
@@ -46,10 +46,10 @@ const platformTags = ["Amazon", "Temu", "TikTok Shop", "美鸥仓储", "跨境�
 
 const heroContent = {
   nav: "云贷方案",
-  name: "云贷资金指挥舱",
+  name: "风控赋能云贷",
   badge: "Meiou × CCB Cloud Loan",
-  title: "美鸥平台云贷，跨境卖家专属资金解决方案",
-  subtitle: "依托美鸥跨境物流、仓储、店铺经营全量真实数据做风控，联合建行为跨境小微商家提供货押贷与应收贷融资支持。",
+  title: "美鸥风控赋能云贷，专属融资护航跨境经营",
+  subtitle: "深耕跨境电商与外贸企业融资场景，依托美鸥智能大数据风控体系，精准贴合资金周转、备货扩张、回款衔接等经营痛点，提供高效、低成本、高灵活的专属融资解决方案。",
   cta: "查看两大产品",
   altCta: "预约融资顾问",
 };
@@ -61,7 +61,40 @@ const flowSteps = [
   ["04", "贷后闭环管理", "货权水位、平台回款、资金用途与还款节奏持续跟踪。"],
 ];
 
-const proofBadges = ["建行联合方案", "美鸥数据风控", "最高 1000 万", "线上审批放款"];
+const proofBadges = ["智能风控赋能", "最高 2000 万", "综合费率低至 3%", "最长授信 1 年", "循环授信随用随取", "提前还款无违约金"];
+
+const coreAdvantages = [
+  {
+    index: "01",
+    title: "大额额度充足",
+    metric: "最高 2000 万",
+    body: "覆盖采购备货、店铺运营、海外推广、仓储物流等全场景资金需求，支撑企业突破资金瓶颈、扩大经营规模。",
+  },
+  {
+    index: "02",
+    title: "超低费率成本",
+    metric: "低至 3%",
+    body: "依托美鸥智能大数据风控系统精准把控风险，优化融资成本结构，降低企业资金使用成本。",
+  },
+  {
+    index: "03",
+    title: "期限灵活可控",
+    metric: "最长 1 年",
+    body: "适配跨境回款周期不固定、淡旺季差异大的经营特点，按订单回款与资金流转节奏规划用款周期。",
+  },
+  {
+    index: "04",
+    title: "循环授信可用",
+    metric: "随用随贷",
+    body: "一次授信、循环使用，授信有效期内无需重复提交资料或重复审核，高效满足频繁周转需求。",
+  },
+  {
+    index: "05",
+    title: "提前还款无违约金",
+    metric: "自由还款",
+    body: "支持企业根据回款与现金流情况随时提前还款，不为闲置额度或提前回款承担额外成本。",
+  },
+];
 
 const leadOptionGroups = [
   {
@@ -122,7 +155,7 @@ const financingScenes = [
     metrics: [
       ["80%", "满 1 年出口货值质押率最高"],
       ["60%", "3 个月至 1 年出口货值质押率最高"],
-      ["6 个月", "贷款期限最长"],
+      ["2000 万", "最高可贷额度"],
     ],
     points: ["在途货物与在仓库存均可纳入风控", "受托支付结清仓储物流费用", "最低货值水位线持续监控"],
   },
@@ -134,9 +167,9 @@ const financingScenes = [
     image: receivablesFlow,
     imageAlt: "平台应收回款融资概念图",
     metrics: [
-      ["9 个月", "贷款期限最长"],
-      ["1000 万", "单笔授信最高"],
-      ["线上化", "申请审批放款"],
+      ["低至 3%", "综合费率"],
+      ["1 年", "最长授信周期"],
+      ["循环", "额度随用随取"],
     ],
     points: ["不用押货，不用额外不动产抵押", "按真实平台回款能力核定额度", "自主支付覆盖多类经营用途"],
   },
@@ -178,6 +211,7 @@ function Header() {
       <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Site navigation">
         <a className="active" href="#top">首页</a>
         <a href="#ecosystem">生态数据</a>
+        <a href="#advantages">核心优势</a>
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -217,24 +251,31 @@ function HeroVisual() {
       <div className="signal-cards">
         <button className="signal-card active" type="button">
           <span>授信额度</span>
-          <strong>1000 万</strong>
-          <small>单笔最高</small>
+          <strong>2000 万</strong>
+          <small>最高可贷</small>
         </button>
         <button className="signal-card" type="button">
-          <span>货值质押率</span>
-          <strong>80%</strong>
-          <small>满 1 年最高</small>
+          <span>综合费率</span>
+          <strong>低至 3%</strong>
+          <small>优化融资成本</small>
         </button>
         <button className="signal-card" type="button">
-          <span>应收周期</span>
-          <strong>9 个月</strong>
-          <small>最长贷款期限</small>
+          <span>授信周期</span>
+          <strong>最长 1 年</strong>
+          <small>匹配回款节奏</small>
         </button>
         <button className="signal-card shield" type="button">
-          <span>办理方式</span>
-          <strong>线上化</strong>
-          <small>审批放款高效</small>
+          <span>额度使用</span>
+          <strong>循环授信</strong>
+          <small>随用随贷</small>
         </button>
+      </div>
+      <div className="credit-orbit" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <b>3%</b>
+        <span>智能风控压降成本</span>
       </div>
     </aside>
   );
@@ -339,6 +380,48 @@ function FinancingScenes() {
             </div>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function AdvantageEngine() {
+  return (
+    <section id="advantages" className="advantage-engine" aria-label="Cloud loan core advantages">
+      <div className="section-heading">
+        <p className="eyebrow">core advantages</p>
+        <h2>把融资能力做成一套可循环运转的资金引擎</h2>
+        <p className="section-copy">
+          美鸥风控把跨境经营数据转化为授信依据，让企业在备货、推广、物流、回款衔接中获得更低成本、更高灵活度的资金支持。
+        </p>
+      </div>
+      <div className="advantage-grid">
+        {coreAdvantages.map((item) => (
+          <article key={item.index} className="advantage-card">
+            <div className="advantage-topline">
+              <span>{item.index}</span>
+              <b>{item.metric}</b>
+            </div>
+            <h3>{item.title}</h3>
+            <p>{item.body}</p>
+          </article>
+        ))}
+      </div>
+      <div className="capital-flow" aria-label="Data risk control flow">
+        <div>
+          <span>经营数据</span>
+          <strong>店铺 / 物流 / 仓储 / 回款</strong>
+        </div>
+        <i />
+        <div>
+          <span>智能风控</span>
+          <strong>授信画像与风险定价</strong>
+        </div>
+        <i />
+        <div>
+          <span>云贷额度</span>
+          <strong>循环授信 / 随用随取</strong>
+        </div>
       </div>
     </section>
   );
@@ -510,9 +593,9 @@ export function App() {
           <p className="hero-text">{heroContent.subtitle}</p>
           <div className="feature-strip" aria-label="Core advantages">
             <span>真实数据风控</span>
-            <span>最高 1000 万</span>
-            <span>全国一体化办理</span>
-            <span>全流程线上化</span>
+            <span>最高 2000 万</span>
+            <span>综合费率低至 3%</span>
+            <span>循环授信随用随取</span>
           </div>
           <div className="hero-actions">
             <a className="hot-button" href="#products">{heroContent.cta}</a>
@@ -533,6 +616,8 @@ export function App() {
 
       <ProofRibbon />
 
+      <AdvantageEngine />
+
       <section id="ecosystem" className="partner-rail cloud-rail" aria-label="Cloud loan ecosystem">
         <p>覆盖跨境卖家真实经营链路</p>
         {platformTags.map((tag) => (
@@ -548,7 +633,7 @@ export function App() {
       <section className="workflow cloud-workflow">
         <div>
           <p className="eyebrow">why it works</p>
-          <h2>从经营数据到银行授信，一套链路跑通融资闭环</h2>
+          <h2>从经营数据到银行授信，一套链路跑通低成本融资闭环</h2>
           <p className="section-copy">
             依托美鸥跨境物流、仓储与店铺经营数据，解决轻资产、缺传统抵押物、备货垫资和账期占用现金流的融资难题。
           </p>
