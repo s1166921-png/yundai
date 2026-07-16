@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import fundingNetwork from "./assets/funding-network.png";
 import inventoryPledge from "./assets/inventory-pledge.png";
 import receivablesFlow from "./assets/receivables-flow.png";
@@ -96,6 +96,52 @@ const coreAdvantages = [
   },
 ];
 
+const policyHighlights = [
+  {
+    key: "rate",
+    title: "费率低至 3%",
+    metric: "3%",
+    body: "浦发对公宁波地区低至 3%，广发对公低至 4%，相比传统贷款利率优势显著。",
+    action: "点击申请",
+  },
+  {
+    key: "term",
+    title: "期限灵活",
+    metric: "3-9月",
+    body: "最短 3 个月，最长 9 个月（微众对公），可按业务周期灵活选择。",
+    action: "查看周期",
+  },
+  {
+    key: "cycle",
+    title: "额度可循环",
+    metric: "循环",
+    body: "额度循环使用，随借随还，适配旺季备货和日常周转。",
+    action: "了解额度",
+  },
+  {
+    key: "prepay",
+    title: "提前还款",
+    metric: "0违约金",
+    body: "支持根据回款节奏提前还款，无提前还款违约金，减少闲置资金成本。",
+    action: "咨询方案",
+  },
+];
+
+const bankTabs = ["广发银行 CGB", "WeBank 微众银行", "浦发银行 SPD BANK", "中国建设银行 CCB"];
+
+const bankAccess = [
+  ["企业", "注册时长 >= 0.5 年，无失信/限高，无当前逾期"],
+  ["法人", "23-65 岁，近 24 个月无连续逾期 3 期，近半年逾期 <= 2 次"],
+  ["店铺", ">= 2 个店铺（或单店近 12 月 GMV > 2,000 万），至少 1 店经营 > 1 年，近 12 月总销售额 > 200 万，AHR 评分 > 200 分"],
+];
+
+const applicationSteps = [
+  ["01", "店铺授权", "通过 Amazon Seller Central 完成店铺授权"],
+  ["02", "提交申请", "上传企业及董事资料，完成线上申请"],
+  ["03", "银行审批", "银行对资料进行审核及授信审批"],
+  ["04", "支用放款", "发起支用，资金直达大陆对公账户"],
+];
+
 const leadOptionGroups = [
   {
     name: "annualRevenue",
@@ -189,6 +235,44 @@ const financingScenes = [
   },
 ];
 
+function useScrollReveal() {
+  useEffect(() => {
+    const revealNodes = Array.from(document.querySelectorAll("[data-reveal]"));
+
+    if (!revealNodes.length) {
+      return undefined;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      revealNodes.forEach((node) => node.classList.add("is-visible"));
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
+
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -10% 0px" },
+    );
+
+    revealNodes.forEach((node, index) => {
+      node.style.setProperty("--reveal-delay", `${Math.min(index % 7, 5) * 70}ms`);
+      observer.observe(node);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+}
+
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -212,6 +296,7 @@ function Header() {
         <a className="active" href="#top">首页</a>
         <a href="#ecosystem">生态数据</a>
         <a href="#advantages">核心优势</a>
+        <a href="#access">准入流程</a>
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -283,11 +368,47 @@ function HeroVisual() {
 
 function ProofRibbon() {
   return (
-    <section className="proof-ribbon" aria-label="Cloud loan proof points">
+    <section className="proof-ribbon" aria-label="Cloud loan proof points" data-reveal>
       <div className="ribbon-track">
         {[...proofBadges, ...proofBadges].map((item, index) => (
           <span key={`${item}-${index}`}>{item}</span>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function PolicyShowcase() {
+  return (
+    <section id="advantages" className="policy-showcase" aria-label="Cloud loan policy highlights">
+      <div className="policy-inner">
+        <div className="section-heading dark-heading" data-reveal>
+          <p className="eyebrow">loan highlights</p>
+          <h2>把低成本、灵活周期和循环额度讲清楚</h2>
+          <p className="section-copy">
+            参考银行产品页的信息表达，把客户最关心的费率、期限、额度使用方式拆成逐屏出现的重点模块。
+          </p>
+        </div>
+
+        <div className="policy-stack">
+          {policyHighlights.map((item, index) => (
+            <article key={item.key} className={index % 2 === 1 ? "policy-row reverse" : "policy-row"} data-reveal>
+              <div className={`policy-visual ${item.key}`} aria-hidden="true">
+                <div className="policy-orbit">
+                  <span>{item.metric}</span>
+                </div>
+                <i />
+                <i />
+                <i />
+              </div>
+              <div className="policy-copy">
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+                <a href="#contact">{item.action}</a>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -299,13 +420,13 @@ function ProductPanel() {
 
   return (
     <section id="products" className="products cloud-products">
-      <div className="section-heading">
+      <div className="section-heading" data-reveal>
         <p className="eyebrow">product matrix</p>
         <h2>两类融资产品，覆盖跨境卖家核心资金场景</h2>
         <p className="section-copy">货押贷解决备货与库存占资，应收贷解决平台账期与轻资产授信。</p>
       </div>
 
-      <div className="product-tabs" role="tablist" aria-label="Loan products">
+      <div className="product-tabs" role="tablist" aria-label="Loan products" data-reveal>
         {products.map((product) => (
           <button
             key={product.name}
@@ -320,7 +441,7 @@ function ProductPanel() {
         ))}
       </div>
 
-      <div className="loan-detail">
+      <div className="loan-detail" data-reveal>
         <div className="loan-detail-main">
           <span>{selected.tag}</span>
           <h3>{selected.headline}</h3>
@@ -342,7 +463,7 @@ function ProductPanel() {
 function FinancingScenes() {
   return (
     <section id="scenes" className="financing-scenes" aria-label="Financing scenes">
-      <div className="section-heading">
+      <div className="section-heading" data-reveal>
         <p className="eyebrow">three financing scenes</p>
         <h2>三张核心概念图，把云贷产品讲成清晰的独立模块</h2>
         <p className="section-copy">
@@ -352,7 +473,7 @@ function FinancingScenes() {
 
       <div className="scene-stack">
         {financingScenes.map((scene, index) => (
-          <article key={scene.id} className={index % 2 === 1 ? "scene-panel reverse" : "scene-panel"}>
+          <article key={scene.id} className={index % 2 === 1 ? "scene-panel reverse" : "scene-panel"} data-reveal>
             <div className="scene-image">
               <img src={scene.image} alt={scene.imageAlt} />
               <div className="scene-badge">
@@ -387,8 +508,8 @@ function FinancingScenes() {
 
 function AdvantageEngine() {
   return (
-    <section id="advantages" className="advantage-engine" aria-label="Cloud loan core advantages">
-      <div className="section-heading">
+    <section id="engine" className="advantage-engine" aria-label="Cloud loan core advantages">
+      <div className="section-heading" data-reveal>
         <p className="eyebrow">core advantages</p>
         <h2>把融资能力做成一套可循环运转的资金引擎</h2>
         <p className="section-copy">
@@ -397,7 +518,7 @@ function AdvantageEngine() {
       </div>
       <div className="advantage-grid">
         {coreAdvantages.map((item) => (
-          <article key={item.index} className="advantage-card">
+          <article key={item.index} className="advantage-card" data-reveal>
             <div className="advantage-topline">
               <span>{item.index}</span>
               <b>{item.metric}</b>
@@ -407,7 +528,7 @@ function AdvantageEngine() {
           </article>
         ))}
       </div>
-      <div className="capital-flow" aria-label="Data risk control flow">
+      <div className="capital-flow" aria-label="Data risk control flow" data-reveal>
         <div>
           <span>经营数据</span>
           <strong>店铺 / 物流 / 仓储 / 回款</strong>
@@ -421,6 +542,54 @@ function AdvantageEngine() {
         <div>
           <span>云贷额度</span>
           <strong>循环授信 / 随用随取</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccessAndProcess() {
+  return (
+    <section id="access" className="access-process" aria-label="Bank access conditions and application process">
+      <div className="access-inner">
+        <div className="access-card" data-reveal>
+          <div className="access-title">
+            <p className="eyebrow">准入条件速查</p>
+            <h2>银行准入信息前置展示，客户一眼判断匹配度</h2>
+          </div>
+          <div className="bank-tabs" aria-label="Cooperating banks">
+            {bankTabs.map((bank) => (
+              <button key={bank} className={bank.includes("WeBank") ? "active" : ""} type="button">
+                {bank}
+              </button>
+            ))}
+          </div>
+          <div className="access-checks">
+            <span className="access-pill">对公</span>
+            {bankAccess.map(([label, text]) => (
+              <div key={label} className="access-line">
+                <b>{label}</b>
+                <p>{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="process-panel">
+          <div className="process-heading" data-reveal>
+            <p className="eyebrow">申请流程</p>
+            <h2>4 步完成申请，最快一周资金到账</h2>
+            <p className="section-copy">从店铺授权到资金直达账户，全程线上协同。</p>
+          </div>
+          <div className="process-grid">
+            {applicationSteps.map(([number, title, body]) => (
+              <article key={number} className="process-step" data-reveal>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -460,7 +629,7 @@ function LeadForm() {
 
   return (
     <section id="contact" className="lead-section cloud-cta">
-      <div className="lead-copy">
+      <div className="lead-copy" data-reveal>
         <p className="eyebrow">financing intake</p>
         <h2>提交经营信息，获取平台云贷初步匹配方案</h2>
         <p className="section-copy">
@@ -468,7 +637,7 @@ function LeadForm() {
         </p>
       </div>
 
-      <form className="lead-form" onSubmit={submitLead}>
+      <form className="lead-form" onSubmit={submitLead} data-reveal>
         <div className="form-grid">
           <label>
             <span>企业名称</span>
@@ -567,6 +736,8 @@ function LeadForm() {
 }
 
 export function App() {
+  useScrollReveal();
+
   return (
     <main className="site-shell template-command final-template">
       <div className="ambient-layer" aria-hidden="true">
@@ -577,7 +748,7 @@ export function App() {
       <Header />
 
       <section id="top" className="hero cloud-hero">
-        <div className="hero-copy">
+        <div className="hero-copy" data-reveal>
           <div className="template-status">
             <span>{heroContent.nav}</span>
             <strong>{heroContent.name}</strong>
@@ -611,14 +782,20 @@ export function App() {
           </dl>
         </div>
 
-        <HeroVisual />
+        <div data-reveal="zoom">
+          <HeroVisual />
+        </div>
       </section>
 
       <ProofRibbon />
 
+      <PolicyShowcase />
+
       <AdvantageEngine />
 
-      <section id="ecosystem" className="partner-rail cloud-rail" aria-label="Cloud loan ecosystem">
+      <AccessAndProcess />
+
+      <section id="ecosystem" className="partner-rail cloud-rail" aria-label="Cloud loan ecosystem" data-reveal>
         <p>覆盖跨境卖家真实经营链路</p>
         {platformTags.map((tag) => (
           <button key={tag} type="button" className="partner-logo">
@@ -631,7 +808,7 @@ export function App() {
       <FinancingScenes />
 
       <section className="workflow cloud-workflow">
-        <div>
+        <div data-reveal>
           <p className="eyebrow">why it works</p>
           <h2>从经营数据到银行授信，一套链路跑通低成本融资闭环</h2>
           <p className="section-copy">
@@ -640,7 +817,7 @@ export function App() {
         </div>
         <div className="flow-grid">
           {flowSteps.map(([step, title, body]) => (
-            <article key={step} className="flow-card">
+            <article key={step} className="flow-card" data-reveal>
               <span>{step}</span>
               <h3>{title}</h3>
               <p>{body}</p>
