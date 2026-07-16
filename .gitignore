@@ -2,6 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.log
+server/data/leads.json
 
 # Local QA screenshots are generated during visual checks.
 qa/*.png

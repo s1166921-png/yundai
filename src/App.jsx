@@ -63,6 +63,54 @@ const flowSteps = [
 
 const proofBadges = ["建行联合方案", "美鸥数据风控", "最高 1000 万", "线上审批放款"];
 
+const leadOptionGroups = [
+  {
+    name: "annualRevenue",
+    label: "去年全年营业收入",
+    options: ["500-1000万", "1000万-3000万", "3000万-5000万", "5000万-1亿", "1亿以上"],
+  },
+  {
+    name: "annualProfit",
+    label: "去年全年净利润",
+    options: ["0-100万", "100万-300万", "300万-1000万", "1000万以上"],
+  },
+  {
+    name: "revenueGrowth",
+    label: "预计今年营收比去年增速",
+    options: ["0-10%", "10%-30%", "30-50%", "50%以上"],
+  },
+  {
+    name: "employeeCount",
+    label: "当前员工人数",
+    options: ["0-10人", "10-20人", "20-50人", "50人以上"],
+  },
+  {
+    name: "bankCount",
+    label: "贷款合作银行家数",
+    options: ["0", "1", "2", "3", "3家以上"],
+  },
+  {
+    name: "desiredAmount",
+    label: "本次融资意向金额",
+    options: ["50-100万", "100-300万", "300-500万", "500万以上"],
+  },
+];
+
+const initialLeadForm = {
+  companyName: "",
+  contactName: "",
+  phone: "",
+  platform: "",
+  productInterest: "",
+  annualRevenue: "",
+  annualProfit: "",
+  revenueGrowth: "",
+  employeeCount: "",
+  bankCount: "",
+  desiredAmount: "",
+  note: "",
+};
+
 const financingScenes = [
   {
     id: "inventory",
@@ -133,6 +181,7 @@ function Header() {
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
+        <a href="#admin">后台</a>
       </nav>
       <div className="nav-actions">
         <a className="ghost-button" href="#products">产品卖点</a>
@@ -296,6 +345,227 @@ function FinancingScenes() {
   );
 }
 
+function LeadForm() {
+  const [form, setForm] = useState(initialLeadForm);
+  const [status, setStatus] = useState({ type: "idle", message: "" });
+
+  const updateField = (name, value) => {
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const submitLead = async (event) => {
+    event.preventDefault();
+    setStatus({ type: "loading", message: "正在提交融资意向..." });
+
+    try {
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "提交失败，请稍后再试");
+      }
+
+      setForm(initialLeadForm);
+      setStatus({ type: "success", message: "提交成功，我们会尽快联系您确认融资方案。" });
+    } catch (error) {
+      setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
+    }
+  };
+
+  return (
+    <section id="contact" className="lead-section cloud-cta">
+      <div className="lead-copy">
+        <p className="eyebrow">financing intake</p>
+        <h2>提交经营信息，获取平台云贷初步匹配方案</h2>
+        <p className="section-copy">
+          客户填写后会进入后台客户信息汇总，管理员可以查看全部记录并一键导出 Excel。
+        </p>
+      </div>
+
+      <form className="lead-form" onSubmit={submitLead}>
+        <div className="form-grid">
+          <label>
+            <span>企业名称</span>
+            <input
+              required
+              value={form.companyName}
+              onChange={(event) => updateField("companyName", event.target.value)}
+              placeholder="请输入企业名称"
+            />
+          </label>
+          <label>
+            <span>联系人</span>
+            <input
+              required
+              value={form.contactName}
+              onChange={(event) => updateField("contactName", event.target.value)}
+              placeholder="请输入联系人姓名"
+            />
+          </label>
+          <label>
+            <span>联系电话</span>
+            <input
+              required
+              value={form.phone}
+              onChange={(event) => updateField("phone", event.target.value)}
+              placeholder="请输入手机号码"
+            />
+          </label>
+          <label>
+            <span>主营平台</span>
+            <select required value={form.platform} onChange={(event) => updateField("platform", event.target.value)}>
+              <option value="" disabled>请选择主营平台</option>
+              <option>Amazon</option>
+              <option>Temu</option>
+              <option>TikTok Shop</option>
+              <option>多平台经营</option>
+              <option>其他</option>
+            </select>
+          </label>
+          <label>
+            <span>意向产品</span>
+            <select
+              required
+              value={form.productInterest}
+              onChange={(event) => updateField("productInterest", event.target.value)}
+            >
+              <option value="" disabled>请选择意向产品</option>
+              <option>货押贷</option>
+              <option>应收贷</option>
+              <option>两类都想了解</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="option-groups">
+          {leadOptionGroups.map((group) => (
+            <fieldset key={group.name} className="option-group">
+              <legend>{group.label}</legend>
+              <div>
+                {group.options.map((option) => (
+                  <label key={option} className={form[group.name] === option ? "selected" : ""}>
+                    <input
+                      required
+                      type="radio"
+                      name={group.name}
+                      value={option}
+                      checked={form[group.name] === option}
+                      onChange={(event) => updateField(group.name, event.target.value)}
+                    />
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+
+        <label className="full-field">
+          <span>补充说明</span>
+          <textarea
+            value={form.note}
+            onChange={(event) => updateField("note", event.target.value)}
+            placeholder="可填写库存、回款周期、当前融资需求等补充信息"
+          />
+        </label>
+
+        <div className="form-actions">
+          <button className="hot-button" type="submit" disabled={status.type === "loading"}>
+            {status.type === "loading" ? "提交中..." : "提交融资意向"}
+          </button>
+          {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function AdminPanel() {
+  const [token, setToken] = useState("");
+  const [leads, setLeads] = useState([]);
+  const [status, setStatus] = useState("");
+
+  const loadLeads = async () => {
+    setStatus("正在读取客户信息...");
+    try {
+      const response = await fetch(`/api/leads?token=${encodeURIComponent(token)}`);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "读取失败");
+      }
+
+      setLeads(payload.leads);
+      setStatus(`已读取 ${payload.leads.length} 条客户信息`);
+    } catch (error) {
+      setStatus(error.message || "读取失败");
+    }
+  };
+
+  const exportUrl = `/api/leads/export?token=${encodeURIComponent(token)}`;
+
+  return (
+    <section id="admin" className="admin-panel" aria-label="Lead admin panel">
+      <div>
+        <p className="eyebrow">admin</p>
+        <h2>客户信息后台</h2>
+        <p className="section-copy">输入后台口令后可以查看客户提交记录，并一键导出 Excel 汇总表。</p>
+      </div>
+      <div className="admin-tools">
+        <input
+          type="password"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          placeholder="后台口令"
+        />
+        <button type="button" onClick={loadLeads}>读取客户信息</button>
+        <a className={token ? "" : "disabled"} href={token ? exportUrl : "#admin"}>导出 Excel</a>
+      </div>
+      {status && <p className="admin-status">{status}</p>}
+      <div className="lead-table-wrap">
+        <table className="lead-table">
+          <thead>
+            <tr>
+              <th>提交时间</th>
+              <th>企业名称</th>
+              <th>联系人</th>
+              <th>电话</th>
+              <th>主营平台</th>
+              <th>意向金额</th>
+              <th>营收</th>
+              <th>净利润</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leads.length === 0 ? (
+              <tr>
+                <td colSpan="8">暂无已读取数据</td>
+              </tr>
+            ) : (
+              leads.map((lead) => (
+                <tr key={lead.id}>
+                  <td>{new Date(lead.createdAt).toLocaleString("zh-CN")}</td>
+                  <td>{lead.companyName}</td>
+                  <td>{lead.contactName}</td>
+                  <td>{lead.phone}</td>
+                  <td>{lead.platform}</td>
+                  <td>{lead.desiredAmount}</td>
+                  <td>{lead.annualRevenue}</td>
+                  <td>{lead.annualProfit}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function App() {
   return (
     <main className="site-shell template-command final-template">
@@ -379,14 +649,9 @@ export function App() {
 
       <ProductPanel />
 
-      <section id="contact" className="footer-cta cloud-cta">
-        <div>
-          <p className="eyebrow">next step</p>
-          <h2>以云贷资金指挥舱为正式方向，继续深化成完整官网。</h2>
-          <p className="section-copy">后续可以继续补官方品牌资产、咨询表单、更多银行背书、客户案例和移动端转化路径。</p>
-        </div>
-        <a className="hot-button" href="#top">回到顶部查看方案</a>
-      </section>
+      <LeadForm />
+
+      <AdminPanel />
     </main>
   );
 }
