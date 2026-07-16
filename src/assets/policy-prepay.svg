@@ -1,0 +1,25 @@
+<svg width="640" height="420" viewBox="0 0 640 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="420" rx="30" fill="#07101f"/>
+  <rect x="1" y="1" width="638" height="418" rx="29" stroke="url(#border)" stroke-opacity=".55" stroke-width="2"/>
+  <circle cx="196" cy="100" r="148" fill="#8C52FF" opacity=".14"/>
+  <circle cx="460" cy="292" r="168" fill="#5CE1E6" opacity=".12"/>
+  <rect x="192" y="156" width="256" height="154" rx="30" fill="url(#card)" stroke="#5CE1E6" stroke-opacity=".35"/>
+  <path d="M274 160v-28c0-34 27-60 62-60 29 0 52 19 60 45" stroke="url(#lock)" stroke-width="18" stroke-linecap="round"/>
+  <rect x="256" y="132" width="120" height="84" rx="24" fill="#0A1A32" stroke="#8C52FF" stroke-opacity=".42"/>
+  <circle cx="316" cy="168" r="13" fill="#5CE1E6"/>
+  <path d="M316 180v20" stroke="#5CE1E6" stroke-width="8" stroke-linecap="round"/>
+  <path d="M236 260h168" stroke="#244563" stroke-width="14" stroke-linecap="round"/>
+  <path d="M236 260h104" stroke="url(#progress)" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="430" cy="266" r="48" fill="url(#coin)" stroke="#5CE1E6" stroke-opacity=".45"/>
+  <path d="M408 266l16 16 31-36" stroke="#07101F" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M132 330h376" stroke="#1A3353" stroke-width="2"/>
+  <path d="M150 332c42-36 86-44 132-24 38 16 72 15 104-4 36-22 72-20 108 8" stroke="url(#wave)" stroke-width="5" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="border" x1="0" y1="0" x2="640" y2="420"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="card" x1="192" y1="156" x2="448" y2="310"><stop stop-color="#10264B"/><stop offset="1" stop-color="#081527"/></linearGradient>
+    <linearGradient id="lock" x1="274" y1="132" x2="396" y2="112"><stop stop-color="#5CE1E6"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+    <linearGradient id="progress" x1="236" y1="260" x2="340" y2="260"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="coin" x1="382" y1="218" x2="478" y2="314"><stop stop-color="#5CE1E6"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+    <linearGradient id="wave" x1="150" y1="310" x2="494" y2="310"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+  </defs>
+</svg>

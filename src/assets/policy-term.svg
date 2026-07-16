@@ -1,0 +1,28 @@
+<svg width="640" height="420" viewBox="0 0 640 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="420" rx="30" fill="#07101f"/>
+  <rect x="1" y="1" width="638" height="418" rx="29" stroke="url(#border)" stroke-opacity=".55" stroke-width="2"/>
+  <circle cx="332" cy="194" r="170" fill="#5CE1E6" opacity=".1"/>
+  <circle cx="476" cy="84" r="120" fill="#8C52FF" opacity=".17"/>
+  <rect x="154" y="72" width="332" height="70" rx="20" fill="#0D1B34" stroke="#5CE1E6" stroke-opacity=".28"/>
+  <circle cx="194" cy="107" r="14" fill="#5CE1E6" opacity=".85"/>
+  <path d="M194 98v18m-9-9h18" stroke="#07101F" stroke-width="3" stroke-linecap="round"/>
+  <path d="M236 96h188M236 120h116" stroke="#385578" stroke-width="10" stroke-linecap="round"/>
+  <path d="M320 160v74" stroke="url(#beam)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M320 244l-18-22h36l-18 22z" fill="#5CE1E6"/>
+  <path d="M154 270l166-82 166 82H154z" fill="url(#tier1)" stroke="#5CE1E6" stroke-opacity=".5"/>
+  <path d="M186 308l134-64 134 64H186z" fill="url(#tier2)" stroke="#8C52FF" stroke-opacity=".45"/>
+  <path d="M226 344l94-44 94 44H226z" fill="url(#tier3)" stroke="#5CE1E6" stroke-opacity=".28"/>
+  <path d="M116 360h408" stroke="#193251" stroke-width="2"/>
+  <g opacity=".9">
+    <circle cx="154" cy="270" r="5" fill="#5CE1E6"/>
+    <circle cx="320" cy="188" r="5" fill="#8C52FF"/>
+    <circle cx="486" cy="270" r="5" fill="#5CE1E6"/>
+  </g>
+  <defs>
+    <linearGradient id="border" x1="0" y1="0" x2="640" y2="420"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="beam" x1="320" y1="160" x2="320" y2="244"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="tier1" x1="154" y1="188" x2="486" y2="270"><stop stop-color="#12315C"/><stop offset=".52" stop-color="#0C2348"/><stop offset="1" stop-color="#17205A"/></linearGradient>
+    <linearGradient id="tier2" x1="186" y1="244" x2="454" y2="308"><stop stop-color="#0D203C"/><stop offset="1" stop-color="#1A1643"/></linearGradient>
+    <linearGradient id="tier3" x1="226" y1="300" x2="414" y2="344"><stop stop-color="#09182C"/><stop offset="1" stop-color="#111331"/></linearGradient>
+  </defs>
+</svg>

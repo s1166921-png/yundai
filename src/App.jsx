@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import fundingNetwork from "./assets/funding-network.png";
 import inventoryPledge from "./assets/inventory-pledge.png";
+import policyCycle from "./assets/policy-cycle.svg";
+import policyPrepay from "./assets/policy-prepay.svg";
+import policyRate from "./assets/policy-rate.svg";
+import policyTerm from "./assets/policy-term.svg";
 import receivablesFlow from "./assets/receivables-flow.png";
 import riskEngine from "./assets/risk-engine.png";
 
@@ -100,28 +104,32 @@ const policyHighlights = [
   {
     key: "rate",
     title: "费率低至 3%",
-    metric: "3%",
+    image: policyRate,
+    imageAlt: "低费率融资成本下降概念图",
     body: "浦发对公宁波地区低至 3%，广发对公低至 4%，相比传统贷款利率优势显著。",
     action: "点击申请",
   },
   {
     key: "term",
     title: "期限灵活",
-    metric: "3-9月",
+    image: policyTerm,
+    imageAlt: "三到九个月灵活期限阶梯概念图",
     body: "最短 3 个月，最长 9 个月（微众对公），可按业务周期灵活选择。",
     action: "查看周期",
   },
   {
     key: "cycle",
     title: "额度可循环",
-    metric: "循环",
+    image: policyCycle,
+    imageAlt: "授信额度循环使用概念图",
     body: "额度循环使用，随借随还，适配旺季备货和日常周转。",
     action: "了解额度",
   },
   {
     key: "prepay",
     title: "提前还款",
-    metric: "0违约金",
+    image: policyPrepay,
+    imageAlt: "提前还款无违约金概念图",
     body: "支持根据回款节奏提前还款，无提前还款违约金，减少闲置资金成本。",
     action: "咨询方案",
   },
@@ -386,10 +394,8 @@ function PolicyShowcase() {
         <div className="policy-stack">
           {policyHighlights.map((item, index) => (
             <article key={item.key} className={index % 2 === 1 ? "policy-row reverse" : "policy-row"} data-reveal>
-              <div className={`policy-visual ${item.key}`} aria-hidden="true">
-                <div className="policy-orbit">
-                  <span>{item.metric}</span>
-                </div>
+              <div className={`policy-visual ${item.key}`}>
+                <img src={item.image} alt={item.imageAlt} />
                 <i />
                 <i />
                 <i />

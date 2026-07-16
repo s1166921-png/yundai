@@ -1,0 +1,24 @@
+<svg width="640" height="420" viewBox="0 0 640 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="420" rx="30" fill="#07101f"/>
+  <rect x="1" y="1" width="638" height="418" rx="29" stroke="url(#border)" stroke-opacity=".55" stroke-width="2"/>
+  <circle cx="320" cy="210" r="170" stroke="#1C3558" stroke-width="2"/>
+  <circle cx="320" cy="210" r="118" stroke="#1C3558" stroke-width="2" stroke-dasharray="10 14"/>
+  <path d="M202 212c54-83 129-93 196-20" stroke="url(#loop1)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M438 190l18 43-46-5" stroke="#5CE1E6" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M438 214c-54 83-129 93-196 20" stroke="url(#loop2)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M202 236l-18-43 46 5" stroke="#8C52FF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="250" y="140" width="140" height="140" rx="42" fill="url(#core)" stroke="#5CE1E6" stroke-opacity=".4"/>
+  <path d="M284 210c18-28 39-28 72 0-33 28-54 28-72 0z" stroke="url(#infinity)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="156" cy="146" r="8" fill="#8C52FF"/>
+  <circle cx="502" cy="280" r="8" fill="#5CE1E6"/>
+  <circle cx="452" cy="112" r="5" fill="#5CE1E6" opacity=".8"/>
+  <circle cx="208" cy="316" r="5" fill="#8C52FF" opacity=".8"/>
+  <path d="M126 342h388" stroke="#1A3353" stroke-width="2"/>
+  <defs>
+    <linearGradient id="border" x1="0" y1="0" x2="640" y2="420"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="loop1" x1="202" y1="212" x2="456" y2="212"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="loop2" x1="438" y1="214" x2="184" y2="214"><stop stop-color="#5CE1E6"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+    <linearGradient id="core" x1="250" y1="140" x2="390" y2="280"><stop stop-color="#142B55"/><stop offset="1" stop-color="#07172A"/></linearGradient>
+    <linearGradient id="infinity" x1="284" y1="210" x2="356" y2="210"><stop stop-color="#5CE1E6"/><stop offset=".52" stop-color="#1F6FFF"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+  </defs>
+</svg>

@@ -1,0 +1,32 @@
+<svg width="640" height="420" viewBox="0 0 640 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="420" rx="30" fill="#07101f"/>
+  <rect x="1" y="1" width="638" height="418" rx="29" stroke="url(#border)" stroke-opacity=".55" stroke-width="2"/>
+  <circle cx="150" cy="92" r="150" fill="#8C52FF" opacity=".16"/>
+  <circle cx="500" cy="290" r="190" fill="#5CE1E6" opacity=".12"/>
+  <path d="M108 300h420" stroke="#183456" stroke-width="2"/>
+  <path d="M132 260h55v40h-55z" fill="url(#bar1)" opacity=".85"/>
+  <path d="M224 216h55v84h-55z" fill="url(#bar2)" opacity=".9"/>
+  <path d="M316 170h55v130h-55z" fill="url(#bar3)" opacity=".95"/>
+  <path d="M408 116h55v184h-55z" fill="url(#bar4)"/>
+  <path d="M126 114c74 86 143 116 219 118 59 2 104-22 150-72" stroke="url(#curve)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M478 160l28-18-7 33" stroke="#5CE1E6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="204" y="118" width="132" height="104" rx="28" fill="url(#tile)" stroke="#5CE1E6" stroke-opacity=".38"/>
+  <path d="M236 172c0-19 15-34 34-34s34 15 34 34-15 34-34 34-34-15-34-34z" fill="#07101F" fill-opacity=".68" stroke="url(#ring)" stroke-width="4"/>
+  <path d="M256 189l31-34" stroke="#5CE1E6" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="255" cy="155" r="8" fill="#8C52FF"/>
+  <circle cx="288" cy="190" r="8" fill="#5CE1E6"/>
+  <g opacity=".55">
+    <path d="M108 342h420" stroke="#244060" stroke-dasharray="8 12"/>
+    <path d="M108 86h420" stroke="#244060" stroke-dasharray="8 12"/>
+  </g>
+  <defs>
+    <linearGradient id="border" x1="0" y1="0" x2="640" y2="420"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="bar1" x1="132" y1="260" x2="187" y2="300"><stop stop-color="#20365F"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="bar2" x1="224" y1="216" x2="279" y2="300"><stop stop-color="#223C77"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="bar3" x1="316" y1="170" x2="371" y2="300"><stop stop-color="#3252B8"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+    <linearGradient id="bar4" x1="408" y1="116" x2="463" y2="300"><stop stop-color="#5CE1E6"/><stop offset="1" stop-color="#8C52FF"/></linearGradient>
+    <linearGradient id="curve" x1="126" y1="114" x2="506" y2="142"><stop stop-color="#8C52FF"/><stop offset=".52" stop-color="#1F6FFF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+    <linearGradient id="tile" x1="204" y1="118" x2="336" y2="222"><stop stop-color="#132B55"/><stop offset="1" stop-color="#081527"/></linearGradient>
+    <linearGradient id="ring" x1="236" y1="138" x2="304" y2="206"><stop stop-color="#8C52FF"/><stop offset="1" stop-color="#5CE1E6"/></linearGradient>
+  </defs>
+</svg>
