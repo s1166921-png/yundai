@@ -149,6 +149,17 @@ function buildExcel(leads) {
 </html>`;
 }
 
+function getSelectedLeads(url, leads) {
+  const ids = url.searchParams.getAll("ids").flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const selected = new Set(ids);
+  return leads.filter((lead) => selected.has(lead.id));
+}
+
 function buildAdminPage() {
   const headerCells = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
   const rowCells = leadColumns
@@ -157,6 +168,7 @@ function buildAdminPage() {
       return `<td>${value}</td>`;
     })
     .join("");
+  const emptyColspan = leadColumns.length + 1;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -184,11 +196,13 @@ function buildAdminPage() {
     .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #e7edf5; color: #53637a; font-size: 14px; }
     .summary strong { color: #17243d; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; min-width: 1320px; border-collapse: collapse; background: #fff; }
+    table { width: 100%; min-width: 1380px; border-collapse: collapse; background: #fff; }
     th, td { padding: 12px 14px; border-bottom: 1px solid #edf1f7; color: #34445b; text-align: left; white-space: nowrap; font-size: 14px; }
     th { position: sticky; top: 0; z-index: 1; color: #17243d; font-size: 13px; font-weight: 800; background: #f8fafc; }
     tbody tr:hover td { background: #f8fbff; }
     td:last-child { max-width: 360px; white-space: normal; line-height: 1.55; }
+    .select-col { width: 48px; text-align: center; }
+    input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
     @media (max-width: 720px) { main { width: min(100% - 20px, 1440px); padding-top: 12px; } .topbar { align-items: stretch; flex-direction: column; } .tools, input, button, a { width: 100%; } }
   </style>
 </head>
@@ -200,19 +214,20 @@ function buildAdminPage() {
         <div class="tools">
           <input id="token" type="password" placeholder="后台口令" />
           <button id="load" type="button">读取客户信息</button>
-          <a id="export" class="primary disabled" href="#">导出 Excel</a>
+          <a id="export" class="primary disabled" href="#">导出选中 Excel</a>
         </div>
       </div>
       <div class="summary">
         <span id="status">请输入后台口令。</span>
         <span>客户数量：<strong id="count">0</strong></span>
+        <span>已选择：<strong id="selectedCount">0</strong></span>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>${headerCells}</tr>
+            <tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="全选客户" /></th>${headerCells}</tr>
           </thead>
-          <tbody id="rows"><tr><td colspan="${leadColumns.length}">暂无已读取数据</td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="${emptyColspan}">暂无已读取数据</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -223,14 +238,51 @@ function buildAdminPage() {
     const exportLink = document.querySelector("#export");
     const statusNode = document.querySelector("#status");
     const countNode = document.querySelector("#count");
+    const selectedCountNode = document.querySelector("#selectedCount");
+    const selectAllNode = document.querySelector("#selectAll");
     const rowsNode = document.querySelector("#rows");
+    let loadedLeads = [];
+    const selectedIds = new Set();
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     const syncExport = () => {
       const token = tokenInput.value.trim();
-      exportLink.href = token ? "/api/leads/export?token=" + encodeURIComponent(token) : "#";
-      exportLink.classList.toggle("disabled", !token);
+      const ids = [...selectedIds];
+      const params = new URLSearchParams();
+      if (token) params.set("token", token);
+      ids.forEach((id) => params.append("ids", id));
+      exportLink.href = token && ids.length ? "/api/leads/export?" + params.toString() : "#";
+      exportLink.classList.toggle("disabled", !token || ids.length === 0);
+      selectedCountNode.textContent = ids.length;
+      selectAllNode.checked = loadedLeads.length > 0 && ids.length === loadedLeads.length;
+      selectAllNode.indeterminate = ids.length > 0 && ids.length < loadedLeads.length;
+      exportLink.textContent = ids.length ? "导出选中 " + ids.length + " 条" : "导出选中 Excel";
+    };
+    const renderRows = () => {
+      rowsNode.innerHTML = loadedLeads.length ? loadedLeads.map((lead) => \`
+          <tr>
+            <td class="select-col"><input class="row-select" type="checkbox" value="\${escapeHtml(lead.id)}" \${selectedIds.has(lead.id) ? "checked" : ""} aria-label="选择客户" /></td>${rowCells}
+          </tr>\`).join("") : '<tr><td colspan="${emptyColspan}">暂无客户信息</td></tr>';
+      rowsNode.querySelectorAll(".row-select").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            selectedIds.add(checkbox.value);
+          } else {
+            selectedIds.delete(checkbox.value);
+          }
+          syncExport();
+        });
+      });
+      syncExport();
     };
     tokenInput.addEventListener("input", syncExport);
+    selectAllNode.addEventListener("change", () => {
+      if (selectAllNode.checked) {
+        loadedLeads.forEach((lead) => selectedIds.add(lead.id));
+      } else {
+        selectedIds.clear();
+      }
+      renderRows();
+    });
     loadButton.addEventListener("click", async () => {
       const token = tokenInput.value.trim();
       syncExport();
@@ -239,13 +291,16 @@ function buildAdminPage() {
         const response = await fetch("/api/leads?token=" + encodeURIComponent(token));
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
+        loadedLeads = payload.leads;
+        selectedIds.clear();
         statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
         countNode.textContent = payload.leads.length;
-        rowsNode.innerHTML = payload.leads.length ? payload.leads.map((lead) => \`
-          <tr>${rowCells}</tr>\`).join("") : '<tr><td colspan="${leadColumns.length}">暂无客户信息</td></tr>';
+        renderRows();
       } catch (error) {
         statusNode.textContent = error.message || "读取失败";
         countNode.textContent = "0";
+        selectedIds.clear();
+        syncExport();
       }
     });
   </script>
@@ -338,7 +393,13 @@ const server = createServer(async (request, response) => {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
-      const excel = buildExcel(await readLeads());
+      const leads = await readLeads();
+      const selectedLeads = getSelectedLeads(url, leads);
+      if (selectedLeads.length === 0) {
+        sendJson(response, 400, { error: "请选择客户信息后导出" });
+        return;
+      }
+      const excel = buildExcel(selectedLeads);
       response.writeHead(200, {
         "Content-Type": "application/vnd.ms-excel; charset=utf-8",
         "Content-Disposition": `attachment; filename="meiou-leads-${new Date().toISOString().slice(0, 10)}.xls"`,
