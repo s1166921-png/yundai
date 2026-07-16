@@ -33,7 +33,8 @@ http://127.0.0.1:8787/
 
 - Customers submit the financing intent form on the website.
 - Submissions are saved locally to `server/data/leads.json`.
-- The admin panel is at `/#admin`.
+- The customer-facing website does not show the admin panel.
+- The admin panel is served separately at `http://127.0.0.1:8787/admin`.
 - Default admin token: `meiou2026`
 - Click “导出 Excel” in the admin panel to download the customer summary.
 

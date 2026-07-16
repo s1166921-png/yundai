@@ -181,7 +181,6 @@ function Header() {
         <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
-        <a href="#admin">后台</a>
       </nav>
       <div className="nav-actions">
         <a className="ghost-button" href="#products">产品卖点</a>
@@ -382,7 +381,7 @@ function LeadForm() {
         <p className="eyebrow">financing intake</p>
         <h2>提交经营信息，获取平台云贷初步匹配方案</h2>
         <p className="section-copy">
-          客户填写后会进入后台客户信息汇总，管理员可以查看全部记录并一键导出 Excel。
+          请按实际经营情况填写，融资顾问会根据企业规模、增长情况与意向金额进行初步匹配。
         </p>
       </div>
 
@@ -484,88 +483,6 @@ function LeadForm() {
   );
 }
 
-function AdminPanel() {
-  const [token, setToken] = useState("");
-  const [leads, setLeads] = useState([]);
-  const [status, setStatus] = useState("");
-
-  const loadLeads = async () => {
-    setStatus("正在读取客户信息...");
-    try {
-      const response = await fetch(`/api/leads?token=${encodeURIComponent(token)}`);
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "读取失败");
-      }
-
-      setLeads(payload.leads);
-      setStatus(`已读取 ${payload.leads.length} 条客户信息`);
-    } catch (error) {
-      setStatus(error.message || "读取失败");
-    }
-  };
-
-  const exportUrl = `/api/leads/export?token=${encodeURIComponent(token)}`;
-
-  return (
-    <section id="admin" className="admin-panel" aria-label="Lead admin panel">
-      <div>
-        <p className="eyebrow">admin</p>
-        <h2>客户信息后台</h2>
-        <p className="section-copy">输入后台口令后可以查看客户提交记录，并一键导出 Excel 汇总表。</p>
-      </div>
-      <div className="admin-tools">
-        <input
-          type="password"
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-          placeholder="后台口令"
-        />
-        <button type="button" onClick={loadLeads}>读取客户信息</button>
-        <a className={token ? "" : "disabled"} href={token ? exportUrl : "#admin"}>导出 Excel</a>
-      </div>
-      {status && <p className="admin-status">{status}</p>}
-      <div className="lead-table-wrap">
-        <table className="lead-table">
-          <thead>
-            <tr>
-              <th>提交时间</th>
-              <th>企业名称</th>
-              <th>联系人</th>
-              <th>电话</th>
-              <th>主营平台</th>
-              <th>意向金额</th>
-              <th>营收</th>
-              <th>净利润</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leads.length === 0 ? (
-              <tr>
-                <td colSpan="8">暂无已读取数据</td>
-              </tr>
-            ) : (
-              leads.map((lead) => (
-                <tr key={lead.id}>
-                  <td>{new Date(lead.createdAt).toLocaleString("zh-CN")}</td>
-                  <td>{lead.companyName}</td>
-                  <td>{lead.contactName}</td>
-                  <td>{lead.phone}</td>
-                  <td>{lead.platform}</td>
-                  <td>{lead.desiredAmount}</td>
-                  <td>{lead.annualRevenue}</td>
-                  <td>{lead.annualProfit}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 export function App() {
   return (
     <main className="site-shell template-command final-template">
@@ -650,8 +567,6 @@ export function App() {
       <ProductPanel />
 
       <LeadForm />
-
-      <AdminPanel />
     </main>
   );
 }

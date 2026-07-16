@@ -149,6 +149,104 @@ function buildExcel(leads) {
 </html>`;
 }
 
+function buildAdminPage() {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>美鸥云贷客户信息后台</title>
+  <style>
+    :root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; color: #10244a; background: #f7fbff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: radial-gradient(circle at 84% 0%, rgba(140,82,255,.2), transparent 34rem), radial-gradient(circle at 10% 12%, rgba(92,225,230,.22), transparent 38rem), linear-gradient(180deg,#f7fbff 0%,#edf4ff 48%,#e9fbfb 100%); }
+    main { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0 72px; }
+    .panel { border: 1px solid rgba(140,82,255,.18); border-radius: 28px; background: rgba(255,255,255,.82); box-shadow: 0 24px 70px rgba(35,56,104,.12); padding: 28px; }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); line-height: 1.12; }
+    p { color: #566d8d; line-height: 1.7; }
+    .tools { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+    input, button, a { font: inherit; }
+    input { width: min(100%, 280px); height: 46px; padding: 0 14px; border: 1px solid rgba(140,82,255,.2); border-radius: 14px; color: #10244a; }
+    button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 18px; border: 1px solid rgba(140,82,255,.22); border-radius: 999px; background: rgba(255,255,255,.74); color: #10244a; font-weight: 900; text-decoration: none; cursor: pointer; }
+    a.primary { background: linear-gradient(90deg,#8c52ff,#5ce1e6); color: #071a35; }
+    a.disabled { opacity: .45; pointer-events: none; }
+    .status { margin: 0 0 18px; font-weight: 850; color: #395170; }
+    .table-wrap { overflow-x: auto; border: 1px solid rgba(140,82,255,.14); border-radius: 18px; }
+    table { width: 100%; min-width: 980px; border-collapse: collapse; background: rgba(255,255,255,.66); }
+    th, td { padding: 14px 16px; border-bottom: 1px solid rgba(140,82,255,.1); color: #395170; text-align: left; white-space: nowrap; }
+    th { color: #10244a; font-size: 13px; font-weight: 950; background: rgba(92,225,230,.12); }
+    @media (max-width: 720px) { main { width: min(100% - 28px, 1180px); padding-top: 28px; } .panel { padding: 20px; border-radius: 22px; } .tools, input, button, a { width: 100%; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h1>客户信息后台</h1>
+      <p>输入后台口令后查看客户提交记录，并导出 Excel 汇总表。这个页面不挂在客户官网导航里。</p>
+      <div class="tools">
+        <input id="token" type="password" placeholder="后台口令" />
+        <button id="load" type="button">读取客户信息</button>
+        <a id="export" class="primary disabled" href="#">导出 Excel</a>
+      </div>
+      <p id="status" class="status">请输入后台口令。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>提交时间</th><th>企业名称</th><th>联系人</th><th>电话</th><th>主营平台</th><th>意向产品</th><th>意向金额</th><th>营收</th><th>净利润</th><th>增速</th><th>员工</th><th>合作银行</th>
+            </tr>
+          </thead>
+          <tbody id="rows"><tr><td colspan="12">暂无已读取数据</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const tokenInput = document.querySelector("#token");
+    const loadButton = document.querySelector("#load");
+    const exportLink = document.querySelector("#export");
+    const statusNode = document.querySelector("#status");
+    const rowsNode = document.querySelector("#rows");
+    const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const syncExport = () => {
+      const token = tokenInput.value.trim();
+      exportLink.href = token ? "/api/leads/export?token=" + encodeURIComponent(token) : "#";
+      exportLink.classList.toggle("disabled", !token);
+    };
+    tokenInput.addEventListener("input", syncExport);
+    loadButton.addEventListener("click", async () => {
+      const token = tokenInput.value.trim();
+      syncExport();
+      statusNode.textContent = "正在读取客户信息...";
+      try {
+        const response = await fetch("/api/leads?token=" + encodeURIComponent(token));
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "读取失败");
+        statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
+        rowsNode.innerHTML = payload.leads.length ? payload.leads.map((lead) => \`
+          <tr>
+            <td>\${escapeHtml(new Date(lead.createdAt).toLocaleString("zh-CN"))}</td>
+            <td>\${escapeHtml(lead.companyName)}</td>
+            <td>\${escapeHtml(lead.contactName)}</td>
+            <td>\${escapeHtml(lead.phone)}</td>
+            <td>\${escapeHtml(lead.platform)}</td>
+            <td>\${escapeHtml(lead.productInterest)}</td>
+            <td>\${escapeHtml(lead.desiredAmount)}</td>
+            <td>\${escapeHtml(lead.annualRevenue)}</td>
+            <td>\${escapeHtml(lead.annualProfit)}</td>
+            <td>\${escapeHtml(lead.revenueGrowth)}</td>
+            <td>\${escapeHtml(lead.employeeCount)}</td>
+            <td>\${escapeHtml(lead.bankCount)}</td>
+          </tr>\`).join("") : '<tr><td colspan="12">暂无客户信息</td></tr>';
+      } catch (error) {
+        statusNode.textContent = error.message || "读取失败";
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
 async function serveStatic(request, response, url) {
   const pathname = decodeURIComponent(url.pathname);
   const requested = pathname === "/" ? "index.html" : pathname.slice(1);
@@ -201,6 +299,12 @@ const server = createServer(async (request, response) => {
   try {
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/admin" && request.method === "GET") {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(buildAdminPage());
       return;
     }
 

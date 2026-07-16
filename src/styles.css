@@ -730,7 +730,6 @@ h1 span {
 .workflow,
 .products,
 .lead-section,
-.admin-panel,
 .financing-scenes {
   width: min(1360px, calc(100% - 48px));
   margin: 0 auto;
@@ -1121,8 +1120,7 @@ h2 {
   top: 110px;
 }
 
-.lead-form,
-.admin-panel {
+.lead-form {
   border: 1px solid var(--line);
   border-radius: 28px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(237, 250, 252, 0.7));
@@ -1157,8 +1155,7 @@ h2 {
 
 .lead-form input,
 .lead-form select,
-.lead-form textarea,
-.admin-tools input {
+.lead-form textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid rgba(140, 82, 255, 0.18);
@@ -1171,8 +1168,7 @@ h2 {
 }
 
 .lead-form input,
-.lead-form select,
-.admin-tools input {
+.lead-form select {
   height: 48px;
   padding: 0 14px;
 }
@@ -1186,8 +1182,7 @@ h2 {
 
 .lead-form input:focus,
 .lead-form select:focus,
-.lead-form textarea:focus,
-.admin-tools input:focus {
+.lead-form textarea:focus {
   border-color: rgba(140, 82, 255, 0.42);
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 0 0 4px rgba(92, 225, 230, 0.14);
@@ -1269,8 +1264,7 @@ h2 {
   opacity: 0.72;
 }
 
-.form-status,
-.admin-status {
+.form-status {
   margin: 0;
   color: #395170;
   font-weight: 850;
@@ -1282,77 +1276,6 @@ h2 {
 
 .form-status.error {
   color: #c43b57;
-}
-
-.admin-panel {
-  display: grid;
-  gap: 22px;
-  margin-bottom: 88px;
-  padding: 28px;
-}
-
-.admin-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.admin-tools input {
-  max-width: 260px;
-}
-
-.admin-tools button,
-.admin-tools a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 46px;
-  padding: 0 18px;
-  border: 1px solid rgba(140, 82, 255, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-  color: #10244a;
-  font-weight: 950;
-}
-
-.admin-tools a {
-  background: linear-gradient(90deg, #8c52ff, #5ce1e6);
-  color: #071a35;
-}
-
-.admin-tools a.disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.lead-table-wrap {
-  overflow-x: auto;
-  border: 1px solid rgba(140, 82, 255, 0.14);
-  border-radius: 18px;
-}
-
-.lead-table {
-  width: 100%;
-  min-width: 940px;
-  border-collapse: collapse;
-  background: rgba(255, 255, 255, 0.66);
-}
-
-.lead-table th,
-.lead-table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(140, 82, 255, 0.1);
-  color: #395170;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.lead-table th {
-  color: #10244a;
-  font-size: 13px;
-  font-weight: 950;
-  background: rgba(92, 225, 230, 0.12);
 }
 
 @keyframes rotateGlow {
@@ -1522,7 +1445,6 @@ h2 {
   .workflow,
   .products,
   .lead-section,
-  .admin-panel,
   .financing-scenes {
     width: min(100% - 32px, 1360px);
   }
@@ -1605,8 +1527,7 @@ h2 {
     position: static;
   }
 
-  .lead-form,
-  .admin-panel {
+  .lead-form {
     padding: 20px;
     border-radius: 22px;
   }
@@ -1620,15 +1541,11 @@ h2 {
     justify-content: center;
   }
 
-  .admin-tools,
   .form-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .admin-tools input,
-  .admin-tools button,
-  .admin-tools a,
   .form-actions .hot-button {
     width: 100%;
     max-width: none;
