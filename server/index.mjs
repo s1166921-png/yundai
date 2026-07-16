@@ -150,6 +150,14 @@ function buildExcel(leads) {
 }
 
 function buildAdminPage() {
+  const headerCells = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
+  const rowCells = leadColumns
+    .map(([key]) => {
+      const value = key === "createdAt" ? "${escapeHtml(new Date(lead.createdAt).toLocaleString(\"zh-CN\"))}" : `\${escapeHtml(lead.${key})}`;
+      return `<td>${value}</td>`;
+    })
+    .join("");
+
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -157,46 +165,54 @@ function buildAdminPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>美鸥云贷客户信息后台</title>
   <style>
-    :root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; color: #10244a; background: #f7fbff; }
+    :root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; color: #17243d; background: #f5f7fb; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 320px; background: radial-gradient(circle at 84% 0%, rgba(140,82,255,.2), transparent 34rem), radial-gradient(circle at 10% 12%, rgba(92,225,230,.22), transparent 38rem), linear-gradient(180deg,#f7fbff 0%,#edf4ff 48%,#e9fbfb 100%); }
-    main { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0 72px; }
-    .panel { border: 1px solid rgba(140,82,255,.18); border-radius: 28px; background: rgba(255,255,255,.82); box-shadow: 0 24px 70px rgba(35,56,104,.12); padding: 28px; }
-    h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); line-height: 1.12; }
-    p { color: #566d8d; line-height: 1.7; }
-    .tools { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+    body { margin: 0; min-width: 320px; background: #f5f7fb; }
+    main { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 40px; }
+    .panel { border: 1px solid #d9e1ee; border-radius: 14px; background: #fff; box-shadow: 0 12px 34px rgba(22,34,58,.08); }
+    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e7edf5; }
+    h1 { margin: 0; font-size: 22px; line-height: 1.2; }
+    .tools { display: flex; flex-wrap: wrap; gap: 10px; }
     input, button, a { font: inherit; }
-    input { width: min(100%, 280px); height: 46px; padding: 0 14px; border: 1px solid rgba(140,82,255,.2); border-radius: 14px; color: #10244a; }
-    button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 18px; border: 1px solid rgba(140,82,255,.22); border-radius: 999px; background: rgba(255,255,255,.74); color: #10244a; font-weight: 900; text-decoration: none; cursor: pointer; }
-    a.primary { background: linear-gradient(90deg,#8c52ff,#5ce1e6); color: #071a35; }
+    input { width: 220px; height: 40px; padding: 0 12px; border: 1px solid #cbd6e5; border-radius: 8px; color: #17243d; outline: none; }
+    input:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91,141,239,.14); }
+    button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 14px; border: 1px solid #cbd6e5; border-radius: 8px; background: #fff; color: #17243d; font-weight: 700; text-decoration: none; cursor: pointer; }
+    button:hover, a:hover { background: #f5f8fc; }
+    a.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+    a.primary:hover { background: #1d4ed8; }
     a.disabled { opacity: .45; pointer-events: none; }
-    .status { margin: 0 0 18px; font-weight: 850; color: #395170; }
-    .table-wrap { overflow-x: auto; border: 1px solid rgba(140,82,255,.14); border-radius: 18px; }
-    table { width: 100%; min-width: 980px; border-collapse: collapse; background: rgba(255,255,255,.66); }
-    th, td { padding: 14px 16px; border-bottom: 1px solid rgba(140,82,255,.1); color: #395170; text-align: left; white-space: nowrap; }
-    th { color: #10244a; font-size: 13px; font-weight: 950; background: rgba(92,225,230,.12); }
-    @media (max-width: 720px) { main { width: min(100% - 28px, 1180px); padding-top: 28px; } .panel { padding: 20px; border-radius: 22px; } .tools, input, button, a { width: 100%; } }
+    .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #e7edf5; color: #53637a; font-size: 14px; }
+    .summary strong { color: #17243d; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 1320px; border-collapse: collapse; background: #fff; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #edf1f7; color: #34445b; text-align: left; white-space: nowrap; font-size: 14px; }
+    th { position: sticky; top: 0; z-index: 1; color: #17243d; font-size: 13px; font-weight: 800; background: #f8fafc; }
+    tbody tr:hover td { background: #f8fbff; }
+    td:last-child { max-width: 360px; white-space: normal; line-height: 1.55; }
+    @media (max-width: 720px) { main { width: min(100% - 20px, 1440px); padding-top: 12px; } .topbar { align-items: stretch; flex-direction: column; } .tools, input, button, a { width: 100%; } }
   </style>
 </head>
 <body>
   <main>
     <section class="panel">
-      <h1>客户信息后台</h1>
-      <p>输入后台口令后查看客户提交记录，并导出 Excel 汇总表。这个页面不挂在客户官网导航里。</p>
-      <div class="tools">
-        <input id="token" type="password" placeholder="后台口令" />
-        <button id="load" type="button">读取客户信息</button>
-        <a id="export" class="primary disabled" href="#">导出 Excel</a>
+      <div class="topbar">
+        <h1>客户信息后台</h1>
+        <div class="tools">
+          <input id="token" type="password" placeholder="后台口令" />
+          <button id="load" type="button">读取客户信息</button>
+          <a id="export" class="primary disabled" href="#">导出 Excel</a>
+        </div>
       </div>
-      <p id="status" class="status">请输入后台口令。</p>
+      <div class="summary">
+        <span id="status">请输入后台口令。</span>
+        <span>客户数量：<strong id="count">0</strong></span>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              <th>提交时间</th><th>企业名称</th><th>联系人</th><th>电话</th><th>主营平台</th><th>意向产品</th><th>意向金额</th><th>营收</th><th>净利润</th><th>增速</th><th>员工</th><th>合作银行</th>
-            </tr>
+            <tr>${headerCells}</tr>
           </thead>
-          <tbody id="rows"><tr><td colspan="12">暂无已读取数据</td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="${leadColumns.length}">暂无已读取数据</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -206,6 +222,7 @@ function buildAdminPage() {
     const loadButton = document.querySelector("#load");
     const exportLink = document.querySelector("#export");
     const statusNode = document.querySelector("#status");
+    const countNode = document.querySelector("#count");
     const rowsNode = document.querySelector("#rows");
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     const syncExport = () => {
@@ -223,23 +240,12 @@ function buildAdminPage() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
         statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
+        countNode.textContent = payload.leads.length;
         rowsNode.innerHTML = payload.leads.length ? payload.leads.map((lead) => \`
-          <tr>
-            <td>\${escapeHtml(new Date(lead.createdAt).toLocaleString("zh-CN"))}</td>
-            <td>\${escapeHtml(lead.companyName)}</td>
-            <td>\${escapeHtml(lead.contactName)}</td>
-            <td>\${escapeHtml(lead.phone)}</td>
-            <td>\${escapeHtml(lead.platform)}</td>
-            <td>\${escapeHtml(lead.productInterest)}</td>
-            <td>\${escapeHtml(lead.desiredAmount)}</td>
-            <td>\${escapeHtml(lead.annualRevenue)}</td>
-            <td>\${escapeHtml(lead.annualProfit)}</td>
-            <td>\${escapeHtml(lead.revenueGrowth)}</td>
-            <td>\${escapeHtml(lead.employeeCount)}</td>
-            <td>\${escapeHtml(lead.bankCount)}</td>
-          </tr>\`).join("") : '<tr><td colspan="12">暂无客户信息</td></tr>';
+          <tr>${rowCells}</tr>\`).join("") : '<tr><td colspan="${leadColumns.length}">暂无客户信息</td></tr>';
       } catch (error) {
         statusNode.textContent = error.message || "读取失败";
+        countNode.textContent = "0";
       }
     });
   </script>
