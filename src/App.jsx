@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import fundingNetwork from "./assets/funding-network.png";
-import inventoryPledge from "./assets/inventory-pledge.png";
 import policyCycle from "./assets/policy-cycle.svg";
 import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
-import receivablesFlow from "./assets/receivables-flow.png";
-import riskEngine from "./assets/risk-engine.png";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -46,8 +43,6 @@ const products = [
   },
 ];
 
-const platformTags = ["Amazon", "Temu", "TikTok Shop", "美鸥仓储", "跨境物流", "建行云贷"];
-
 const heroContent = {
   nav: "云贷方案",
   name: "风控赋能云贷",
@@ -57,13 +52,6 @@ const heroContent = {
   cta: "查看两大产品",
   altCta: "预约融资顾问",
 };
-
-const flowSteps = [
-  ["01", "经营数据接入", "物流、仓储、店铺销售、回款等多维数据加固直连。"],
-  ["02", "美鸥风控建模", "根据货值、账期、评级、报关额与经营稳定性形成授信画像。"],
-  ["03", "建行线上审批", "授信申请、数据核验、审批放款全流程线上操作。"],
-  ["04", "贷后闭环管理", "货权水位、平台回款、资金用途与还款节奏持续跟踪。"],
-];
 
 const proofBadges = ["智能风控赋能", "最高 2000 万", "综合费率低至 3%", "最长授信 1 年", "循环授信随用随取", "提前还款无违约金"];
 
@@ -198,51 +186,6 @@ const initialLeadForm = {
   note: "",
 };
 
-const financingScenes = [
-  {
-    id: "inventory",
-    kicker: "scene 01 / inventory pledge",
-    title: "货押贷：把在库与在途货物变成可授信资产",
-    body: "围绕美鸥监管仓、跨境在途货物与最低货值水位线，建立货权、货值、仓储物流费用的闭环监管，让库存不再只是占用现金流的沉默资产。",
-    image: inventoryPledge,
-    imageAlt: "库存质押仓储融资概念图",
-    metrics: [
-      ["80%", "满 1 年出口货值质押率最高"],
-      ["60%", "3 个月至 1 年出口货值质押率最高"],
-      ["2000 万", "最高可贷额度"],
-    ],
-    points: ["在途货物与在仓库存均可纳入风控", "受托支付结清仓储物流费用", "最低货值水位线持续监控"],
-  },
-  {
-    id: "receivables",
-    kicker: "scene 02 / receivables finance",
-    title: "应收贷：提前释放平台账期里的经营现金流",
-    body: "依托平台店铺真实回款、近 3 个月月均流水与动态系数核定授信额度，让跨境卖家在备货、广告、新品铺货和多店扩张时有更确定的资金安排。",
-    image: receivablesFlow,
-    imageAlt: "平台应收回款融资概念图",
-    metrics: [
-      ["低至 3%", "综合费率"],
-      ["1 年", "最长授信周期"],
-      ["循环", "额度随用随取"],
-    ],
-    points: ["不用押货，不用额外不动产抵押", "按真实平台回款能力核定额度", "自主支付覆盖多类经营用途"],
-  },
-  {
-    id: "risk",
-    kicker: "scene 03 / risk engine",
-    title: "数据风控：把物流、仓储、店铺与银行审批串成一条线",
-    body: "美鸥沉淀跨境经营数据，建行承接线上审批链路，从申请、核验、放款到贷后管理形成连续监测，减少传统抵押不足带来的融资摩擦。",
-    image: riskEngine,
-    imageAlt: "贷后监控与风控数据引擎概念图",
-    metrics: [
-      ["A+", "经营画像动态评级"],
-      ["LIVE", "水位与回款持续监测"],
-      ["全国", "跨区域经营统一办理"],
-    ],
-    points: ["物流、仓储、店铺销售、回款多源交叉验证", "授信画像与贷后监控动态更新", "异常水位和回款波动及时预警"],
-  },
-];
-
 function useScrollReveal() {
   useEffect(() => {
     const revealNodes = Array.from(document.querySelectorAll("[data-reveal]"));
@@ -302,10 +245,8 @@ function Header() {
       </button>
       <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Site navigation">
         <a className="active" href="#top">首页</a>
-        <a href="#ecosystem">生态数据</a>
         <a href="#advantages">核心优势</a>
         <a href="#access">准入流程</a>
-        <a href="#scenes">融资场景</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
       </nav>
@@ -330,16 +271,6 @@ function HeroVisual() {
         <div className="pulse-node primary" />
         <div className="pulse-node secondary" />
         <div className="pulse-node tertiary" />
-        <div className="marketplace-tags left">
-          <span>Amazon</span>
-          <span>Temu</span>
-          <span>TikTok Shop</span>
-        </div>
-        <div className="marketplace-tags right">
-          <span>货押贷</span>
-          <span>应收贷</span>
-          <span>建行云贷</span>
-        </div>
       </div>
       <div className="signal-cards">
         <button className="signal-card active" type="button">
@@ -454,52 +385,6 @@ function ProductPanel() {
             <li key={bullet}>{bullet}</li>
           ))}
         </ul>
-      </div>
-    </section>
-  );
-}
-
-function FinancingScenes() {
-  return (
-    <section id="scenes" className="financing-scenes" aria-label="Financing scenes">
-      <div className="section-heading" data-reveal>
-        <p className="eyebrow">three financing scenes</p>
-        <h2>三张核心概念图，把云贷产品讲成清晰的独立模块</h2>
-        <p className="section-copy">
-          不再把信息挤在一块：货押贷、应收贷、数据风控分别独立展开，每个模块都对应一个真实经营场景。
-        </p>
-      </div>
-
-      <div className="scene-stack">
-        {financingScenes.map((scene, index) => (
-          <article key={scene.id} className={index % 2 === 1 ? "scene-panel reverse" : "scene-panel"} data-reveal>
-            <div className="scene-image">
-              <img src={scene.image} alt={scene.imageAlt} />
-              <div className="scene-badge">
-                <span>{scene.kicker}</span>
-                <strong>美鸥云贷</strong>
-              </div>
-            </div>
-            <div className="scene-copy">
-              <p className="eyebrow">{scene.kicker}</p>
-              <h3>{scene.title}</h3>
-              <p>{scene.body}</p>
-              <div className="scene-metrics">
-                {scene.metrics.map(([value, label]) => (
-                  <div key={label}>
-                    <strong>{value}</strong>
-                    <span>{label}</span>
-                  </div>
-                ))}
-              </div>
-              <ul>
-                {scene.points.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
-            </div>
-          </article>
-        ))}
       </div>
     </section>
   );
@@ -793,37 +678,6 @@ export function App() {
       <AdvantageEngine />
 
       <AccessAndProcess />
-
-      <section id="ecosystem" className="partner-rail cloud-rail" aria-label="Cloud loan ecosystem" data-reveal>
-        <p>覆盖跨境卖家真实经营链路</p>
-        {platformTags.map((tag) => (
-          <button key={tag} type="button" className="partner-logo">
-            <strong>{tag}</strong>
-            <span>data source</span>
-          </button>
-        ))}
-      </section>
-
-      <FinancingScenes />
-
-      <section className="workflow cloud-workflow">
-        <div data-reveal>
-          <p className="eyebrow">why it works</p>
-          <h2>从经营数据到银行授信，一套链路跑通低成本融资闭环</h2>
-          <p className="section-copy">
-            依托美鸥跨境物流、仓储与店铺经营数据，解决轻资产、缺传统抵押物、备货垫资和账期占用现金流的融资难题。
-          </p>
-        </div>
-        <div className="flow-grid">
-          {flowSteps.map(([step, title, body]) => (
-            <article key={step} className="flow-card" data-reveal>
-              <span>{step}</span>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
 
       <ProductPanel />
 
