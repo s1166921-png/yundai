@@ -355,13 +355,6 @@ function HeroVisual() {
           <small>随用随贷</small>
         </button>
       </div>
-      <div className="credit-orbit" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <b>3%</b>
-        <span>智能风控压降成本</span>
-      </div>
     </aside>
   );
 }
