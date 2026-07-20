@@ -5,6 +5,7 @@ import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
 import { calculateCreditEstimate, creditDimensions, debtRatioOptions } from "./lib/creditEstimator";
+import { calculateSimpleEstimate, simpleDimensions } from "./lib/simpleEstimator";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -158,39 +159,6 @@ const initialLeadForm = {
   desiredAmount: "",
   note: "",
 };
-
-const simpleLeadOptionGroups = [
-  {
-    name: "annualRevenue",
-    label: "去年全年营业收入",
-    options: ["500-1000万", "1000万-3000万", "3000万-5000万", "5000万-1亿", "1亿以上"],
-  },
-  {
-    name: "annualProfit",
-    label: "去年全年净利润",
-    options: ["0-100万", "100万-300万", "300万-1000万", "1000万以上"],
-  },
-  {
-    name: "revenueGrowth",
-    label: "预计今年营收比去年增速",
-    options: ["0-10%", "10%-30%", "30-50%", "50%以上"],
-  },
-  {
-    name: "employeeCount",
-    label: "当前员工人数",
-    options: ["0-10人", "10-20人", "20-50人", "50人以上"],
-  },
-  {
-    name: "bankCount",
-    label: "贷款合作银行家数",
-    options: ["0", "1", "2", "3", "3家以上"],
-  },
-  {
-    name: "desiredAmount",
-    label: "本次融资意向金额",
-    options: ["50-100万", "100-300万", "300-500万", "500万以上"],
-  },
-];
 
 function useScrollReveal() {
   useEffect(() => {
@@ -522,7 +490,7 @@ function LeadForm() {
         throw new Error(payload.error || "提交失败，请稍后再试");
       }
 
-      setEstimate(formMode === "complex" ? payload.lead?.estimate || calculateCreditEstimate(form) : null);
+      setEstimate(formMode === "complex" ? payload.lead?.estimate || calculateCreditEstimate(form) : payload.lead?.estimate || calculateSimpleEstimate(form));
       setSubmittedMode(formMode);
       setStatus({
         type: "success",
@@ -609,14 +577,14 @@ function LeadForm() {
         </div>
 
         <div className="option-groups">
-          {formMode === "simple" && simpleLeadOptionGroups.map((group) => (
-            <fieldset key={group.name} className="option-group">
-              <legend>{group.label}</legend>
+          {formMode === "simple" && simpleDimensions.map((dimension) => (
+            <fieldset key={dimension.key} className="option-group">
+              <legend>{dimension.label}</legend>
               <div>
-                {group.options.map((option) => (
-                  <label key={option} className={form[group.name] === option ? "selected" : ""}>
-                    <input required type="radio" name={group.name} value={option} checked={form[group.name] === option} onChange={(event) => updateField(group.name, event.target.value)} />
-                    <span>{option}</span>
+                {dimension.options.map((option) => (
+                  <label key={option.value} className={form[dimension.key] === option.value ? "selected" : ""}>
+                    <input required type="radio" name={dimension.key} value={option.value} checked={form[dimension.key] === option.value} onChange={(event) => updateField(dimension.key, event.target.value)} />
+                    <span>{option.value}</span>
                   </label>
                 ))}
               </div>
@@ -680,23 +648,27 @@ function LeadForm() {
         </div>
       </form>
       {estimate && <CreditEstimateReport estimate={estimate} />}
-      {submittedMode === "simple" && status.type === "success" && <QuickEstimateReceipt form={form} />}
+      {submittedMode === "simple" && estimate && <SimpleEstimateReport estimate={estimate} />}
     </section>
   );
 }
 
-function QuickEstimateReceipt({ form }) {
+function SimpleEstimateReport({ estimate }) {
   return (
     <article className="quick-estimate-receipt" aria-live="polite">
       <p className="eyebrow">quick match</p>
-      <h3>简易版基础匹配回执</h3>
-      <p>已收到您的基础经营信息，融资顾问将结合经营情况和资料完整度进一步确认匹配方案。</p>
+      <h3>简易版企业贷款测算报告</h3>
+      <p>{estimate.summary}</p>
       <div>
-        <span><small>去年营业收入</small><strong>{form.annualRevenue}</strong></span>
-        <span><small>去年净利润</small><strong>{form.annualProfit}</strong></span>
-        <span><small>融资意向金额</small><strong>{form.desiredAmount}</strong></span>
+        <span><small>综合评分</small><strong>{estimate.score} 分</strong></span>
+        <span><small>匹配区间</small><strong>{estimate.band}</strong></span>
+        <span><small>参考额度</small><strong>{estimate.referenceAmountLabel}</strong></span>
       </div>
-      <small>简易版不包含完整征信、上下游合作、企业资质及实控人资产评分，不输出授信额度承诺。</small>
+      <p className="quick-adjustment">{estimate.adjustment}</p>
+      <div className="quick-breakdown">
+        {estimate.breakdown.map((item) => <span key={item.key}><small>{item.label}</small><strong>{item.score} 分</strong></span>)}
+      </div>
+      <small>本额度为简易模型预估值，不构成放款承诺；实际可放款额度、利率和期限均以完整资料与最终审批结论为准。</small>
     </article>
   );
 }

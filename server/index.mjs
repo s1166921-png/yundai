@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
+import { calculateSimpleEstimate } from "../src/lib/simpleEstimator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -136,7 +137,7 @@ function normalizeLead(input) {
     throw new Error("请完整填写必填项");
   }
 
-  const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : null;
+  const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : calculateSimpleEstimate(lead);
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
