@@ -152,8 +152,45 @@ const initialLeadForm = {
   businessQualification: "",
   controllerAssets: "",
   debtOverRevenue70: "",
+  revenueGrowth: "",
+  employeeCount: "",
+  bankCount: "",
+  desiredAmount: "",
   note: "",
 };
+
+const simpleLeadOptionGroups = [
+  {
+    name: "annualRevenue",
+    label: "去年全年营业收入",
+    options: ["500-1000万", "1000万-3000万", "3000万-5000万", "5000万-1亿", "1亿以上"],
+  },
+  {
+    name: "annualProfit",
+    label: "去年全年净利润",
+    options: ["0-100万", "100万-300万", "300万-1000万", "1000万以上"],
+  },
+  {
+    name: "revenueGrowth",
+    label: "预计今年营收比去年增速",
+    options: ["0-10%", "10%-30%", "30-50%", "50%以上"],
+  },
+  {
+    name: "employeeCount",
+    label: "当前员工人数",
+    options: ["0-10人", "10-20人", "20-50人", "50人以上"],
+  },
+  {
+    name: "bankCount",
+    label: "贷款合作银行家数",
+    options: ["0", "1", "2", "3", "3家以上"],
+  },
+  {
+    name: "desiredAmount",
+    label: "本次融资意向金额",
+    options: ["50-100万", "100-300万", "300-500万", "500万以上"],
+  },
+];
 
 function useScrollReveal() {
   useEffect(() => {
@@ -453,21 +490,31 @@ function LeadForm() {
   const [form, setForm] = useState(initialLeadForm);
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [estimate, setEstimate] = useState(null);
+  const [formMode, setFormMode] = useState("simple");
+  const [submittedMode, setSubmittedMode] = useState(null);
 
   const updateField = (name, value) => {
     setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const switchFormMode = (mode) => {
+    setFormMode(mode);
+    setEstimate(null);
+    setSubmittedMode(null);
+    setStatus({ type: "idle", message: "" });
   };
 
   const submitLead = async (event) => {
     event.preventDefault();
     setStatus({ type: "loading", message: "正在生成简易测算报告..." });
     setEstimate(null);
+    setSubmittedMode(null);
 
     try {
       const response = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, estimationMode: formMode }),
       });
       const payload = await response.json();
 
@@ -475,8 +522,12 @@ function LeadForm() {
         throw new Error(payload.error || "提交失败，请稍后再试");
       }
 
-      setEstimate(payload.lead?.estimate || calculateCreditEstimate(form));
-      setStatus({ type: "success", message: "信息已提交，以下为您的简易测算结果。" });
+      setEstimate(formMode === "complex" ? payload.lead?.estimate || calculateCreditEstimate(form) : null);
+      setSubmittedMode(formMode);
+      setStatus({
+        type: "success",
+        message: formMode === "complex" ? "信息已提交，以下为您的完整测算结果。" : "信息已提交，以下为您的基础匹配回执。",
+      });
     } catch (error) {
       setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
     }
@@ -486,13 +537,23 @@ function LeadForm() {
     <section id="contact" className="lead-section cloud-cta">
       <div className="lead-copy" data-reveal>
         <p className="eyebrow">financing intake</p>
-        <h2>提交经营信息，获取企业贷款简易测算报告</h2>
+        <h2>选择测算版本，提交企业经营信息</h2>
         <p className="section-copy">
-          评分维度匹配企业经营、财务、资质、授信及实控人资产等核心考察项，提交后即时生成参考结果。
+          简易版适合快速匹配，复杂版按照企业贷款六维模型生成完整评分与参考额度。
         </p>
       </div>
 
       <form className="lead-form" onSubmit={submitLead} data-reveal>
+        <div className="estimate-mode-switch" role="group" aria-label="选择测算版本">
+          <button type="button" className={formMode === "simple" ? "active" : ""} onClick={() => switchFormMode("simple")}>
+            <strong>简易版</strong>
+            <span>基础经营信息快速匹配</span>
+          </button>
+          <button type="button" className={formMode === "complex" ? "active" : ""} onClick={() => switchFormMode("complex")}>
+            <strong>复杂版</strong>
+            <span>六维评分生成完整报告</span>
+          </button>
+        </div>
         <div className="form-grid">
           <label>
             <span>企业名称</span>
@@ -548,7 +609,20 @@ function LeadForm() {
         </div>
 
         <div className="option-groups">
-          {creditDimensions.map((dimension) => (
+          {formMode === "simple" && simpleLeadOptionGroups.map((group) => (
+            <fieldset key={group.name} className="option-group">
+              <legend>{group.label}</legend>
+              <div>
+                {group.options.map((option) => (
+                  <label key={option} className={form[group.name] === option ? "selected" : ""}>
+                    <input required type="radio" name={group.name} value={option} checked={form[group.name] === option} onChange={(event) => updateField(group.name, event.target.value)} />
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          {formMode === "complex" && creditDimensions.map((dimension) => (
             <fieldset key={dimension.key} className="option-group">
               <legend>{dimension.label}</legend>
               <div>
@@ -569,7 +643,7 @@ function LeadForm() {
               <small>对应资料：{dimension.material}</small>
             </fieldset>
           ))}
-          <fieldset className="option-group debt-option-group">
+          {formMode === "complex" && <fieldset className="option-group debt-option-group">
             <legend>现有贷款余额占营收比例</legend>
             <div>
               {debtRatioOptions.map((option) => (
@@ -586,7 +660,7 @@ function LeadForm() {
                 </label>
               ))}
             </div>
-          </fieldset>
+          </fieldset>}
         </div>
 
         <label className="full-field">
@@ -600,19 +674,36 @@ function LeadForm() {
 
         <div className="form-actions">
           <button className="hot-button" type="submit" disabled={status.type === "loading"}>
-            {status.type === "loading" ? "生成中..." : "提交并生成测算报告"}
+            {status.type === "loading" ? "生成中..." : formMode === "complex" ? "提交并生成完整测算报告" : "提交简易版信息"}
           </button>
           {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
         </div>
       </form>
       {estimate && <CreditEstimateReport estimate={estimate} />}
+      {submittedMode === "simple" && status.type === "success" && <QuickEstimateReceipt form={form} />}
     </section>
+  );
+}
+
+function QuickEstimateReceipt({ form }) {
+  return (
+    <article className="quick-estimate-receipt" aria-live="polite">
+      <p className="eyebrow">quick match</p>
+      <h3>简易版基础匹配回执</h3>
+      <p>已收到您的基础经营信息，融资顾问将结合经营情况和资料完整度进一步确认匹配方案。</p>
+      <div>
+        <span><small>去年营业收入</small><strong>{form.annualRevenue}</strong></span>
+        <span><small>去年净利润</small><strong>{form.annualProfit}</strong></span>
+        <span><small>融资意向金额</small><strong>{form.desiredAmount}</strong></span>
+      </div>
+      <small>简易版不包含完整征信、上下游合作、企业资质及实控人资产评分，不输出授信额度承诺。</small>
+    </article>
   );
 }
 
 function CreditEstimateReport({ estimate }) {
   return (
-    <article className="estimate-report" aria-live="polite" data-reveal>
+    <article className="estimate-report" aria-live="polite">
       <header className="estimate-report-header">
         <div>
           <p className="eyebrow">credit estimate</p>

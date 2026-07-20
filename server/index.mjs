@@ -13,12 +13,24 @@ const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 8787);
 const adminToken = process.env.ADMIN_TOKEN || "meiou2026";
 
-const requiredFields = [
+const baseFields = [
   "companyName",
   "contactName",
   "phone",
   "platform",
   "productInterest",
+];
+
+const simpleEstimateFields = [
+  "annualRevenue",
+  "annualProfit",
+  "revenueGrowth",
+  "employeeCount",
+  "bankCount",
+  "desiredAmount",
+];
+
+const complexEstimateFields = [
   "annualRevenue",
   "annualProfit",
   "businessStability",
@@ -30,6 +42,7 @@ const requiredFields = [
 
 const leadColumns = [
   ["createdAt", "提交时间"],
+  ["estimationMode", "测算版本"],
   ["companyName", "企业名称"],
   ["contactName", "联系人"],
   ["phone", "联系电话"],
@@ -37,6 +50,10 @@ const leadColumns = [
   ["productInterest", "意向产品"],
   ["annualRevenue", "年营业收入"],
   ["annualProfit", "年净利润"],
+  ["revenueGrowth", "预计营收增速"],
+  ["employeeCount", "当前员工人数"],
+  ["bankCount", "贷款合作银行家数"],
+  ["desiredAmount", "本次融资意向金额"],
   ["businessStability", "业务稳定性"],
   ["bankCredit", "现有银行授信情况"],
   ["businessQualification", "企业资质软实力"],
@@ -106,8 +123,11 @@ function escapeHtml(value) {
 
 function normalizeLead(input) {
   const lead = {};
+  const estimationMode = input.estimationMode === "simple" ? "simple" : "complex";
+  const requiredFields = [...baseFields, ...(estimationMode === "simple" ? simpleEstimateFields : complexEstimateFields)];
+  const allFields = [...new Set([...baseFields, ...simpleEstimateFields, ...complexEstimateFields, "note"])];
 
-  for (const key of [...requiredFields, "note"]) {
+  for (const key of allFields) {
     lead[key] = String(input[key] || "").trim();
   }
 
@@ -116,11 +136,12 @@ function normalizeLead(input) {
     throw new Error("请完整填写必填项");
   }
 
-  const estimate = calculateCreditEstimate(lead);
+  const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : null;
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
+    estimationMode,
     ...lead,
     estimate,
   };
@@ -134,6 +155,7 @@ function formatLeadValue(lead, key) {
   const value = getLeadValue(lead, key);
   if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
   if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
+  if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : "";
   if (key === "estimate.score") return value === "" ? "-" : `${value} 分`;
   return value || (key.startsWith("estimate.") ? "-" : "");
 }

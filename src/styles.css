@@ -1374,6 +1374,48 @@ h2 {
   padding: 28px;
 }
 
+.estimate-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid rgba(140, 82, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(140, 82, 255, 0.06);
+}
+
+.estimate-mode-switch button {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: #5f7089;
+  text-align: left;
+}
+
+.estimate-mode-switch button strong {
+  color: #233b61;
+  font-size: 15px;
+}
+
+.estimate-mode-switch button span {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.estimate-mode-switch button.active {
+  border-color: rgba(140, 82, 255, 0.22);
+  background: linear-gradient(105deg, rgba(140, 82, 255, 0.15), rgba(92, 225, 230, 0.18));
+  box-shadow: 0 8px 20px rgba(78, 65, 163, 0.1);
+}
+
+.estimate-mode-switch button.active strong {
+  color: #182957;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1668,6 +1710,60 @@ h2 {
   border-color: rgba(92, 225, 230, 0.16);
   background: rgba(255, 255, 255, 0.045);
   color: rgba(225, 238, 255, 0.66);
+}
+
+.quick-estimate-receipt {
+  grid-column: 2;
+  padding: 32px 34px;
+  border: 1px solid rgba(92, 225, 230, 0.28);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #08162d, #13254a);
+  box-shadow: 0 26px 74px rgba(27, 50, 99, 0.2);
+  color: #f7fbff;
+}
+
+.quick-estimate-receipt .eyebrow {
+  color: #5ce1e6;
+}
+
+.quick-estimate-receipt h3 {
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.2;
+}
+
+.quick-estimate-receipt > p:not(.eyebrow) {
+  margin-top: 12px;
+  color: rgba(225, 238, 255, 0.74);
+  line-height: 1.7;
+}
+
+.quick-estimate-receipt > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 26px 0 18px;
+}
+
+.quick-estimate-receipt > div span {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(92, 225, 230, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.quick-estimate-receipt small {
+  display: block;
+  color: rgba(225, 238, 255, 0.64);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.quick-estimate-receipt strong {
+  display: block;
+  margin-top: 8px;
+  color: #fff;
+  font-size: 18px;
 }
 
 @keyframes rotateGlow {
@@ -1977,6 +2073,16 @@ h2 {
 
   .estimate-report {
     grid-column: 1;
+  }
+
+  .quick-estimate-receipt {
+    grid-column: 1;
+    padding: 24px 20px;
+  }
+
+  .estimate-mode-switch,
+  .quick-estimate-receipt > div {
+    grid-template-columns: 1fr;
   }
 
   .estimate-report-header {
