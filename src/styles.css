@@ -1449,6 +1449,14 @@ h2 {
   font-weight: 950;
 }
 
+.option-group small {
+  display: block;
+  margin-top: 12px;
+  color: #63758f;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .option-group div {
   display: flex;
   flex-wrap: wrap;
@@ -1484,6 +1492,11 @@ h2 {
   pointer-events: none;
 }
 
+.debt-option-group {
+  border-color: rgba(245, 128, 88, 0.22);
+  background: linear-gradient(115deg, rgba(255, 242, 235, 0.82), rgba(255, 255, 255, 0.55));
+}
+
 .full-field {
   display: block;
 }
@@ -1517,6 +1530,144 @@ h2 {
 
 .form-status.error {
   color: #c43b57;
+}
+
+.estimate-report {
+  grid-column: 2;
+  overflow: hidden;
+  border: 1px solid rgba(92, 225, 230, 0.32);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 88% 6%, rgba(140, 82, 255, 0.22), transparent 24rem),
+    radial-gradient(circle at 4% 100%, rgba(92, 225, 230, 0.17), transparent 25rem),
+    linear-gradient(145deg, #071222, #0b1831 72%, #10183b);
+  box-shadow: 0 28px 78px rgba(16, 37, 82, 0.2);
+  color: #f7fbff;
+}
+
+.estimate-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 32px 34px;
+  border-bottom: 1px solid rgba(92, 225, 230, 0.16);
+}
+
+.estimate-report .eyebrow {
+  color: #5ce1e6;
+}
+
+.estimate-report h3 {
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.18;
+}
+
+.estimate-report-header p:not(.eyebrow) {
+  max-width: 560px;
+  margin-top: 12px;
+  color: rgba(225, 238, 255, 0.76);
+  line-height: 1.7;
+}
+
+.estimate-score {
+  display: grid;
+  place-items: center;
+  flex: 0 0 142px;
+  min-height: 142px;
+  border: 1px solid rgba(92, 225, 230, 0.38);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(92, 225, 230, 0.16), rgba(140, 82, 255, 0.1) 54%, transparent 55%);
+  box-shadow: inset 0 0 36px rgba(92, 225, 230, 0.11), 0 0 40px rgba(140, 82, 255, 0.13);
+}
+
+.estimate-score strong {
+  font-size: 48px;
+  line-height: 0.88;
+}
+
+.estimate-score span {
+  color: rgba(225, 238, 255, 0.7);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.estimate-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(92, 225, 230, 0.14);
+}
+
+.estimate-overview > div {
+  min-width: 0;
+  padding: 24px 28px;
+  background: rgba(5, 15, 31, 0.58);
+}
+
+.estimate-overview span,
+.estimate-breakdown span {
+  display: block;
+  color: rgba(225, 238, 255, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.estimate-overview strong {
+  display: block;
+  margin-top: 9px;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.estimate-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 24px 28px;
+}
+
+.estimate-breakdown > div {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(92, 225, 230, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.estimate-breakdown strong {
+  display: block;
+  margin-top: 8px;
+  color: #5ce1e6;
+  font-size: 20px;
+}
+
+.estimate-breakdown small {
+  display: block;
+  margin-top: 7px;
+  color: rgba(225, 238, 255, 0.7);
+  font-size: 12px;
+  line-height: 1.48;
+}
+
+.estimate-penalty,
+.estimate-disclaimer {
+  margin: 0 28px 18px;
+  padding: 13px 16px;
+  border: 1px solid rgba(255, 170, 100, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 170, 100, 0.08);
+  color: #ffca92;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.estimate-disclaimer {
+  margin-bottom: 28px;
+  border-color: rgba(92, 225, 230, 0.16);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(225, 238, 255, 0.66);
 }
 
 @keyframes rotateGlow {
@@ -1822,6 +1973,47 @@ h2 {
   .lead-section,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .estimate-report {
+    grid-column: 1;
+  }
+
+  .estimate-report-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 24px 20px;
+  }
+
+  .estimate-score {
+    flex-basis: 118px;
+    min-height: 118px;
+  }
+
+  .estimate-score strong {
+    font-size: 40px;
+  }
+
+  .estimate-overview,
+  .estimate-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .estimate-overview > div {
+    padding: 18px 20px;
+  }
+
+  .estimate-breakdown {
+    padding: 18px 20px;
+  }
+
+  .estimate-penalty,
+  .estimate-disclaimer {
+    margin-inline: 20px;
+  }
+
+  .estimate-disclaimer {
+    margin-bottom: 20px;
   }
 
   .lead-copy {

@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -20,10 +21,11 @@ const requiredFields = [
   "productInterest",
   "annualRevenue",
   "annualProfit",
-  "revenueGrowth",
-  "employeeCount",
-  "bankCount",
-  "desiredAmount",
+  "businessStability",
+  "bankCredit",
+  "businessQualification",
+  "controllerAssets",
+  "debtOverRevenue70",
 ];
 
 const leadColumns = [
@@ -33,12 +35,17 @@ const leadColumns = [
   ["phone", "联系电话"],
   ["platform", "主营平台"],
   ["productInterest", "意向产品"],
-  ["annualRevenue", "去年全年营业收入"],
-  ["annualProfit", "去年全年净利润"],
-  ["revenueGrowth", "预计今年营收比去年增速"],
-  ["employeeCount", "当前员工人数"],
-  ["bankCount", "贷款合作银行家数"],
-  ["desiredAmount", "本次融资意向金额"],
+  ["annualRevenue", "年营业收入"],
+  ["annualProfit", "年净利润"],
+  ["businessStability", "业务稳定性"],
+  ["bankCredit", "现有银行授信情况"],
+  ["businessQualification", "企业资质软实力"],
+  ["controllerAssets", "实控人家庭资产"],
+  ["debtOverRevenue70", "贷款余额超营收70%"],
+  ["estimate.score", "测算总分"],
+  ["estimate.band", "测算额度区间"],
+  ["estimate.referenceAmountLabel", "测算参考额度"],
+  ["estimate.audience", "客群定位"],
   ["note", "补充说明"],
 ];
 
@@ -109,11 +116,26 @@ function normalizeLead(input) {
     throw new Error("请完整填写必填项");
   }
 
+  const estimate = calculateCreditEstimate(lead);
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     ...lead,
+    estimate,
   };
+}
+
+function getLeadValue(lead, key) {
+  return key.split(".").reduce((value, part) => value?.[part], lead) ?? "";
+}
+
+function formatLeadValue(lead, key) {
+  const value = getLeadValue(lead, key);
+  if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
+  if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
+  if (key === "estimate.score") return value === "" ? "-" : `${value} 分`;
+  return value || (key.startsWith("estimate.") ? "-" : "");
 }
 
 function buildExcel(leads) {
@@ -122,7 +144,7 @@ function buildExcel(leads) {
     .map((lead) => {
       const cells = leadColumns
         .map(([key]) => {
-          const value = key === "createdAt" ? new Date(lead[key]).toLocaleString("zh-CN") : lead[key];
+          const value = formatLeadValue(lead, key);
           return `<td style="mso-number-format:'\\@';">${escapeHtml(value)}</td>`;
         })
         .join("");
@@ -164,8 +186,7 @@ function buildAdminPage() {
   const headerCells = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
   const rowCells = leadColumns
     .map(([key]) => {
-      const value = key === "createdAt" ? "${escapeHtml(new Date(lead.createdAt).toLocaleString(\"zh-CN\"))}" : `\${escapeHtml(lead.${key})}`;
-      return `<td>${value}</td>`;
+      return `<td>\${escapeHtml(formatLeadValue(lead, "${key}"))}</td>`;
     })
     .join("");
   const emptyColspan = leadColumns.length + 1;
@@ -196,7 +217,7 @@ function buildAdminPage() {
     .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #e7edf5; color: #53637a; font-size: 14px; }
     .summary strong { color: #17243d; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; min-width: 1380px; border-collapse: collapse; background: #fff; }
+    table { width: 100%; min-width: 2380px; border-collapse: collapse; background: #fff; }
     th, td { padding: 12px 14px; border-bottom: 1px solid #edf1f7; color: #34445b; text-align: left; white-space: nowrap; font-size: 14px; }
     th { position: sticky; top: 0; z-index: 1; color: #17243d; font-size: 13px; font-weight: 800; background: #f8fafc; }
     tbody tr:hover td { background: #f8fbff; }
@@ -244,6 +265,13 @@ function buildAdminPage() {
     let loadedLeads = [];
     const selectedIds = new Set();
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const formatLeadValue = (lead, key) => {
+      const value = key.split(".").reduce((current, part) => current && current[part], lead);
+      if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
+      if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
+      if (key === "estimate.score") return value === undefined || value === null ? "-" : value + " 分";
+      return value || (key.startsWith("estimate.") ? "-" : "");
+    };
     const syncExport = () => {
       const token = tokenInput.value.trim();
       const ids = [...selectedIds];

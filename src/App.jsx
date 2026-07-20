@@ -4,6 +4,7 @@ import policyCycle from "./assets/policy-cycle.svg";
 import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
+import { calculateCreditEstimate, creditDimensions, debtRatioOptions } from "./lib/creditEstimator";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -138,39 +139,6 @@ const applicationSteps = [
   ["04", "支用放款", "发起支用，资金直达大陆对公账户"],
 ];
 
-const leadOptionGroups = [
-  {
-    name: "annualRevenue",
-    label: "去年全年营业收入",
-    options: ["500-1000万", "1000万-3000万", "3000万-5000万", "5000万-1亿", "1亿以上"],
-  },
-  {
-    name: "annualProfit",
-    label: "去年全年净利润",
-    options: ["0-100万", "100万-300万", "300万-1000万", "1000万以上"],
-  },
-  {
-    name: "revenueGrowth",
-    label: "预计今年营收比去年增速",
-    options: ["0-10%", "10%-30%", "30-50%", "50%以上"],
-  },
-  {
-    name: "employeeCount",
-    label: "当前员工人数",
-    options: ["0-10人", "10-20人", "20-50人", "50人以上"],
-  },
-  {
-    name: "bankCount",
-    label: "贷款合作银行家数",
-    options: ["0", "1", "2", "3", "3家以上"],
-  },
-  {
-    name: "desiredAmount",
-    label: "本次融资意向金额",
-    options: ["50-100万", "100-300万", "300-500万", "500万以上"],
-  },
-];
-
 const initialLeadForm = {
   companyName: "",
   contactName: "",
@@ -179,10 +147,11 @@ const initialLeadForm = {
   productInterest: "",
   annualRevenue: "",
   annualProfit: "",
-  revenueGrowth: "",
-  employeeCount: "",
-  bankCount: "",
-  desiredAmount: "",
+  businessStability: "",
+  bankCredit: "",
+  businessQualification: "",
+  controllerAssets: "",
+  debtOverRevenue70: "",
   note: "",
 };
 
@@ -483,6 +452,7 @@ function AccessAndProcess() {
 function LeadForm() {
   const [form, setForm] = useState(initialLeadForm);
   const [status, setStatus] = useState({ type: "idle", message: "" });
+  const [estimate, setEstimate] = useState(null);
 
   const updateField = (name, value) => {
     setForm((current) => ({ ...current, [name]: value }));
@@ -490,7 +460,8 @@ function LeadForm() {
 
   const submitLead = async (event) => {
     event.preventDefault();
-    setStatus({ type: "loading", message: "正在提交融资意向..." });
+    setStatus({ type: "loading", message: "正在生成简易测算报告..." });
+    setEstimate(null);
 
     try {
       const response = await fetch("/api/leads", {
@@ -504,8 +475,8 @@ function LeadForm() {
         throw new Error(payload.error || "提交失败，请稍后再试");
       }
 
-      setForm(initialLeadForm);
-      setStatus({ type: "success", message: "提交成功，我们会尽快联系您确认融资方案。" });
+      setEstimate(payload.lead?.estimate || calculateCreditEstimate(form));
+      setStatus({ type: "success", message: "信息已提交，以下为您的简易测算结果。" });
     } catch (error) {
       setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
     }
@@ -515,9 +486,9 @@ function LeadForm() {
     <section id="contact" className="lead-section cloud-cta">
       <div className="lead-copy" data-reveal>
         <p className="eyebrow">financing intake</p>
-        <h2>提交经营信息，获取平台云贷初步匹配方案</h2>
+        <h2>提交经营信息，获取企业贷款简易测算报告</h2>
         <p className="section-copy">
-          请按实际经营情况填写，融资顾问会根据企业规模、增长情况与意向金额进行初步匹配。
+          评分维度匹配企业经营、财务、资质、授信及实控人资产等核心考察项，提交后即时生成参考结果。
         </p>
       </div>
 
@@ -577,26 +548,45 @@ function LeadForm() {
         </div>
 
         <div className="option-groups">
-          {leadOptionGroups.map((group) => (
-            <fieldset key={group.name} className="option-group">
-              <legend>{group.label}</legend>
+          {creditDimensions.map((dimension) => (
+            <fieldset key={dimension.key} className="option-group">
+              <legend>{dimension.label}</legend>
               <div>
-                {group.options.map((option) => (
-                  <label key={option} className={form[group.name] === option ? "selected" : ""}>
+                {dimension.options.map((option) => (
+                  <label key={option.value} className={form[dimension.key] === option.value ? "selected" : ""}>
                     <input
                       required
                       type="radio"
-                      name={group.name}
-                      value={option}
-                      checked={form[group.name] === option}
-                      onChange={(event) => updateField(group.name, event.target.value)}
+                      name={dimension.key}
+                      value={option.value}
+                      checked={form[dimension.key] === option.value}
+                      onChange={(event) => updateField(dimension.key, event.target.value)}
                     />
-                    <span>{option}</span>
+                    <span>{option.label}</span>
                   </label>
                 ))}
               </div>
+              <small>对应资料：{dimension.material}</small>
             </fieldset>
           ))}
+          <fieldset className="option-group debt-option-group">
+            <legend>现有贷款余额占营收比例</legend>
+            <div>
+              {debtRatioOptions.map((option) => (
+                <label key={option.value} className={form.debtOverRevenue70 === option.value ? "selected" : ""}>
+                  <input
+                    required
+                    type="radio"
+                    name="debtOverRevenue70"
+                    value={option.value}
+                    checked={form.debtOverRevenue70 === option.value}
+                    onChange={(event) => updateField("debtOverRevenue70", event.target.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
 
         <label className="full-field">
@@ -604,18 +594,66 @@ function LeadForm() {
           <textarea
             value={form.note}
             onChange={(event) => updateField("note", event.target.value)}
-            placeholder="可填写库存、回款周期、当前融资需求等补充信息"
+            placeholder="可填写行业、融资用途、现有贷款余额等补充信息"
           />
         </label>
 
         <div className="form-actions">
           <button className="hot-button" type="submit" disabled={status.type === "loading"}>
-            {status.type === "loading" ? "提交中..." : "提交融资意向"}
+            {status.type === "loading" ? "生成中..." : "提交并生成测算报告"}
           </button>
           {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
         </div>
       </form>
+      {estimate && <CreditEstimateReport estimate={estimate} />}
     </section>
+  );
+}
+
+function CreditEstimateReport({ estimate }) {
+  return (
+    <article className="estimate-report" aria-live="polite" data-reveal>
+      <header className="estimate-report-header">
+        <div>
+          <p className="eyebrow">credit estimate</p>
+          <h3>企业贷款简易测算报告</h3>
+          <p>{estimate.summary}</p>
+        </div>
+        <div className="estimate-score" aria-label={`测算总分 ${estimate.score} 分`}>
+          <strong>{estimate.score}</strong>
+          <span>测算总分 / 100</span>
+        </div>
+      </header>
+      <div className="estimate-overview">
+        <div>
+          <span>测算参考额度</span>
+          <strong>{estimate.referenceAmountLabel}</strong>
+        </div>
+        <div>
+          <span>对应额度区间</span>
+          <strong>{estimate.band}</strong>
+        </div>
+        <div>
+          <span>客群定位</span>
+          <strong>{estimate.audience}</strong>
+        </div>
+      </div>
+      <div className="estimate-breakdown">
+        {estimate.breakdown.map((item) => (
+          <div key={item.key}>
+            <span>{item.label}</span>
+            <strong>{item.score} 分</strong>
+            <small>{item.selection}</small>
+          </div>
+        ))}
+      </div>
+      {estimate.debtPenalty > 0 && (
+        <p className="estimate-penalty">现有贷款余额超过营收 70%，本次测算已扣除 {estimate.debtPenalty} 分。</p>
+      )}
+      <p className="estimate-disclaimer">
+        本额度为简易模型预估值，未结合企业完整征信、流水、抵质押物等审批要素，测算结果仅供参考，不构成任何放款承诺，实际可放款额度、利率、期限均以美鸥云贷收取完整资料后的最终审批结论为准。
+      </p>
+    </article>
   );
 }
 
