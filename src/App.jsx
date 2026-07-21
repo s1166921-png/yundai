@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import fundingNetwork from "./assets/funding-network.png";
+import fundingNetwork from "./assets/funding-network.jpg";
 import policyCycle from "./assets/policy-cycle.svg";
 import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
@@ -241,7 +241,7 @@ function HeroVisual() {
         <button type="button">全国视图</button>
       </div>
       <div className="map-stage">
-        <img src={fundingNetwork} alt="Cross-border funding network" />
+        <img src={fundingNetwork} alt="Cross-border funding network" decoding="async" fetchPriority="high" />
         <div className="pulse-node primary" />
         <div className="pulse-node secondary" />
         <div className="pulse-node tertiary" />

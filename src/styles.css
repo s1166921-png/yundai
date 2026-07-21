@@ -152,6 +152,7 @@ a {
   width: min(1360px, calc(100% - 48px));
   margin: 0 auto;
   padding: 24px 0 16px;
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
@@ -2175,5 +2176,59 @@ h2 {
     opacity: 1;
     filter: none;
     transform: none;
+  }
+}
+
+/* Keep the financing flow usable on older iOS Safari and lower-memory devices. */
+@media (max-width: 480px) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  body {
+    background: linear-gradient(180deg, #f7fbff 0%, #edf4ff 100%);
+  }
+
+  .ambient-layer,
+  .site-shell::before,
+  .site-shell::after {
+    display: none;
+  }
+
+  .nav {
+    background: rgba(247, 251, 255, 0.96);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  [data-reveal],
+  [data-reveal="zoom"] {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    transition: none;
+    will-change: auto;
+  }
+
+  .map-stage img,
+  .policy-visual img {
+    filter: none;
+  }
+
+  .policy-showcase,
+  .access-process {
+    background: #071224;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .nav {
+    background: rgba(247, 251, 255, 0.96);
   }
 }
