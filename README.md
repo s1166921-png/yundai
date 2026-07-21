@@ -14,7 +14,7 @@ pnpm dev
 Backend API for customer lead collection:
 
 ```bash
-ADMIN_TOKEN=meiou2026 pnpm dev:api
+ADMIN_USERNAME=admin ADMIN_PASSWORD=your-secure-password pnpm dev:api
 ```
 
 Local frontend preview:
@@ -35,11 +35,11 @@ http://127.0.0.1:8787/
 - Submissions are saved locally to `server/data/leads.json`.
 - The customer-facing website does not show the admin panel.
 - The admin panel is served separately at `http://127.0.0.1:8787/admin`.
-- Default admin token: `meiou2026`
+- Admin access uses the configured account and password.
 - Click “导出 Excel” in the admin panel to download the customer summary.
 
 For production after running `pnpm build`, start the combined static site and API server:
 
 ```bash
-ADMIN_TOKEN=your-secure-token pnpm start
+ADMIN_USERNAME=admin ADMIN_PASSWORD=your-secure-password PORT=8787 pnpm start
 ```

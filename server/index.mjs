@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
@@ -12,7 +13,8 @@ const dataDir = path.join(__dirname, "data");
 const leadsFile = path.join(dataDir, "leads.json");
 const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 8787);
-const adminToken = process.env.ADMIN_TOKEN || "meiou2026";
+const adminUsername = process.env.ADMIN_USERNAME || "admin";
+const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || "meiou2026";
 
 const baseFields = [
   "companyName",
@@ -110,8 +112,20 @@ function readBody(request) {
   });
 }
 
-function isAuthorized(url) {
-  return url.searchParams.get("token") === adminToken;
+function isAuthorized(request) {
+  const authorization = request.headers.authorization || "";
+  if (!authorization.startsWith("Basic ")) return false;
+
+  try {
+    const [username, password] = Buffer.from(authorization.slice(6), "base64").toString("utf8").split(":");
+    const expected = `${adminUsername}:${adminPassword}`;
+    const received = `${username || ""}:${password || ""}`;
+    const expectedBuffer = Buffer.from(expected);
+    const receivedBuffer = Buffer.from(received);
+    return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
+  } catch {
+    return false;
+  }
 }
 
 function escapeHtml(value) {
@@ -256,13 +270,14 @@ function buildAdminPage() {
       <div class="topbar">
         <h1>客户信息后台</h1>
         <div class="tools">
-          <input id="token" type="password" placeholder="后台口令" />
+          <input id="username" autocomplete="username" placeholder="管理员账户" />
+          <input id="password" type="password" autocomplete="current-password" placeholder="管理员密码" />
           <button id="load" type="button">读取客户信息</button>
-          <a id="export" class="primary disabled" href="#">导出选中 Excel</a>
+          <button id="export" class="primary" type="button" disabled>导出选中 Excel</button>
         </div>
       </div>
       <div class="summary">
-        <span id="status">请输入后台口令。</span>
+        <span id="status">请输入管理员账户和密码。</span>
         <span>客户数量：<strong id="count">0</strong></span>
         <span>已选择：<strong id="selectedCount">0</strong></span>
       </div>
@@ -277,7 +292,8 @@ function buildAdminPage() {
     </section>
   </main>
   <script>
-    const tokenInput = document.querySelector("#token");
+    const usernameInput = document.querySelector("#username");
+    const passwordInput = document.querySelector("#password");
     const loadButton = document.querySelector("#load");
     const exportLink = document.querySelector("#export");
     const statusNode = document.querySelector("#status");
@@ -287,22 +303,24 @@ function buildAdminPage() {
     const rowsNode = document.querySelector("#rows");
     let loadedLeads = [];
     const selectedIds = new Set();
+    const getAuthHeaders = () => {
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      return username && password ? { Authorization: "Basic " + btoa(username + ":" + password) } : null;
+    };
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     const formatLeadValue = (lead, key) => {
       const value = key.split(".").reduce((current, part) => current && current[part], lead);
       if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
+      if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : "";
       if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
       if (key === "estimate.score") return value === undefined || value === null ? "-" : value + " 分";
       return value || (key.startsWith("estimate.") ? "-" : "");
     };
     const syncExport = () => {
-      const token = tokenInput.value.trim();
       const ids = [...selectedIds];
-      const params = new URLSearchParams();
-      if (token) params.set("token", token);
-      ids.forEach((id) => params.append("ids", id));
-      exportLink.href = token && ids.length ? "/api/leads/export?" + params.toString() : "#";
-      exportLink.classList.toggle("disabled", !token || ids.length === 0);
+      const credentials = getAuthHeaders();
+      exportLink.disabled = !credentials || ids.length === 0;
       selectedCountNode.textContent = ids.length;
       selectAllNode.checked = loadedLeads.length > 0 && ids.length === loadedLeads.length;
       selectAllNode.indeterminate = ids.length > 0 && ids.length < loadedLeads.length;
@@ -325,7 +343,8 @@ function buildAdminPage() {
       });
       syncExport();
     };
-    tokenInput.addEventListener("input", syncExport);
+    usernameInput.addEventListener("input", syncExport);
+    passwordInput.addEventListener("input", syncExport);
     selectAllNode.addEventListener("change", () => {
       if (selectAllNode.checked) {
         loadedLeads.forEach((lead) => selectedIds.add(lead.id));
@@ -335,11 +354,15 @@ function buildAdminPage() {
       renderRows();
     });
     loadButton.addEventListener("click", async () => {
-      const token = tokenInput.value.trim();
+      const headers = getAuthHeaders();
+      if (!headers) {
+        statusNode.textContent = "请输入管理员账户和密码。";
+        return;
+      }
       syncExport();
       statusNode.textContent = "正在读取客户信息...";
       try {
-        const response = await fetch("/api/leads?token=" + encodeURIComponent(token));
+        const response = await fetch("/api/leads", { headers });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
         loadedLeads = payload.leads;
@@ -352,6 +375,31 @@ function buildAdminPage() {
         countNode.textContent = "0";
         selectedIds.clear();
         syncExport();
+      }
+    });
+    exportLink.addEventListener("click", async () => {
+      const headers = getAuthHeaders();
+      const ids = [...selectedIds];
+      if (!headers || ids.length === 0) return;
+      const params = new URLSearchParams();
+      ids.forEach((id) => params.append("ids", id));
+      statusNode.textContent = "正在生成 Excel...";
+      try {
+        const response = await fetch("/api/leads/export?" + params.toString(), { headers });
+        if (!response.ok) {
+          const payload = await response.json();
+          throw new Error(payload.error || "导出失败");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "meiou-leads.xls";
+        link.click();
+        URL.revokeObjectURL(url);
+        statusNode.textContent = "Excel 已开始下载。";
+      } catch (error) {
+        statusNode.textContent = error.message || "导出失败";
       }
     });
   </script>
@@ -431,7 +479,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (url.pathname === "/api/leads" && request.method === "GET") {
-      if (!isAuthorized(url)) {
+      if (!isAuthorized(request)) {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
@@ -440,7 +488,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (url.pathname === "/api/leads/export" && request.method === "GET") {
-      if (!isAuthorized(url)) {
+      if (!isAuthorized(request)) {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
