@@ -114,6 +114,6 @@ export function calculateCreditEstimate(input) {
     referenceAmount,
     referenceAmountLabel: `${referenceAmount} 万元`,
     breakdown,
-    summary: `根据企业经营、财务、资质与实控人相关信息的简易模型测算，您的企业属于${level.audience}，可参考授信额度为 ${referenceAmount} 万元。`,
+    summary: "已根据您提交的企业经营、财务和资质信息完成初步融资匹配。",
   };
 }

@@ -102,6 +102,6 @@ export function calculateSimpleEstimate(input) {
     breakdown,
     ...outcome,
     referenceAmountLabel: `${outcome.referenceAmount} 万元`,
-    summary: `企业经营指标综合评分为 ${score} 分，匹配${outcome.band}授信区间；结合营收、利润、人员规模及融资需求，本次测算参考额度为 ${outcome.referenceAmount} 万元。`,
+    summary: "已根据您提交的基础经营信息完成初步融资匹配。",
   };
 }

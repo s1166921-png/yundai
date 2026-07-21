@@ -647,7 +647,7 @@ function LeadForm() {
           {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
         </div>
       </form>
-      {estimate && <CreditEstimateReport estimate={estimate} />}
+      {submittedMode === "complex" && estimate && <CreditEstimateReport estimate={estimate} />}
       {submittedMode === "simple" && estimate && <SimpleEstimateReport estimate={estimate} />}
     </section>
   );
@@ -660,13 +660,8 @@ function SimpleEstimateReport({ estimate }) {
       <h3>简易版企业贷款测算报告</h3>
       <p>{estimate.summary}</p>
       <div>
-        <span><small>综合评分</small><strong>{estimate.score} 分</strong></span>
         <span><small>匹配区间</small><strong>{estimate.band}</strong></span>
         <span><small>参考额度</small><strong>{estimate.referenceAmountLabel}</strong></span>
-      </div>
-      <p className="quick-adjustment">{estimate.adjustment}</p>
-      <div className="quick-breakdown">
-        {estimate.breakdown.map((item) => <span key={item.key}><small>{item.label}</small><strong>{item.score} 分</strong></span>)}
       </div>
       <small>本额度为简易模型预估值，不构成放款承诺；实际可放款额度、利率和期限均以完整资料与最终审批结论为准。</small>
     </article>
@@ -682,10 +677,6 @@ function CreditEstimateReport({ estimate }) {
           <h3>企业贷款简易测算报告</h3>
           <p>{estimate.summary}</p>
         </div>
-        <div className="estimate-score" aria-label={`测算总分 ${estimate.score} 分`}>
-          <strong>{estimate.score}</strong>
-          <span>测算总分 / 100</span>
-        </div>
       </header>
       <div className="estimate-overview">
         <div>
@@ -696,23 +687,7 @@ function CreditEstimateReport({ estimate }) {
           <span>对应额度区间</span>
           <strong>{estimate.band}</strong>
         </div>
-        <div>
-          <span>客群定位</span>
-          <strong>{estimate.audience}</strong>
-        </div>
       </div>
-      <div className="estimate-breakdown">
-        {estimate.breakdown.map((item) => (
-          <div key={item.key}>
-            <span>{item.label}</span>
-            <strong>{item.score} 分</strong>
-            <small>{item.selection}</small>
-          </div>
-        ))}
-      </div>
-      {estimate.debtPenalty > 0 && (
-        <p className="estimate-penalty">现有贷款余额超过营收 70%，本次测算已扣除 {estimate.debtPenalty} 分。</p>
-      )}
       <p className="estimate-disclaimer">
         本额度为简易模型预估值，未结合企业完整征信、流水、抵质押物等审批要素，测算结果仅供参考，不构成任何放款承诺，实际可放款额度、利率、期限均以美鸥云贷收取完整资料后的最终审批结论为准。
       </p>

@@ -1636,7 +1636,7 @@ h2 {
 
 .estimate-overview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   background: rgba(92, 225, 230, 0.14);
 }
@@ -1739,7 +1739,7 @@ h2 {
 
 .quick-estimate-receipt > div {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 26px 0 18px;
 }
