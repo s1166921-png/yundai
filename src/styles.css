@@ -1922,7 +1922,8 @@ h2 {
   }
 
   .hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
     min-height: auto;
     padding-top: 34px;
   }
@@ -1964,6 +1965,12 @@ h2 {
 }
 
 @media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .nav,
   .hero,
   .products,
@@ -1971,7 +1978,7 @@ h2 {
   .advantage-engine,
   .policy-inner,
   .access-inner {
-    width: min(100% - 32px, 1360px);
+    width: min(calc(100% - 32px), 1360px);
   }
 
   .brand {
@@ -1979,14 +1986,63 @@ h2 {
   }
 
   .ai-pill {
+    width: 100%;
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
     padding: 12px 18px;
+    border-radius: 20px;
+  }
+
+  .template-status {
+    max-width: 100%;
+    flex-wrap: wrap;
+    border-radius: 20px;
+  }
+
+  .template-status span,
+  .template-status strong,
+  .ai-pill span,
+  .ai-pill b,
+  h1,
+  h1 span,
+  .hero-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   h1 {
-    font-size: 40px;
+    font-size: 30px;
+    line-height: 1.14;
+  }
+
+  .hero-text {
+    font-size: 16px;
+    line-height: 1.75;
+  }
+
+  .hero-copy,
+  .hero-text,
+  .feature-strip {
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+
+  .feature-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feature-strip span {
+    min-width: 0;
+    padding-inline: 10px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .feature-strip span:last-child {
+    grid-column: 1 / -1;
   }
 
   .hero-metrics,

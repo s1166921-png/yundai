@@ -1,10 +1,8 @@
 import { defineConfig } from "vite";
+import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  build: {
-    target: "es2017",
-  },
   optimizeDeps: {
     include: ["react", "react-dom/client"],
   },
@@ -16,5 +14,11 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    legacy({
+      targets: ["iOS >= 10", "Safari >= 10"],
+      modernPolyfills: true,
+    }),
+  ],
 });
