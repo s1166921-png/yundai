@@ -407,6 +407,16 @@ function buildAdminPage() {
 </html>`;
 }
 
+function shouldUseLegacyMobileBundle(request) {
+  return /iP(?:hone|ad|od)/i.test(request.headers["user-agent"] || "");
+}
+
+function buildLegacyMobileHtml(html) {
+  return html
+    .replace(/<script type="module"[\s\S]*?<\/script>\s*/g, "")
+    .replace(/\snomodule(?=[\s>])/g, "");
+}
+
 async function serveStatic(request, response, url) {
   const pathname = decodeURIComponent(url.pathname);
   const requested = pathname === "/" ? "index.html" : pathname.slice(1);
@@ -421,12 +431,19 @@ async function serveStatic(request, response, url) {
   try {
     const target = await stat(filePath);
     if (!target.isFile()) throw new Error("Not a file");
+    if (requested === "index.html" && shouldUseLegacyMobileBundle(request)) {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(buildLegacyMobileHtml(await readFile(filePath, "utf8")));
+      return;
+    }
     const ext = path.extname(filePath);
     const contentType = {
       ".html": "text/html; charset=utf-8",
       ".js": "text/javascript; charset=utf-8",
       ".css": "text/css; charset=utf-8",
       ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
       ".svg": "image/svg+xml",
     }[ext] || "application/octet-stream";
     response.writeHead(200, { "Content-Type": contentType });
@@ -435,6 +452,10 @@ async function serveStatic(request, response, url) {
     const indexPath = path.join(distDir, "index.html");
     try {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      if (shouldUseLegacyMobileBundle(request)) {
+        response.end(buildLegacyMobileHtml(await readFile(indexPath, "utf8")));
+        return;
+      }
       createReadStream(indexPath).pipe(response);
     } catch {
       response.writeHead(404);
