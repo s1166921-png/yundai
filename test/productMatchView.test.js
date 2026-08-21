@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MATCH_DISCLAIMER } from "../src/lib/matching/reportBuilder.js";
-import { PRODUCT_CATALOG } from "../src/lib/matching/productCatalog.js";
+import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
+import { MATCH_DISCLAIMER } from "../src/lib/publicMatchContract.js";
 import {
   buildProductMatchView,
   scrollProductMatchCenterIntoView,
-} from "../src/lib/matching/productMatchView.js";
+} from "../src/lib/productMatchView.js";
+
+const PUBLIC_PRODUCTS = getPublicProducts();
 
 const customerReport = {
   primary: {
@@ -69,7 +71,7 @@ const customerReport = {
 };
 
 test("pre-submission view groups all seven products with catalog-backed facts", () => {
-  const view = buildProductMatchView(null, PRODUCT_CATALOG);
+  const view = buildProductMatchView(null, PUBLIC_PRODUCTS);
 
   assert.equal(view.state, "catalog");
   assert.deepEqual(view.groups.map((group) => group.label), [
@@ -90,12 +92,19 @@ test("pre-submission view groups all seven products with catalog-backed facts", 
     currency: "USD",
     limit: "单店最高300万美元，可循环",
     term: "90天或随借随还",
+    pricing: "年化9%-11%",
+    scenario: {
+      id: "amazon-marketplace",
+      label: "Amazon 平台",
+      order: 3,
+    },
     targetProfile: "需为 Amazon 店铺。；Amazon 单店铺年 GMV 需大于 500 万美元。",
+    keyPrerequisite: "需为 Amazon 店铺。",
   });
 });
 
 test("submitted view keeps one dominant result, two alternatives, and customer-safe fields only", () => {
-  const view = buildProductMatchView(customerReport, PRODUCT_CATALOG);
+  const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS);
   const serialized = JSON.stringify(view);
 
   assert.equal(view.state, "report");

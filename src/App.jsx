@@ -6,8 +6,8 @@ import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
 import { FinancingIntake } from "./components/FinancingIntake";
 import { ProductMatchCenter } from "./components/ProductMatchCenter";
-import { PRODUCT_CATALOG } from "./lib/matching/productCatalog.js";
-import { scrollProductMatchCenterIntoView } from "./lib/matching/productMatchView.js";
+import { getJson } from "./lib/http/jsonRequest.js";
+import { scrollProductMatchCenterIntoView } from "./lib/productMatchView.js";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -410,11 +410,11 @@ function AdvantageEngine() {
   );
 }
 
-function AccessAndProcess({ report }) {
+function AccessAndProcess({ report, products }) {
   return (
     <section id="access" className="access-process" aria-label="Product matching and application process">
       <div className="access-inner">
-        <ProductMatchCenter report={report} products={PRODUCT_CATALOG} />
+        <ProductMatchCenter report={report} products={products} />
 
         <div className="process-panel">
           <div className="process-heading" data-reveal>
@@ -440,6 +440,22 @@ function AccessAndProcess({ report }) {
 export function App() {
   useScrollReveal();
   const [leadResult, setLeadResult] = useState(null);
+  const [publicProducts, setPublicProducts] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getJson("/api/products").then(
+      (payload) => {
+        if (active) setPublicProducts(Array.isArray(payload?.products) ? payload.products : []);
+      },
+      () => {
+        if (active) setPublicProducts([]);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const completeIntake = (lead) => {
     setLeadResult(lead);
@@ -510,7 +526,7 @@ export function App() {
 
       <AdvantageEngine />
 
-      <AccessAndProcess report={leadResult?.matchReport ?? null} />
+      <AccessAndProcess report={leadResult?.matchReport ?? null} products={publicProducts} />
 
       <ProductPanel />
 

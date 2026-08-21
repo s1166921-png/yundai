@@ -11,6 +11,7 @@ import { normalizeCustomerProfile, validateCustomerProfile } from "../src/lib/ma
 import { matchProducts } from "../src/lib/matching/productMatcher.js";
 import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getProductById } from "../src/lib/matching/productCatalog.js";
+import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -326,7 +327,6 @@ function publicProductMatch(match) {
     status: match.status,
     rank: match.rank,
     estimatedAmount: publicEstimatedAmount(match.estimatedAmount),
-    ruleVersion: match.ruleVersion,
   };
 }
 
@@ -366,7 +366,6 @@ function publicMatchReport(report) {
     missingDocuments: Array.isArray(report?.missingDocuments) ? [...report.missingDocuments] : [],
     summary: report?.summary ?? "",
     disclaimer: report?.disclaimer ?? "",
-    ruleVersion: report?.ruleVersion ?? null,
   };
 }
 
@@ -377,7 +376,6 @@ function publicLead(lead) {
     estimationMode: lead.estimationMode,
     productMatches: lead.productMatches.map(publicProductMatch),
     matchReport: publicMatchReport(lead.matchReport),
-    ruleVersion: lead.ruleVersion,
   };
 }
 
@@ -789,6 +787,11 @@ async function handleRequest(request, response, { leadsFilePath, adminCredential
   try {
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/products" && request.method === "GET") {
+      sendJson(response, 200, { products: getPublicProducts() });
       return;
     }
 

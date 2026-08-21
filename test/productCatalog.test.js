@@ -29,6 +29,11 @@ test("catalog exposes all seven unique, versioned products", () => {
     assert.match(product.version, /^2026-\d{2}-\d{2}$/);
     assert.ok(product.source.length > 0);
     assert.ok(product.ruleSet.length > 0);
+    assert.deepEqual(Object.keys(product.customerScenario).sort(), ["id", "label", "order"]);
+    assert.equal(typeof product.customerTargetProfile, "string");
+    assert.ok(product.customerTargetProfile.length > 0);
+    assert.equal(typeof product.customerPrerequisite, "string");
+    assert.ok(product.customerPrerequisite.length > 0);
   }
   assert.equal(getProductById("linklogis-amazon-sc").currency, "USD");
 });

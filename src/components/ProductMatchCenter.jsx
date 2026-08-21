@@ -1,4 +1,4 @@
-import { buildProductMatchView } from "../lib/matching/productMatchView.js";
+import { buildProductMatchView } from "../lib/productMatchView.js";
 
 function CatalogProductCard({ product }) {
   return (
@@ -181,6 +181,8 @@ function MatchResults({ view }) {
 
 export function ProductMatchCenter({ report, products }) {
   const view = buildProductMatchView(report, products);
+  const catalogIsLoading = view.state === "catalog" && products == null;
+  const catalogIsUnavailable = view.state === "catalog" && !catalogIsLoading && view.groups.length === 0;
 
   return (
     <section id="product-match-center" className="product-match-center" aria-labelledby="product-match-title" data-reveal>
@@ -196,7 +198,10 @@ export function ProductMatchCenter({ report, products }) {
         </p>
       </header>
 
-      {view.state === "catalog" ? <ProductCatalog groups={view.groups} /> : <MatchResults view={view} />}
+      {catalogIsLoading && <p className="product-catalog-status" role="status">正在加载产品目录…</p>}
+      {catalogIsUnavailable && <p className="product-catalog-status" role="status">产品目录暂时无法加载，请稍后刷新。</p>}
+      {view.state === "catalog" && !catalogIsLoading && !catalogIsUnavailable && <ProductCatalog groups={view.groups} />}
+      {view.state === "report" && <MatchResults view={view} />}
     </section>
   );
 }

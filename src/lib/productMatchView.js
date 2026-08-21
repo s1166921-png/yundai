@@ -1,0 +1,169 @@
+import { MATCH_DISCLAIMER } from "./publicMatchContract.js";
+
+const currencyUnit = (currency) => ({ RMB: "元", USD: "美元" }[currency] ?? currency ?? "");
+
+const formatAmountValue = (value) => {
+  if (!Number.isFinite(value)) return null;
+  if (value >= 10000 && value % 10000 === 0) return `${value / 10000}万`;
+  return String(value);
+};
+
+const catalogProduct = (product) => ({
+  id: product.id,
+  institution: product.institution,
+  name: product.name,
+  currency: product.currency,
+  limit: product.limit,
+  term: product.term,
+  pricing: product.pricing,
+  scenario: product.scenario == null ? null : {
+    id: product.scenario.id,
+    label: product.scenario.label,
+    order: product.scenario.order,
+  },
+  targetProfile: product.targetProfile,
+  keyPrerequisite: product.keyPrerequisite,
+});
+
+const catalogProductFor = (reportProduct, products) => products.find((product) => (
+  product.id === reportProduct?.productId
+  || (product.name === reportProduct?.name && product.institution === reportProduct?.institution)
+));
+
+const formatEstimatedAmount = (estimatedAmount, fallback) => {
+  if (typeof estimatedAmount?.note === "string" && estimatedAmount.note) return estimatedAmount.note;
+  const minimum = formatAmountValue(estimatedAmount?.min);
+  const maximum = formatAmountValue(estimatedAmount?.max);
+  const unit = currencyUnit(estimatedAmount?.currency);
+  if (minimum != null && maximum != null) {
+    return minimum === maximum ? `${minimum}${unit}` : `${minimum}-${maximum}${unit}`;
+  }
+  return fallback ?? "待资金方进一步核定";
+};
+
+const safeReportProduct = (reportProduct, products) => {
+  if (reportProduct == null || typeof reportProduct !== "object") return null;
+  const catalog = catalogProductFor(reportProduct, products);
+  const limit = reportProduct.limit ?? catalog?.limit ?? null;
+  const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
+
+  return {
+    productId: reportProduct.productId ?? catalog?.id ?? null,
+    institution: reportProduct.institution ?? catalog?.institution ?? "",
+    name: reportProduct.name ?? catalog?.name ?? "",
+    whyMatched: Array.isArray(reportProduct.whyMatched)
+      ? reportProduct.whyMatched.filter((reason) => typeof reason === "string").slice(0, 3)
+      : [],
+    amount: formatEstimatedAmount(reportProduct.estimatedAmount, limit),
+    currency,
+    term: reportProduct.term ?? catalog?.term ?? "目录暂未提供",
+    pricing: reportProduct.pricing ?? catalog?.pricing ?? "目录暂未提供",
+    limit,
+    scenario: catalog?.scenario ?? null,
+    keyPrerequisite: catalog?.keyPrerequisite ?? null,
+  };
+};
+
+const alternativeDifferences = (alternative, primary) => {
+  const differences = [];
+  if (alternative.scenario?.label && alternative.scenario.label !== primary?.scenario?.label) {
+    differences.push(`业务场景：${alternative.scenario.label}`);
+  }
+  if (alternative.currency && alternative.currency !== primary?.currency) differences.push(`币种：${alternative.currency}`);
+  if (alternative.term && alternative.term !== primary?.term) differences.push(`期限：${alternative.term}`);
+  if (alternative.pricing && alternative.pricing !== primary?.pricing) differences.push(`定价：${alternative.pricing}`);
+  if (alternative.amount && alternative.amount !== primary?.amount) differences.push(`参考额度：${alternative.amount}`);
+  if (differences.length === 0 && alternative.keyPrerequisite) differences.push(`核心前置条件：${alternative.keyPrerequisite}`);
+  return differences.slice(0, 2);
+};
+
+const buildCatalogView = (products) => {
+  const groups = new Map();
+  for (const rawProduct of products) {
+    const product = catalogProduct(rawProduct);
+    if (typeof product.scenario?.id !== "string" || typeof product.scenario?.label !== "string") continue;
+    if (!groups.has(product.scenario.id)) {
+      groups.set(product.scenario.id, {
+        id: product.scenario.id,
+        label: product.scenario.label,
+        order: Number.isFinite(product.scenario.order) ? product.scenario.order : Number.MAX_SAFE_INTEGER,
+        products: [],
+      });
+    }
+    groups.get(product.scenario.id).products.push(product);
+  }
+
+  return {
+    state: "catalog",
+    groups: [...groups.values()]
+      .sort((left, right) => left.order - right.order)
+      .map(({ order: _order, ...group }) => group),
+  };
+};
+
+const buildReportView = (report, products) => {
+  const primary = safeReportProduct(report.primary, products);
+  const missingDocuments = Array.isArray(report.missingDocuments)
+    ? report.missingDocuments.filter((item) => typeof item === "string").slice(0, 5)
+    : [];
+  const alternatives = (Array.isArray(report.alternatives) ? report.alternatives : [])
+    .slice(0, 2)
+    .map((product) => safeReportProduct(product, products))
+    .filter(Boolean)
+    .map((product) => ({
+      ...product,
+      differences: alternativeDifferences(product, primary),
+      missingInformation: missingDocuments.slice(0, 2),
+    }));
+  const nonMatches = (Array.isArray(report.nonMatches) ? report.nonMatches : [])
+    .filter((item) => item != null && typeof item === "object")
+    .map((item) => ({
+      institution: typeof item.institution === "string" ? item.institution : "",
+      name: typeof item.name === "string" ? item.name : "",
+      reason: typeof item.reason === "string" ? item.reason : "",
+    }));
+
+  return {
+    state: "report",
+    summary: typeof report.summary === "string" ? report.summary : "",
+    primary,
+    alternatives,
+    missingDocuments,
+    nonMatches,
+    disclaimer: MATCH_DISCLAIMER,
+  };
+};
+
+export function buildProductMatchView(report, products = []) {
+  const safeProducts = Array.isArray(products) ? products : [];
+  return report == null ? buildCatalogView(safeProducts) : buildReportView(report, safeProducts);
+}
+
+export function scrollProductMatchCenterIntoView(element, windowObject = globalThis.window) {
+  if (element == null) return false;
+  const reducedMotion = typeof windowObject?.matchMedia === "function"
+    && windowObject.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const options = { behavior: reducedMotion ? "auto" : "smooth", block: "start" };
+
+  if (typeof element.scrollIntoView === "function") {
+    try {
+      element.scrollIntoView(options);
+      return true;
+    } catch {
+      try {
+        element.scrollIntoView(true);
+        return true;
+      } catch {
+        // Fall through to a positional scroll for older WebKit variants.
+      }
+    }
+  }
+
+  if (typeof element.getBoundingClientRect === "function" && typeof windowObject?.scrollTo === "function") {
+    const top = element.getBoundingClientRect().top + (windowObject.pageYOffset ?? 0);
+    windowObject.scrollTo(0, top);
+    return true;
+  }
+
+  return false;
+}

@@ -53,3 +53,27 @@ viewports and states: 1440 x 900, 390 x 844, and 375 x 667 before and after mock
 - Modern and legacy Vite bundles built successfully.
 
 final result: passed after one responsive spacing fix
+
+---
+
+## 2026-08-21 Task 8 Fix Round 1
+
+source visual truth path: the prior Task 8 Product Match Center state documented above, plus the existing purple-cyan-blue system in `src/styles.css`.
+current visual: local Vite app at `http://127.0.0.1:4178/#access` with mocked `GET /api/products` and `POST /api/leads` responses.
+temporary screenshot paths: `/private/tmp/task8-before-1440x900.png`, `/private/tmp/task8-after-1440x900.png`, `/private/tmp/task8-before-390x844.png`, `/private/tmp/task8-after-390x844.png`, `/private/tmp/task8-before-375x667.png`, and `/private/tmp/task8-after-375x667.png`.
+viewports and states: 1440 x 900, 390 x 844, and 375 x 667 before and after mocked submission.
+
+**Findings**
+- The fetched catalog still presents all seven products in four scenario groups; desktop resolves to three columns and both mobile viewports resolve to one.
+- Margin-based Flexbox gutters leave visible separation between repeated cards, while Grid enhancement preserves the same spacing. No touching cards or trailing overflow were observed.
+- Page and Product Match Center horizontal overflow measured `0` at every viewport before and after submission; card intersection checks also returned no overlap.
+- Submitted output contains one dominant primary result above two alternatives, with no nested cards and a clear responsive hierarchy.
+- Successful submission settled `#product-match-center` at approximately 104px from the viewport top at all three sizes.
+- Rendered customer text contained the exact disclaimer and no internal matching fields, rule metadata, versions, sensitive internal phrases, or admin links.
+- Browser console inspection returned no errors.
+
+**Artifacts**
+- Captures were visually inspected from `/private/tmp` and are not committed.
+- Modern and legacy production entries were both inspected by the automated bundle privacy test.
+
+final result: passed

@@ -1101,7 +1101,7 @@ h1 span {
 
 .product-match-heading > p {
   max-width: 720px;
-  margin: 0;
+  margin: 0 0 0 34px;
   color: rgba(224, 237, 255, 0.72);
   font-size: 16px;
   line-height: 1.75;
@@ -1130,6 +1130,7 @@ h1 span {
 }
 
 .scenario-heading span {
+  margin-left: 20px;
   color: #5ce1e6;
   font-size: 12px;
   font-weight: 900;
@@ -1148,6 +1149,7 @@ h1 span {
   flex: 0 1 calc(33.333% - 12px);
   width: calc(33.333% - 12px);
   min-width: 0;
+  margin-bottom: 18px;
   overflow: hidden;
   border: 1px solid rgba(92, 225, 230, 0.2);
   border-radius: 8px;
@@ -1155,6 +1157,10 @@ h1 span {
     linear-gradient(145deg, rgba(140, 82, 255, 0.12), transparent 42%),
     rgba(8, 20, 41, 0.88);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+}
+
+.product-catalog-card:not(:nth-child(3n + 1)) {
+  margin-left: 18px;
 }
 
 .product-catalog-card > header {
@@ -1239,6 +1245,14 @@ h1 span {
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+
+.product-catalog-status {
+  margin-top: 42px;
+  padding: 28px 0;
+  border-block: 1px solid rgba(92, 225, 230, 0.2);
+  color: rgba(224, 237, 255, 0.72);
+  line-height: 1.7;
 }
 
 .process-panel {
@@ -2208,6 +2222,7 @@ h2 {
 .primary-result-heading > strong {
   flex: 0 1 420px;
   max-width: 46%;
+  margin-left: 30px;
   color: #fff;
   font-size: 27px;
   line-height: 1.25;
@@ -2254,6 +2269,10 @@ h2 {
 .primary-result-reasons section {
   flex: 1 1 calc(50% - 17px);
   min-width: 0;
+}
+
+.primary-result-reasons section + section {
+  margin-left: 34px;
 }
 
 .primary-result-reasons h4,
@@ -2350,6 +2369,10 @@ h2 {
   background: rgba(10, 21, 43, 0.76);
 }
 
+.match-alternative-result + .match-alternative-result {
+  margin-left: 18px;
+}
+
 .match-alternative-result > header,
 .match-alternative-result > section {
   padding: 22px 24px;
@@ -2418,6 +2441,7 @@ h2 {
 
 .match-document-list > ul {
   flex: 1 1 68%;
+  margin-left: 34px;
 }
 
 .match-document-list > div span {
@@ -2444,6 +2468,11 @@ h2 {
   flex: 1 1 calc(50% - 12px);
   min-width: 0;
   min-height: 34px;
+  margin-bottom: 8px;
+}
+
+.match-document-list li:nth-child(even) {
+  margin-left: 24px;
 }
 
 .match-nonmatches {
@@ -2494,17 +2523,6 @@ h2 {
   color: rgba(224, 237, 255, 0.56);
   font-size: 11px;
   line-height: 1.75;
-}
-
-@supports (display: grid) {
-  .product-catalog-card,
-  .primary-result-metrics > div,
-  .primary-result-reasons section,
-  .match-alternative-result,
-  .alternative-result-metrics > div,
-  .match-document-list li {
-    width: auto;
-  }
 }
 
 .estimate-report {
@@ -3024,6 +3042,14 @@ h2 {
     width: calc(50% - 9px);
   }
 
+  .product-catalog-card:not(:nth-child(3n + 1)) {
+    margin-left: 0;
+  }
+
+  .product-catalog-card:nth-child(even) {
+    margin-left: 18px;
+  }
+
   .primary-result-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3194,6 +3220,11 @@ h2 {
     width: 100%;
   }
 
+  .product-match-heading > p {
+    margin-top: 14px;
+    margin-left: 0;
+  }
+
   .product-scenario-list {
     margin-top: 36px;
   }
@@ -3211,6 +3242,10 @@ h2 {
     width: 100%;
   }
 
+  .product-catalog-card:nth-child(even) {
+    margin-left: 0;
+  }
+
   .primary-result-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -3225,6 +3260,8 @@ h2 {
     flex: 0 1 auto;
     width: 100%;
     max-width: 100%;
+    margin-top: 20px;
+    margin-left: 0;
     font-size: 22px;
     text-align: left;
   }
@@ -3258,6 +3295,11 @@ h2 {
     padding: 24px 20px;
   }
 
+  .primary-result-reasons section + section {
+    margin-top: 24px;
+    margin-left: 0;
+  }
+
   .match-alternatives {
     margin-top: 42px;
   }
@@ -3272,9 +3314,23 @@ h2 {
     min-height: 0;
   }
 
+  .match-alternative-result + .match-alternative-result {
+    margin-top: 18px;
+    margin-left: 0;
+  }
+
   .match-document-list {
     gap: 18px;
     margin-top: 42px;
+  }
+
+  .match-document-list > ul {
+    margin-top: 18px;
+    margin-left: 0;
+  }
+
+  .match-document-list li:nth-child(even) {
+    margin-left: 0;
   }
 
   .match-nonmatches > div {
@@ -3441,6 +3497,29 @@ h2 {
   .alternative-result-metrics > div,
   .match-document-list li {
     width: auto;
+  }
+
+  .product-match-heading > p,
+  .scenario-heading > span,
+  .product-catalog-card,
+  .primary-result-heading > strong,
+  .primary-result-reasons section,
+  .match-alternative-result,
+  .match-document-list > ul,
+  .match-document-list li {
+    margin-left: 0;
+  }
+
+  .product-catalog-card,
+  .match-document-list li {
+    margin-bottom: 0;
+  }
+
+  .primary-result-heading > strong,
+  .primary-result-reasons section,
+  .match-alternative-result,
+  .match-document-list > ul {
+    margin-top: 0;
   }
 }
 

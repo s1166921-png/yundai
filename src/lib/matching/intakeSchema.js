@@ -452,7 +452,7 @@ const INTAKE_FIELDS = Object.freeze([
   booleanField("hasRiskWarning", 4, "是否存在风险预警", {
     visibleWhen: complexOnly,
   }),
-  booleanField("isOnAmlBlacklist", 4, "是否命中反洗钱黑名单", {
+  booleanField("isOnAmlBlacklist", 4, "是否存在需进一步核验的企业合规情况", {
     visibleWhen: complexOnly,
   }),
   booleanField("hasAdverseCreditStatus", 4, "是否存在不良或关注类信用状态", {

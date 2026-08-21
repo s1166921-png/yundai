@@ -1,6 +1,7 @@
 import { getProductById } from "./productCatalog.js";
+import { MATCH_DISCLAIMER } from "../publicMatchContract.js";
 
-export const MATCH_DISCLAIMER = "本结果基于您提交的信息和当前产品规则进行初步匹配，仅供融资准备参考，不构成授信、放款、利率或期限承诺，最终结果以资金方审核为准。";
+export { MATCH_DISCLAIMER };
 
 const NON_MATCH_REASON = "当前资料暂未满足该产品的部分基础准入要求。";
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { postJson } from "../src/lib/http/jsonRequest.js";
+import { getJson, postJson } from "../src/lib/http/jsonRequest.js";
 
 class FakeXmlHttpRequest {
   static responses = [];
@@ -49,6 +49,42 @@ test("postJson prefers fetch and returns parsed JSON", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].options.body), { companyName: "美鸥" });
+});
+
+test("getJson prefers fetch and issues a GET without a request body", async () => {
+  const calls = [];
+  const result = await getJson("/api/products", {
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ products: [{ id: "safe-product" }] }),
+      };
+    },
+    XMLHttpRequestImpl: FakeXmlHttpRequest,
+  });
+
+  assert.equal(result.products[0].id, "safe-product");
+  assert.deepEqual(calls, [{ url: "/api/products", options: { method: "GET" } }]);
+});
+
+test("getJson falls back to XMLHttpRequest when fetch is unavailable", async () => {
+  FakeXmlHttpRequest.responses.push({
+    status: 200,
+    body: JSON.stringify({ products: [{ id: "xhr-product" }] }),
+  });
+
+  const result = await getJson("/api/products", {
+    fetchImpl: undefined,
+    XMLHttpRequestImpl: FakeXmlHttpRequest,
+  });
+  const request = FakeXmlHttpRequest.instances.at(-1);
+
+  assert.equal(result.products[0].id, "xhr-product");
+  assert.equal(request.method, "GET");
+  assert.equal(request.url, "/api/products");
+  assert.equal(request.body, undefined);
 });
 
 test("postJson falls back to XMLHttpRequest when fetch is unavailable", async () => {

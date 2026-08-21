@@ -103,6 +103,36 @@ test("a server constructed without credentials cannot authenticate admin request
   assert.equal(oldFallbackResponse.status, 401);
 });
 
+test("GET /api/products returns only the strict customer-safe catalog projection", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await fetch(`${url}/api/products`);
+  const payload = await response.json();
+  const serialized = JSON.stringify(payload);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(payload), ["products"]);
+  assert.equal(payload.products.length, 7);
+  for (const product of payload.products) {
+    assert.deepEqual(Object.keys(product).sort(), [
+      "currency",
+      "id",
+      "institution",
+      "keyPrerequisite",
+      "limit",
+      "name",
+      "pricing",
+      "scenario",
+      "targetProfile",
+      "term",
+    ]);
+    assert.deepEqual(Object.keys(product.scenario).sort(), ["id", "label", "order"]);
+  }
+  assert.doesNotMatch(
+    serialized,
+    /ruleSet|ruleVersion|internalReason|fitScore|failedRules|confidence|priority|反洗钱黑名单|预警信息|两个年度销售收入下滑超过 30%/,
+  );
+});
+
 test("direct server startup fails clearly when required production credentials are absent", async () => {
   const environment = { ...process.env };
   delete environment.MEIOU_ADMIN_USER;
@@ -148,7 +178,7 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.equal(response.status, 201);
   assert.equal(payload.lead.matchReport.primary.productId, "linklogis-amazon-sc");
   assert.ok(payload.lead.productMatches.filter((match) => match.rank != null).length <= 3);
-  assert.match(payload.lead.ruleVersion, /^2026-/);
+  assert.equal(payload.lead.ruleVersion, undefined);
   assert.equal(payload.lead.estimationMode, "complex");
   assert.equal(payload.lead.estimate, undefined);
   assert.equal(payload.lead.aiInsight, undefined);
@@ -157,7 +187,9 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.equal(typeof persistedLeads[0].estimate.score, "number");
   assert.equal(persistedLeads[0].profile.raw.qualifiedStoreCount, 1);
   assert.equal(persistedLeads[0].productMatches[0].inputSnapshot.raw.companyName, "Amazon SC Trading Co.");
-  assert.equal(persistedLeads[0].ruleVersion, payload.lead.ruleVersion);
+  assert.match(persistedLeads[0].ruleVersion, /^2026-/);
+  assert.match(persistedLeads[0].matchReport.ruleVersion, /^2026-/);
+  assert.ok(persistedLeads[0].productMatches.every((match) => /^2026-/.test(match.ruleVersion)));
 });
 
 for (const [label, consentToDataUse] of [
@@ -323,18 +355,17 @@ test("POST /api/leads keeps internal matching and advisor evidence out of the pu
     "id",
     "matchReport",
     "productMatches",
-    "ruleVersion",
   ]);
-  assert.doesNotMatch(serialized, /"(?:score|rawScore|debtPenalty|breakdown|estimate|fitScore|confidence|failedRules|internalReason|inputSnapshot|formulaKey|priority)"/);
+  assert.doesNotMatch(serialized, /"(?:score|rawScore|debtPenalty|breakdown|estimate|fitScore|confidence|failedRules|internalReason|inputSnapshot|formulaKey|priority|ruleVersion)"/);
   for (const match of payload.lead.productMatches) {
     assert.deepEqual(Object.keys(match).sort(), [
       "estimatedAmount",
       "productId",
       "rank",
-      "ruleVersion",
       "status",
     ]);
   }
+  assert.equal(payload.lead.matchReport.ruleVersion, undefined);
 });
 
 test("POST /api/leads exposes only customer-safe non-match summaries", async (t) => {
@@ -447,6 +478,9 @@ test("authenticated GET /api/leads returns full internal matching evidence", asy
   assert.ok(Array.isArray(primaryMatch.failedRules));
   assert.ok(primaryMatch.inputSnapshot.raw);
   assert.ok(payload.leads[0].aiInsight.priority);
+  assert.match(payload.leads[0].ruleVersion, /^2026-/);
+  assert.match(payload.leads[0].matchReport.ruleVersion, /^2026-/);
+  assert.match(primaryMatch.ruleVersion, /^2026-/);
 });
 
 test("authenticated export rejects an empty lead selection", async (t) => {

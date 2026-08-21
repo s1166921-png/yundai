@@ -20,21 +20,24 @@ const defaultRuntime = () => {
   return {};
 };
 
-const postWithFetch = async (fetchImpl, url, data) => {
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+const requestWithFetch = async (fetchImpl, url, method, data) => {
+  const options = method === "GET"
+    ? { method }
+    : {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      };
+  const response = await fetchImpl(url, options);
   const payload = parseJson(await response.text());
   if (!response.ok) throw requestError(payload, response.status);
   return payload;
 };
 
-const postWithXmlHttpRequest = (XmlHttpRequestImpl, url, data) => new Promise((resolve, reject) => {
+const requestWithXmlHttpRequest = (XmlHttpRequestImpl, url, method, data) => new Promise((resolve, reject) => {
   const request = new XmlHttpRequestImpl();
-  request.open("POST", url, true);
-  request.setRequestHeader("Content-Type", "application/json");
+  request.open(method, url, true);
+  if (method !== "GET") request.setRequestHeader("Content-Type", "application/json");
   request.onload = () => {
     const payload = parseJson(request.responseText);
     if (request.status >= 200 && request.status < 300) {
@@ -45,20 +48,28 @@ const postWithXmlHttpRequest = (XmlHttpRequestImpl, url, data) => new Promise((r
   };
   request.onerror = () => reject(requestError({}, 0));
   request.ontimeout = () => reject(requestError({}, 0));
-  request.send(JSON.stringify(data));
+  request.send(method === "GET" ? undefined : JSON.stringify(data));
 });
 
-export function postJson(url, data, implementations = {}) {
+const requestJson = (url, method, data, implementations = {}) => {
   const runtime = defaultRuntime();
   const hasFetchOverride = Object.prototype.hasOwnProperty.call(implementations, "fetchImpl");
   const fetchImpl = hasFetchOverride ? implementations.fetchImpl : runtime.fetch;
   const XmlHttpRequestImpl = implementations.XMLHttpRequestImpl ?? runtime.XMLHttpRequest;
 
   if (typeof fetchImpl === "function") {
-    return postWithFetch(fetchImpl.bind ? fetchImpl.bind(runtime) : fetchImpl, url, data);
+    return requestWithFetch(fetchImpl.bind ? fetchImpl.bind(runtime) : fetchImpl, url, method, data);
   }
   if (typeof XmlHttpRequestImpl === "function") {
-    return postWithXmlHttpRequest(XmlHttpRequestImpl, url, data);
+    return requestWithXmlHttpRequest(XmlHttpRequestImpl, url, method, data);
   }
   return Promise.reject(requestError({}, 0));
+};
+
+export function getJson(url, implementations = {}) {
+  return requestJson(url, "GET", undefined, implementations);
+}
+
+export function postJson(url, data, implementations = {}) {
+  return requestJson(url, "POST", data, implementations);
 }
