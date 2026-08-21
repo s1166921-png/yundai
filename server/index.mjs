@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
 import { calculateSimpleEstimate } from "../src/lib/simpleEstimator.js";
+import { createAiInsight } from "../src/lib/aiInsight.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -66,6 +67,10 @@ const leadColumns = [
   ["estimate.band", "测算额度区间"],
   ["estimate.referenceAmountLabel", "测算参考额度"],
   ["estimate.audience", "客群定位"],
+  ["aiInsight.profile", "AI 经营画像"],
+  ["aiInsight.priority", "AI 跟进优先级"],
+  ["aiInsight.financingDirection", "AI 资金安排建议"],
+  ["aiInsight.nextStep", "AI 建议下一步"],
   ["note", "补充说明"],
 ];
 
@@ -152,6 +157,7 @@ function normalizeLead(input) {
   }
 
   const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : calculateSimpleEstimate(lead);
+  const aiInsight = createAiInsight(lead, estimate, estimationMode);
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -159,6 +165,7 @@ function normalizeLead(input) {
     estimationMode,
     ...lead,
     estimate,
+    aiInsight,
   };
 }
 

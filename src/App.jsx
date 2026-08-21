@@ -6,6 +6,7 @@ import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
 import { calculateCreditEstimate, creditDimensions, debtRatioOptions } from "./lib/creditEstimator";
 import { calculateSimpleEstimate, simpleDimensions } from "./lib/simpleEstimator";
+import { createAiInsight } from "./lib/aiInsight";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -46,13 +47,13 @@ const products = [
 ];
 
 const heroContent = {
-  nav: "云贷方案",
-  name: "风控赋能云贷",
-  badge: "Meiou × CCB Cloud Loan",
-  title: "美鸥风控赋能云贷，专属融资护航跨境经营",
-  subtitle: "深耕跨境电商与外贸企业融资场景，依托美鸥智能大数据风控体系，精准贴合资金周转、备货扩张、回款衔接等经营痛点，提供高效、低成本、高灵活的专属融资解决方案。",
-  cta: "查看两大产品",
-  altCta: "预约融资顾问",
+  nav: "AI 融资准备助手",
+  name: "美鸥云贷",
+  badge: "MEIOU AI FINANCING INSIGHT",
+  title: "用经营信息看清融资准备方向",
+  subtitle: "美鸥云贷将企业经营、资金周转与资料准备串成一条清晰路径，快速生成参考融资区间、经营画像与下一步准备建议。",
+  cta: "查看融资方案",
+  altCta: "开始 AI 经营诊断",
 };
 
 const proofBadges = ["智能风控赋能", "最高 2000 万", "综合费率低至 3%", "最长授信 1 年", "循环授信随用随取", "提前还款无违约金"];
@@ -220,7 +221,7 @@ function Header() {
       </button>
       <nav className={menuOpen ? "nav-links open" : "nav-links"} aria-label="Site navigation">
         <a className="active" href="#top">首页</a>
-        <a href="#advantages">核心优势</a>
+        <a href="#ai-diagnosis">AI 诊断</a>
         <a href="#access">准入流程</a>
         <a href="#products">产品卖点</a>
         <a href="#contact">立即咨询</a>
@@ -237,9 +238,9 @@ function HeroVisual() {
   return (
     <aside className="command-center cloud-loan" aria-label="Meiou cloud loan command center">
       <div className="panel-header">
-        <span>跨境资金云图</span>
+        <span>AI 经营诊断中枢</span>
         <strong>LIVE</strong>
-        <button type="button">全国视图</button>
+        <button type="button">经营视图</button>
       </div>
       <div className="map-stage">
         <img src={fundingNetwork} alt="Cross-border funding network" decoding="async" fetchPriority="high" />
@@ -249,24 +250,24 @@ function HeroVisual() {
       </div>
       <div className="signal-cards">
         <button className="signal-card active" type="button">
-          <span>授信额度</span>
-          <strong>2000 万</strong>
-          <small>最高可贷</small>
+          <span>经营画像</span>
+          <strong>已生成</strong>
+          <small>识别经营阶段</small>
         </button>
         <button className="signal-card" type="button">
-          <span>综合费率</span>
-          <strong>低至 3%</strong>
-          <small>优化融资成本</small>
+          <span>资金方向</span>
+          <strong>已匹配</strong>
+          <small>结合周转场景</small>
         </button>
         <button className="signal-card" type="button">
-          <span>授信周期</span>
-          <strong>最长 1 年</strong>
-          <small>匹配回款节奏</small>
+          <span>资料清单</span>
+          <strong>待准备</strong>
+          <small>提前减少反复沟通</small>
         </button>
         <button className="signal-card shield" type="button">
-          <span>额度使用</span>
-          <strong>循环授信</strong>
-          <small>随用随贷</small>
+          <span>参考区间</span>
+          <strong>可测算</strong>
+          <small>规则透明可查</small>
         </button>
       </div>
     </aside>
@@ -281,6 +282,35 @@ function ProofRibbon() {
           <span key={`${item}-${index}`}>{item}</span>
         ))}
       </div>
+    </section>
+  );
+}
+
+function AiDiagnosticSection() {
+  const steps = [
+    ["01", "经营信息", "营收、利润、增长、团队与融资需求"],
+    ["02", "AI 经营梳理", "识别经营阶段、资金场景与资料准备重点"],
+    ["03", "融资准备报告", "输出参考区间、行动建议与顾问跟进方向"],
+  ];
+
+  return (
+    <section className="ai-diagnostic-section" aria-label="AI financing diagnostic" id="ai-diagnosis">
+      <div className="ai-diagnostic-intro" data-reveal>
+        <p className="eyebrow">AI financing diagnostic</p>
+        <h2>不是替您承诺额度，而是先把融资准备这件事看清楚</h2>
+        <p>经营数据、资金用途和资料准备被整理成一份可执行的融资准备报告，让每次沟通都有更明确的起点。</p>
+      </div>
+      <div className="ai-diagnostic-flow" data-reveal>
+        {steps.map(([index, title, body], stepIndex) => (
+          <div className="ai-flow-step" key={index}>
+            <span>{index}</span>
+            <i className={`flow-orbit orbit-${stepIndex + 1}`} aria-hidden="true" />
+            <h3>{title}</h3>
+            <p>{body}</p>
+          </div>
+        ))}
+      </div>
+      <a className="outline-button ai-diagnostic-action" href="#contact" data-reveal>开始 AI 经营诊断</a>
     </section>
   );
 }
@@ -461,6 +491,7 @@ function LeadForm() {
   const [estimate, setEstimate] = useState(null);
   const [formMode, setFormMode] = useState("simple");
   const [submittedMode, setSubmittedMode] = useState(null);
+  const [insight, setInsight] = useState(null);
 
   const updateField = (name, value) => {
     setForm((current) => ({ ...current, [name]: value }));
@@ -470,14 +501,16 @@ function LeadForm() {
     setFormMode(mode);
     setEstimate(null);
     setSubmittedMode(null);
+    setInsight(null);
     setStatus({ type: "idle", message: "" });
   };
 
   const submitLead = async (event) => {
     event.preventDefault();
-    setStatus({ type: "loading", message: "正在生成简易测算报告..." });
+    setStatus({ type: "loading", message: "正在梳理经营信息并生成融资准备报告..." });
     setEstimate(null);
     setSubmittedMode(null);
+    setInsight(null);
 
     try {
       const response = await fetch("/api/leads", {
@@ -491,11 +524,15 @@ function LeadForm() {
         throw new Error(payload.error || "提交失败，请稍后再试");
       }
 
-      setEstimate(formMode === "complex" ? payload.lead?.estimate || calculateCreditEstimate(form) : payload.lead?.estimate || calculateSimpleEstimate(form));
+      const nextEstimate = formMode === "complex"
+        ? payload.lead?.estimate || calculateCreditEstimate(form)
+        : payload.lead?.estimate || calculateSimpleEstimate(form);
+      setEstimate(nextEstimate);
+      setInsight(payload.lead?.aiInsight || createAiInsight(form, nextEstimate, formMode));
       setSubmittedMode(formMode);
       setStatus({
         type: "success",
-        message: formMode === "complex" ? "信息已提交，以下为您的完整测算结果。" : "信息已提交，以下为您的基础匹配回执。",
+        message: "信息已提交，以下为您的 AI 融资准备报告。",
       });
     } catch (error) {
       setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
@@ -508,7 +545,7 @@ function LeadForm() {
         <p className="eyebrow">financing intake</p>
         <h2>选择测算版本，提交企业经营信息</h2>
         <p className="section-copy">
-          简易版适合快速匹配，复杂版按照企业贷款六维模型生成完整评分与参考额度。
+          简易版快速匹配经营方向；完整版结合更多经营资料生成更完整的融资准备建议。
         </p>
       </div>
 
@@ -516,11 +553,11 @@ function LeadForm() {
         <div className="estimate-mode-switch" role="group" aria-label="选择测算版本">
           <button type="button" className={formMode === "simple" ? "active" : ""} onClick={() => switchFormMode("simple")}>
             <strong>简易版</strong>
-            <span>基础经营信息快速匹配</span>
+            <span>快速生成融资方向</span>
           </button>
           <button type="button" className={formMode === "complex" ? "active" : ""} onClick={() => switchFormMode("complex")}>
             <strong>复杂版</strong>
-            <span>六维评分生成完整报告</span>
+            <span>生成完整准备建议</span>
           </button>
         </div>
         <div className="form-grid">
@@ -643,39 +680,74 @@ function LeadForm() {
 
         <div className="form-actions">
           <button className="hot-button" type="submit" disabled={status.type === "loading"}>
-            {status.type === "loading" ? "生成中..." : formMode === "complex" ? "提交并生成完整测算报告" : "提交简易版信息"}
+            {status.type === "loading" ? "AI 分析中..." : formMode === "complex" ? "生成 AI 融资准备报告" : "开始 AI 快速诊断"}
           </button>
           {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
         </div>
       </form>
-      {submittedMode === "complex" && estimate && <CreditEstimateReport estimate={estimate} />}
-      {submittedMode === "simple" && estimate && <SimpleEstimateReport estimate={estimate} />}
+      {submittedMode === "complex" && estimate && insight && <CreditEstimateReport estimate={estimate} insight={insight} />}
+      {submittedMode === "simple" && estimate && insight && <SimpleEstimateReport estimate={estimate} insight={insight} />}
     </section>
   );
 }
 
-function SimpleEstimateReport({ estimate }) {
+function AiInsightContent({ insight }) {
   return (
-    <article className="quick-estimate-receipt" aria-live="polite">
-      <p className="eyebrow">quick match</p>
-      <h3>简易版企业贷款测算报告</h3>
+    <div className="ai-report-content">
+      <div className="ai-report-lead">
+        <span className="ai-spark" aria-hidden="true">AI</span>
+        <div>
+          <small>AI 经营画像</small>
+          <h4>{insight.profile}</h4>
+          <p>{insight.headline}</p>
+        </div>
+        <b className={`priority-tag ${insight.priority === "优先跟进" ? "high" : ""}`}>{insight.priority}</b>
+      </div>
+      <div className="ai-insight-grid">
+        <section>
+          <small>经营优势</small>
+          <ul>{insight.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
+        <section>
+          <small>资金安排建议</small>
+          <p>{insight.financingDirection}</p>
+          <strong>{insight.nextStep}</strong>
+        </section>
+      </div>
+      <section className="ai-document-list">
+        <div>
+          <small>建议优先准备</small>
+          <p>后续由融资顾问结合实际资料进一步确认。</p>
+        </div>
+        <ul>{insight.documents.map((item) => <li key={item}>{item}</li>)}</ul>
+      </section>
+    </div>
+  );
+}
+
+function SimpleEstimateReport({ estimate, insight }) {
+  return (
+    <article className="quick-estimate-receipt ai-estimate-report" aria-live="polite">
+      <p className="eyebrow">AI financing insight</p>
+      <h3>AI 融资准备报告</h3>
       <p>{estimate.summary}</p>
       <div>
         <span><small>匹配区间</small><strong>{estimate.band}</strong></span>
         <span><small>参考额度</small><strong>{estimate.referenceAmountLabel}</strong></span>
       </div>
+      <AiInsightContent insight={insight} />
       <small>本额度为简易模型预估值，不构成放款承诺；实际可放款额度、利率和期限均以完整资料与最终审批结论为准。</small>
     </article>
   );
 }
 
-function CreditEstimateReport({ estimate }) {
+function CreditEstimateReport({ estimate, insight }) {
   return (
     <article className="estimate-report" aria-live="polite">
       <header className="estimate-report-header">
         <div>
-          <p className="eyebrow">credit estimate</p>
-          <h3>企业贷款简易测算报告</h3>
+          <p className="eyebrow">AI financing insight</p>
+          <h3>AI 融资准备报告</h3>
           <p>{estimate.summary}</p>
         </div>
       </header>
@@ -689,6 +761,7 @@ function CreditEstimateReport({ estimate }) {
           <strong>{estimate.band}</strong>
         </div>
       </div>
+      <AiInsightContent insight={insight} />
       <p className="estimate-disclaimer">
         本额度为简易模型预估值，未结合企业完整征信、流水、抵质押物等审批要素，测算结果仅供参考，不构成任何放款承诺，实际可放款额度、利率、期限均以美鸥云贷收取完整资料后的最终审批结论为准。
       </p>
@@ -749,6 +822,8 @@ export function App() {
       </section>
 
       <ProofRibbon />
+
+      <AiDiagnosticSection />
 
       <PolicyShowcase />
 
