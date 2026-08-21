@@ -5,6 +5,9 @@ import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
 import { FinancingIntake } from "./components/FinancingIntake";
+import { ProductMatchCenter } from "./components/ProductMatchCenter";
+import { PRODUCT_CATALOG } from "./lib/matching/productCatalog.js";
+import { scrollProductMatchCenterIntoView } from "./lib/matching/productMatchView.js";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -122,14 +125,6 @@ const policyHighlights = [
     body: "支持根据回款节奏提前还款，无提前还款违约金，减少闲置资金成本。",
     action: "咨询方案",
   },
-];
-
-const bankTabs = ["广发银行 CGB", "WeBank 微众银行", "浦发银行 SPD BANK", "中国建设银行 CCB"];
-
-const bankAccess = [
-  ["企业", "注册时长 >= 0.5 年，无失信/限高，无当前逾期"],
-  ["法人", "23-65 岁，近 24 个月无连续逾期 3 期，近半年逾期 <= 2 次"],
-  ["店铺", ">= 2 个店铺（或单店近 12 月 GMV > 2,000 万），至少 1 店经营 > 1 年，近 12 月总销售额 > 200 万，AHR 评分 > 200 分"],
 ];
 
 const applicationSteps = [
@@ -415,32 +410,11 @@ function AdvantageEngine() {
   );
 }
 
-function AccessAndProcess() {
+function AccessAndProcess({ report }) {
   return (
-    <section id="access" className="access-process" aria-label="Bank access conditions and application process">
+    <section id="access" className="access-process" aria-label="Product matching and application process">
       <div className="access-inner">
-        <div className="access-card" data-reveal>
-          <div className="access-title">
-            <p className="eyebrow">准入条件速查</p>
-            <h2>银行准入信息前置展示，客户一眼判断匹配度</h2>
-          </div>
-          <div className="bank-tabs" aria-label="Cooperating banks">
-            {bankTabs.map((bank) => (
-              <button key={bank} className={bank.includes("WeBank") ? "active" : ""} type="button">
-                {bank}
-              </button>
-            ))}
-          </div>
-          <div className="access-checks">
-            <span className="access-pill">对公</span>
-            {bankAccess.map(([label, text]) => (
-              <div key={label} className="access-line">
-                <b>{label}</b>
-                <p>{text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ProductMatchCenter report={report} products={PRODUCT_CATALOG} />
 
         <div className="process-panel">
           <div className="process-heading" data-reveal>
@@ -463,66 +437,21 @@ function AccessAndProcess() {
   );
 }
 
-const formatMatchedAmount = (estimatedAmount) => {
-  if (!estimatedAmount) return "待资金方进一步核定";
-  if (estimatedAmount.note) return estimatedAmount.note;
-  const unit = estimatedAmount.currency === "USD" ? "美元" : "元";
-  const format = (value) => Number(value).toLocaleString("zh-CN");
-  if (Number.isFinite(estimatedAmount.min) && Number.isFinite(estimatedAmount.max)) {
-    return estimatedAmount.min === estimatedAmount.max
-      ? `${format(estimatedAmount.min)} ${unit}`
-      : `${format(estimatedAmount.min)} - ${format(estimatedAmount.max)} ${unit}`;
-  }
-  return "待资金方进一步核定";
-};
-
-function MatchProductRow({ product, primary = false }) {
-  return (
-    <section className={primary ? "match-product-row primary" : "match-product-row"}>
-      <div>
-        <small>{primary ? "优先匹配" : "备选产品"}</small>
-        <h4>{product.name}</h4>
-        <p>{product.institution}</p>
-      </div>
-      <dl>
-        <div><dt>参考额度</dt><dd>{formatMatchedAmount(product.estimatedAmount)}</dd></div>
-        {product.pricing && <div><dt>参考定价</dt><dd>{product.pricing}</dd></div>}
-        {product.term && <div><dt>期限安排</dt><dd>{product.term}</dd></div>}
-      </dl>
-      {product.whyMatched?.length > 0 && (
-        <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-      )}
-    </section>
-  );
-}
-
-function FinancingMatchReport({ lead }) {
-  const report = lead?.matchReport;
-  if (!report) return null;
-
-  return (
-    <article className="matching-report" aria-live="polite">
-      <header>
-        <p className="eyebrow">financing match</p>
-        <h3>{lead.estimationMode === "simple" ? "初步匹配结果" : "融资匹配结果"}</h3>
-        <p>{report.summary}</p>
-      </header>
-      {report.primary && <MatchProductRow product={report.primary} primary />}
-      {report.alternatives?.map((product) => <MatchProductRow key={product.productId || product.name} product={product} />)}
-      {report.missingDocuments?.length > 0 && (
-        <section className="match-documents">
-          <h4>建议补充资料</h4>
-          <ul>{report.missingDocuments.map((document) => <li key={document}>{document}</li>)}</ul>
-        </section>
-      )}
-      <p className="match-disclaimer">{report.disclaimer}</p>
-    </article>
-  );
-}
-
 export function App() {
   useScrollReveal();
-  const [completedLead, setCompletedLead] = useState(null);
+  const [leadResult, setLeadResult] = useState(null);
+
+  const completeIntake = (lead) => {
+    setLeadResult(lead);
+    const scrollToResults = () => {
+      scrollProductMatchCenterIntoView(document.getElementById("product-match-center"), window);
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(scrollToResults);
+    } else {
+      window.setTimeout(scrollToResults, 0);
+    }
+  };
 
   return (
     <main className="site-shell template-command final-template">
@@ -581,7 +510,7 @@ export function App() {
 
       <AdvantageEngine />
 
-      <AccessAndProcess />
+      <AccessAndProcess report={leadResult?.matchReport ?? null} />
 
       <ProductPanel />
 
@@ -593,8 +522,7 @@ export function App() {
             简易版快速生成初步匹配；复杂版会按业务模式补充专项资料，形成更完整的融资准备结果。
           </p>
         </div>
-        <FinancingIntake onComplete={setCompletedLead} onInvalidate={() => setCompletedLead(null)} />
-        {completedLead && <FinancingMatchReport lead={completedLead} />}
+        <FinancingIntake onComplete={completeIntake} onInvalidate={() => setLeadResult(null)} />
       </section>
     </main>
   );

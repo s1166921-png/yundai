@@ -345,11 +345,23 @@ function publicReportProduct(product) {
   };
 }
 
+function publicNonMatch(nonMatch) {
+  if (!nonMatch || typeof nonMatch !== "object") return null;
+  return {
+    institution: nonMatch.institution,
+    name: nonMatch.name,
+    reason: nonMatch.reason,
+  };
+}
+
 function publicMatchReport(report) {
   return {
     primary: publicReportProduct(report?.primary),
     alternatives: Array.isArray(report?.alternatives)
       ? report.alternatives.map(publicReportProduct).filter(Boolean)
+      : [],
+    nonMatches: Array.isArray(report?.nonMatches)
+      ? report.nonMatches.map(publicNonMatch).filter(Boolean)
       : [],
     missingDocuments: Array.isArray(report?.missingDocuments) ? [...report.missingDocuments] : [],
     summary: report?.summary ?? "",

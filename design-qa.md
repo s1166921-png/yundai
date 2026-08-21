@@ -28,3 +28,28 @@ state: final template 01 direction, no template chooser section, three independe
 ```
 
 final result: passed
+
+---
+
+## 2026-08-21 AI Product Match Center
+
+source visual truth path: existing `src/styles.css` purple-cyan-blue command-center system and `.superpowers/sdd/2026-08-21-ai-product-matching/task-8-brief.md`.
+current visual: local Vite app at `http://127.0.0.1:5173/#access` with the bank-access tabs replaced in place; unrelated sections retained.
+screenshot findings: in-app browser captures were inspected during QA and intentionally not written to or committed from the repository.
+viewports and states: 1440 x 900, 390 x 844, and 375 x 667 before and after mocked submission; 900 x 900 used for the tablet column check.
+
+**Findings**
+- Catalog state renders all seven products in four prescribed scenario groups, with no default-selected bank tabs.
+- Desktop catalog grids resolve to three columns; tablet resolves to two; both required mobile sizes resolve to one.
+- Submitted state presents one full-width primary result and two aligned alternatives, followed by the document list and a collapsed non-match disclosure.
+- Initial 375 x 667 result capture exposed excess vertical space from the primary amount's desktop flex basis; the mobile rule now resets the basis to `auto` and the corrected capture is compact.
+- Page-level horizontal overflow was `0` at all required viewports, and no overflowing descendants or card overlap were found inside the match center.
+- Successful mocked submission moved the match center to the top offset, while reduced-motion and legacy boolean scroll paths are covered by focused Node tests.
+- Expanded non-match copy remained neutral and customer-safe; the exact disclaimer was present, and rendered output contained no internal score, confidence, failed-rule, priority, or admin copy.
+- Browser console inspection returned no warnings or errors.
+
+**Artifacts**
+- No generated screenshots committed; QA captures remained session-only.
+- Modern and legacy Vite bundles built successfully.
+
+final result: passed after one responsive spacing fix

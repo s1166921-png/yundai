@@ -337,6 +337,20 @@ test("POST /api/leads keeps internal matching and advisor evidence out of the pu
   }
 });
 
+test("POST /api/leads exposes only customer-safe non-match summaries", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.ok(payload.lead.matchReport.nonMatches.length > 0);
+  for (const nonMatch of payload.lead.matchReport.nonMatches) {
+    assert.deepEqual(Object.keys(nonMatch).sort(), ["institution", "name", "reason"]);
+    assert.equal(nonMatch.reason, "当前资料暂未满足该产品的部分基础准入要求。");
+  }
+  assert.doesNotMatch(JSON.stringify(payload.lead.matchReport.nonMatches), /fitScore|confidence|failedRules|internalReason|priority/);
+});
+
 test("concurrent POST /api/leads requests persist every accepted lead exactly once", async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
   const expectedCompanyNames = Array.from(
