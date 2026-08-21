@@ -4,6 +4,8 @@ const simpleDocuments = [
   "主营业务及本次资金用途说明",
 ];
 
+export { buildCustomerMatchReport } from "./matching/reportBuilder.js";
+
 const complexDocuments = [
   "近三年财务报表、纳税申报表或完税证明",
   "前五大客户/供应商合作证明与核心合同",
