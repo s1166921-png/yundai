@@ -20,3 +20,43 @@ test("catalog exposes all seven unique, versioned products", () => {
   }
   assert.equal(getProductById("linklogis-amazon-sc").currency, "USD");
 });
+
+test("tax-loan supplementary authorizations apply as hard requirements from 500,000 RMB", () => {
+  const taxLoan = getProductById("pingan-orange-tax-loan");
+  const authorizationRule = taxLoan.ruleSet.find((rule) => rule.id === "additional-authorizations-over-500k");
+
+  assert.equal(authorizationRule.severity, "hard");
+  assert.equal(authorizationRule.value.whenAtLeast, 500000);
+  assert.deepEqual(authorizationRule.value.requiresAllTruthy, [
+    "spouseCreditAuthorization",
+    "controllerCreditAuthorization",
+    "applicableGuarantee",
+  ]);
+});
+
+test("public risk messages are neutral while sensitive reasons remain internal", () => {
+  const sensitiveRules = PRODUCT_CATALOG.flatMap((product) => product.ruleSet)
+    .filter((rule) => ["no-aml-blacklist", "no-current-overdue"].includes(rule.id));
+
+  assert.deepEqual(sensitiveRules.map((rule) => rule.message), [
+    "请完成企业合规状态核验。",
+    "请补充并核验企业及个人还款状态。",
+  ]);
+  assert.deepEqual(sensitiveRules.map((rule) => rule.internalReason), [
+    "反洗钱黑名单",
+    "当前逾期",
+  ]);
+});
+
+test("nested rule values are immutable", () => {
+  const cmbLoan = getProductById("cmb-guangdong-business-loan");
+  const companyAgeRule = cmbLoan.ruleSet.find((rule) => rule.id === "company-age-and-rating");
+
+  assert.ok(Object.isFrozen(companyAgeRule.value));
+  assert.ok(Object.isFrozen(companyAgeRule.value.anyOf));
+  assert.ok(Object.isFrozen(companyAgeRule.value.anyOf[0]));
+  assert.throws(() => {
+    companyAgeRule.value.anyOf[0].minimumYears = 6;
+  }, TypeError);
+  assert.equal(companyAgeRule.value.anyOf[0].minimumYears, 5);
+});

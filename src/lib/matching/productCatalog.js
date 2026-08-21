@@ -8,6 +8,12 @@ export const PRODUCT_IDS = Object.freeze([
   "linklogis-b2b-factoring",
 ]);
 
+const deepFreeze = (value) => {
+  if (value === null || typeof value !== "object") return value;
+  for (const nestedValue of Object.values(value)) deepFreeze(nestedValue);
+  return Object.freeze(value);
+};
+
 const product = (definition) => Object.freeze({
   enabled: true,
   effectiveDate: "2026-08-21",
@@ -21,7 +27,10 @@ const product = (definition) => Object.freeze({
   }),
   missingDataPolicy: "review",
   ...definition,
-  ruleSet: Object.freeze(definition.ruleSet.map((rule) => Object.freeze(rule))),
+  ruleSet: Object.freeze(definition.ruleSet.map((rule) => Object.freeze({
+    ...rule,
+    value: deepFreeze(rule.value),
+  }))),
 });
 
 const source = (section) => `2026-08-21 AI 产品匹配设计，第 ${section} 节`;
@@ -55,14 +64,14 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "internal-rating-minimum", field: "internalBankRating", operator: "minInclusive", value: "6A", severity: "hard", message: "行内评级需不低于 6A。" },
       { id: "credit-bank-count-maximum", field: "creditBankCount", operator: "maxInclusive", value: 4, severity: "hard", message: "授信银行不超过 4 家。" },
       { id: "credit-exposure-within-net-assets", field: "creditExposureToNetAssets", operator: "maxInclusive", value: 1, severity: "hard", message: "授信敞口不超过净资产。" },
-      { id: "no-risk-warning", field: "hasRiskWarning", operator: "falsy", value: false, severity: "hard", message: "企业不能存在预警信息。" },
-      { id: "no-aml-blacklist", field: "isOnAmlBlacklist", operator: "falsy", value: false, severity: "hard", message: "企业不能列入反洗钱黑名单。" },
-      { id: "no-overdue-principal-or-interest", field: "hasOverduePrincipalOrInterest", operator: "falsy", value: false, severity: "hard", message: "企业不能存在逾期欠息。" },
-      { id: "no-adverse-credit-status", field: "hasAdverseCreditStatus", operator: "falsy", value: false, severity: "hard", message: "企业不能存在不良或关注类信用状态。" },
-      { id: "no-dishonesty-record", field: "hasDishonestyRecord", operator: "falsy", value: false, severity: "hard", message: "企业不能列入失信名单。" },
+      { id: "no-risk-warning", field: "hasRiskWarning", operator: "falsy", value: false, severity: "hard", message: "请补充并核验企业风险状态。", internalReason: "预警信息" },
+      { id: "no-aml-blacklist", field: "isOnAmlBlacklist", operator: "falsy", value: false, severity: "hard", message: "请完成企业合规状态核验。", internalReason: "反洗钱黑名单" },
+      { id: "no-overdue-principal-or-interest", field: "hasOverduePrincipalOrInterest", operator: "falsy", value: false, severity: "hard", message: "请补充并核验企业还款状态。", internalReason: "逾期欠息" },
+      { id: "no-adverse-credit-status", field: "hasAdverseCreditStatus", operator: "falsy", value: false, severity: "hard", message: "请补充并核验企业信用状态。", internalReason: "不良关注类信用状态" },
+      { id: "no-dishonesty-record", field: "hasDishonestyRecord", operator: "falsy", value: false, severity: "hard", message: "请完成企业公开信息核验。", internalReason: "失信名单" },
       { id: "continuous-financial-statements", field: "financialStatementsContinuous", operator: "truthy", value: true, severity: "hard", message: "财务报表需连续。" },
       { id: "controller-status-normal", field: "controllerStatusNormal", operator: "truthy", value: true, severity: "hard", message: "实控人状态需正常。" },
-      { id: "non-sensitive-industry", field: "industry", operator: "custom", value: { disallowed: ["资本运作", "中介劳务", "大宗贵金属", "高风险领域"] }, severity: "review", message: "资本运作、中介劳务、大宗贵金属和高风险领域需人工复核。" },
+      { id: "non-sensitive-industry", field: "industry", operator: "custom", value: { disallowed: ["资本运作", "中介劳务", "大宗贵金属", "高风险领域"] }, severity: "review", message: "请提供行业经营信息，以便人工复核。", internalReason: "资本运作、中介劳务、大宗贵金属和高风险领域" },
     ],
   }),
   product({
@@ -87,7 +96,7 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "company-registration-two-years", field: "companyRegisteredMonths", operator: "minInclusive", value: 24, severity: "hard", message: "企业注册需满 24 个月。" },
       { id: "applicant-age-minimum", field: "applicantAge", operator: "minInclusive", value: 25, severity: "hard", message: "申请人年龄需满 25 岁。" },
       { id: "applicant-age-maximum", field: "applicantAge", operator: "maxInclusive", value: 65, severity: "hard", message: "申请人年龄不超过 65 岁。" },
-      { id: "additional-authorizations-over-500k", field: "requestedAmountRmb", operator: "custom", value: { whenAbove: 500000, requires: ["spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"] }, severity: "review", message: "申请 50 万元以上时，需增加配偶、实控人征信授权及相应担保。" },
+      { id: "additional-authorizations-over-500k", field: "requestedAmountRmb", operator: "custom", value: { whenAtLeast: 500000, requiresAllTruthy: ["spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"] }, severity: "hard", message: "申请 50 万元及以上时，请补充相关授权及担保资料。" },
     ],
   }),
   product({
@@ -116,14 +125,14 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "self-operated-import-export", field: "selfOperatedImportExport", operator: "truthy", value: true, severity: "hard", message: "企业需从事自营进出口。" },
       { id: "import-export-license", field: "hasImportExportLicense", operator: "truthy", value: true, severity: "hard", message: "企业需拥有进出口经营权。" },
       { id: "foreign-exchange-class-a", field: "foreignExchangeClassification", operator: "equals", value: "A类", severity: "hard", message: "外汇管理分类需为 A 类。" },
-      { id: "customs-credit-not-dishonest", field: "customsCreditClassification", operator: "custom", value: { disallowed: ["失信类"] }, severity: "hard", message: "海关信用不能为失信类。" },
+      { id: "customs-credit-not-dishonest", field: "customsCreditClassification", operator: "custom", value: { disallowed: ["失信类"] }, severity: "hard", message: "请完成海关信用分类核验。", internalReason: "海关信用为失信类" },
       { id: "import-export-volume-last-12-months", field: "importExportAmountLast12MonthsUsd", operator: "minInclusive", value: 500000, severity: "hard", message: "近 12 个月进出口额需不低于 50 万美元。" },
       { id: "import-export-volume-13-to-24-months", field: "importExportAmountMonths13To24Usd", operator: "minInclusive", value: 500000, severity: "hard", message: "13-24 个月进出口额需不低于 50 万美元。" },
       { id: "recent-import-export-record", field: "monthsSinceLatestImportExport", operator: "maxInclusive", value: 3, severity: "hard", message: "最近进出口记录需在 3 个月内。" },
       { id: "import-export-frequency", field: "importExportCountLast12Months", operator: "minInclusive", value: 2, severity: "hard", message: "近 12 个月进出口记录需不少于 2 次。" },
       { id: "import-export-revenue-share", field: "importExportRevenueShare", operator: "minInclusive", value: 0.5, severity: "hard", message: "进出口业务占营收需不低于 50%。" },
       { id: "commodity-share", field: "commodityRevenueShare", operator: "maxInclusive", value: 0.2, severity: "review", message: "大宗商品占比原则上不超过 20%。" },
-      { id: "sales-decline-review", field: "twoYearSalesDecline", operator: "custom", value: { above: 0.3, outcome: "review" }, severity: "review", message: "两个年度销售收入下滑超过 30% 时需人工复核。" },
+      { id: "sales-decline-review", field: "twoYearSalesDecline", operator: "custom", value: { above: 0.3, outcome: "review" }, severity: "review", message: "请提供两个年度的销售收入，以便人工复核。", internalReason: "两个年度销售收入下滑超过 30%" },
       { id: "debt-ratio-by-industry-and-tax-basis", field: "debtRatio", operator: "custom", value: { nonTaxInvoice: { 加工制造: 0.65, 批发零售: 0.5 }, taxInvoice: { 加工制造: 0.7, 批发零售: 0.55 } }, severity: "hard", message: "负债比需符合所属行业及税票口径要求。" },
       { id: "additional-conditions-over-3m", field: "requestedAmountRmb", operator: "custom", value: { whenAbove: 3000000, requires: { anyOf: ["taxInvoiceQuality", "importExportRevenueShare"], companyOperatingYears: { minInclusive: 5 } } }, severity: "hard", message: "额度超过 300 万元时，需满足税票质量或进出口占比条件，并连续经营满 5 年。" },
       { id: "core-asset-liability-over-3m", field: "requestedAmountRmb", operator: "custom", value: { when: { anyOf: [{ nonTaxInvoice: true }, { amountAbove: 3000000 }] }, requires: { coreAssetLiabilityRatioMaximum: 0.8 } }, severity: "review", message: "非税票或额度超过 300 万元时，核心资产负债率原则上不超过 80%。" },
@@ -153,8 +162,8 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "currently-operating-six-months", field: "currentOperatingMonths", operator: "minInclusive", value: 6, severity: "hard", message: "企业当前在营需满 6 个月。" },
       { id: "legal-representative-age-minimum", field: "legalRepresentativeAge", operator: "minInclusive", value: 23, severity: "hard", message: "法人年龄需满 23 岁。" },
       { id: "legal-representative-age-maximum", field: "legalRepresentativeAge", operator: "maxInclusive", value: 65, severity: "hard", message: "法人年龄不超过 65 岁。" },
-      { id: "no-current-overdue", field: "hasCurrentOverdue", operator: "falsy", value: false, severity: "hard", message: "企业和个人不能存在当前逾期。" },
-      { id: "no-material-credit-or-judicial-issues", field: "hasMaterialCreditOrJudicialIssue", operator: "falsy", value: false, severity: "hard", message: "企业和个人不能存在资料列明的重大征信或司法负面。" },
+      { id: "no-current-overdue", field: "hasCurrentOverdue", operator: "falsy", value: false, severity: "hard", message: "请补充并核验企业及个人还款状态。", internalReason: "当前逾期" },
+      { id: "no-material-credit-or-judicial-issues", field: "hasMaterialCreditOrJudicialIssue", operator: "falsy", value: false, severity: "hard", message: "请补充并核验企业及个人信用与司法信息。", internalReason: "资料列明的重大征信、司法负面" },
       { id: "one-store-operating-one-year", field: "longestStoreOperatingMonths", operator: "minInclusive", value: 12, severity: "hard", message: "至少一家店铺经营需满 1 年。" },
       { id: "single-store-first-order-two-years", field: "storeCount", operator: "custom", value: { whenEquals: 1, requires: { firstOrderMonthsAgo: { minExclusive: 24 } } }, severity: "hard", message: "仅有一家店铺时，第一笔订单距今需超过 2 年。" },
       { id: "sales-last-12-months", field: "allStoreSalesLast12MonthsRmb", operator: "minInclusive", value: 2000000, severity: "hard", message: "所有店铺近 12 个月销售额需不低于 200 万元。" },
