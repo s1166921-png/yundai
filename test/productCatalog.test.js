@@ -35,28 +35,27 @@ test("tax-loan supplementary authorizations apply as hard requirements from 500,
 });
 
 test("public risk messages are neutral while sensitive reasons remain internal", () => {
-  const sensitiveRules = PRODUCT_CATALOG.flatMap((product) => product.ruleSet)
-    .filter((rule) => ["no-aml-blacklist", "no-current-overdue"].includes(rule.id));
+  const cmbLoan = getProductById("cmb-guangdong-business-loan");
+  const sensitiveRules = cmbLoan.ruleSet
+    .filter((rule) => ["no-current-overdue", "no-major-litigation"].includes(rule.id));
 
   assert.deepEqual(sensitiveRules.map((rule) => rule.message), [
-    "请完成企业合规状态核验。",
-    "请补充并核验企业及个人还款状态。",
+    "请补充并核验企业还款状态。",
+    "请补充并核验企业信用与司法状态。",
   ]);
   assert.deepEqual(sensitiveRules.map((rule) => rule.internalReason), [
-    "反洗钱黑名单",
     "当前逾期",
+    "重大诉讼",
   ]);
 });
 
-test("nested rule values are immutable", () => {
+test("rule values are immutable", () => {
   const cmbLoan = getProductById("cmb-guangdong-business-loan");
   const companyAgeRule = cmbLoan.ruleSet.find((rule) => rule.id === "company-age-and-rating");
 
   assert.ok(Object.isFrozen(companyAgeRule.value));
-  assert.ok(Object.isFrozen(companyAgeRule.value.anyOf));
-  assert.ok(Object.isFrozen(companyAgeRule.value.anyOf[0]));
   assert.throws(() => {
-    companyAgeRule.value.anyOf[0].minimumYears = 6;
+    companyAgeRule.value.minimumMonths = 61;
   }, TypeError);
-  assert.equal(companyAgeRule.value.anyOf[0].minimumYears, 5);
+  assert.equal(companyAgeRule.value.minimumMonths, 60);
 });
