@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, rename, stat, unlink } from "node:fs/promises";
+import { chmod, readFile, writeFile, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
@@ -21,6 +21,7 @@ const port = Number(process.env.PORT || 8787);
 
 const contactFields = ["companyName", "contactName", "phone"];
 const leadUpdateQueues = new Map();
+const storeFileMode = 0o600;
 
 const legacyBaseFields = [
   "companyName",
@@ -104,7 +105,12 @@ async function ensureStore(leadsFilePath = leadsFile) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     try {
-      await writeFile(leadsFilePath, "[]", { encoding: "utf8", flag: "wx" });
+      await writeFile(leadsFilePath, "[]", {
+        encoding: "utf8",
+        flag: "wx",
+        mode: storeFileMode,
+      });
+      await chmod(leadsFilePath, storeFileMode);
     } catch (writeError) {
       if (writeError.code !== "EEXIST") throw writeError;
     }
@@ -124,7 +130,12 @@ async function writeLeads(leads, leadsFilePath = leadsFile) {
     `.${path.basename(leadsFilePath)}.${process.pid}.${randomUUID()}.tmp`,
   );
   try {
-    await writeFile(temporaryFilePath, JSON.stringify(leads, null, 2), "utf8");
+    await writeFile(temporaryFilePath, JSON.stringify(leads, null, 2), {
+      encoding: "utf8",
+      flag: "wx",
+      mode: storeFileMode,
+    });
+    await chmod(temporaryFilePath, storeFileMode);
     await rename(temporaryFilePath, leadsFilePath);
   } catch (error) {
     try {
@@ -252,7 +263,11 @@ function addProductIdsToReport(report, matches) {
 
 function normalizeLead(input) {
   const requestedMode = input.estimationMode ?? input.mode;
-  const estimationMode = requestedMode == null ? "complex" : String(requestedMode).trim().toLowerCase();
+  const estimationMode = requestedMode == null
+    ? "complex"
+    : typeof requestedMode === "string"
+      ? requestedMode.trim().toLowerCase()
+      : requestedMode;
   const profile = normalizeCustomerProfile(input);
   const validation = validateCustomerProfile(profile, estimationMode);
   const errors = [

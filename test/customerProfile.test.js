@@ -53,6 +53,41 @@ test("rejects malformed JSON values for numbers and money while leaving empty va
   ]);
 });
 
+test("rejects structured and numeric scalar values while preserving empty unanswered fields", () => {
+  const profile = normalizeCustomerProfile({
+    companyName: 42,
+    applicantRole: ["法人"],
+    companyCreditRating: ["6AAA"],
+    settlementAccountFlowNormal: [true],
+    hasRiskWarning: [false],
+  });
+  const result = validateCustomerProfile(profile, "complex");
+
+  assert.deepEqual(result.errors.map((error) => error.field).sort(), [
+    "applicantRole",
+    "companyCreditRating",
+    "companyName",
+    "hasRiskWarning",
+    "settlementAccountFlowNormal",
+  ]);
+
+  const unansweredProfile = normalizeCustomerProfile({
+    companyName: "",
+    applicantRole: "",
+    companyCreditRating: "",
+    settlementAccountFlowNormal: "",
+    hasRiskWarning: null,
+  });
+  const unansweredResult = validateCustomerProfile(unansweredProfile, "complex");
+
+  assert.equal(unansweredResult.valid, true);
+  assert.equal(unansweredProfile.companyName, null);
+  assert.equal(unansweredProfile.applicantRole, null);
+  assert.equal(unansweredProfile.companyCreditRating, null);
+  assert.equal(unansweredProfile.settlementAccountFlowNormal, null);
+  assert.equal(unansweredProfile.hasRiskWarning, null);
+});
+
 test("requires each canonical money field to retain its specified currency", () => {
   const profile = normalizeCustomerProfile({ annualRevenueRmb: "100", singleStoreGmvUsd: "200" });
   profile.annualRevenue = { amount: 100, currency: "USD" };

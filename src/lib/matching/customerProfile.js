@@ -121,7 +121,8 @@ const TEXT_FIELDS = Object.freeze([
 
 const asText = (value) => {
   if (value == null) return null;
-  const normalized = String(value).trim();
+  if (typeof value !== "string") return Number.NaN;
+  const normalized = value.trim();
   return normalized === "" ? null : normalized;
 };
 
@@ -136,22 +137,29 @@ const asNumber = (value) => {
 };
 
 const asBoolean = (value) => {
-  if (value == null || (typeof value === "string" && value.trim() === "")) return null;
+  if (value == null) return null;
   if (value === true || value === false) return value;
+  if (typeof value !== "string") return Number.NaN;
 
-  const normalized = String(value).trim().toLowerCase();
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return null;
   if (["true", "yes"].includes(normalized)) return true;
   if (["false", "no"].includes(normalized)) return false;
   return normalized;
 };
 
 const asEnum = (value, allowedValues) => {
-  const normalized = asText(value)?.toLowerCase() ?? null;
-  if (normalized == null || allowedValues.includes(normalized)) return normalized;
+  const text = asText(value);
+  if (text == null || typeof text !== "string") return text;
+  const normalized = text.toLowerCase();
+  if (allowedValues.includes(normalized)) return normalized;
   return normalized;
 };
 
-const asRating = (value) => asText(value)?.toUpperCase() ?? null;
+const asRating = (value) => {
+  const text = asText(value);
+  return typeof text === "string" ? text.toUpperCase() : text;
+};
 
 const asEnumList = (value, allowedValues) => {
   if (value == null || value === "") return [];
@@ -174,7 +182,9 @@ const asInputMoney = (source, amountField, structuredField, currency) => {
     amount: asNumber(structuredValue.amount),
     currency: structuredValue.currency == null
       ? currency
-      : String(structuredValue.currency).trim().toUpperCase(),
+      : typeof structuredValue.currency === "string"
+        ? structuredValue.currency.trim().toUpperCase()
+        : structuredValue.currency,
   };
 };
 
@@ -310,12 +320,9 @@ export function validateCustomerProfile(profile, mode) {
     return { valid: false, errors };
   }
 
-  const source = profile.raw;
-  if (source && typeof source === "object" && !Array.isArray(source)) {
-    for (const field of TEXT_FIELDS) {
-      if (source[field] != null && typeof source[field] !== "string") {
-        errors.push(validationError(field, "must be text"));
-      }
+  for (const field of TEXT_FIELDS) {
+    if (profile[field] != null && typeof profile[field] !== "string") {
+      errors.push(validationError(field, "must be text"));
     }
   }
 

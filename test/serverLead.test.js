@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile, readdir, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, readFile, readdir, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -189,6 +189,30 @@ test("POST /api/leads rejects non-text contact values", async (t) => {
   assert.ok(payload.errors.some((error) => error.field === "contactName"));
 });
 
+for (const [field, value] of [
+  ["applicantRole", ["法人"]],
+  ["companyCreditRating", ["6AAA"]],
+  ["settlementAccountFlowNormal", [true]],
+  ["hasRiskWarning", [false]],
+]) {
+  test(`POST /api/leads rejects singleton-array ${field}`, async (t) => {
+    const { url } = await startTestServer(t);
+    const response = await postLead(url, completeAmazonScPayload({ [field]: value }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.ok(payload.errors.some((error) => error.field === field));
+    assert.equal(payload.lead, undefined);
+
+    const adminResponse = await fetch(`${url}/api/leads`, {
+      headers: { Authorization: adminAuthorization },
+    });
+    const adminPayload = await adminResponse.json();
+    assert.equal(adminResponse.status, 200);
+    assert.deepEqual(adminPayload.leads, []);
+  });
+}
+
 test("POST /api/leads rejects negative qualified store counts", async (t) => {
   const { url } = await startTestServer(t);
   const response = await postLead(url, completeAmazonScPayload({
@@ -294,6 +318,27 @@ test("concurrent POST /api/leads requests persist every accepted lead exactly on
   assert.equal(response.status, 200);
   assert.deepEqual(persistedNames, expectedCompanyNames);
   assert.equal(persistedIds.size, expectedCompanyNames.length);
+  assert.deepEqual(
+    (await readdir(path.dirname(leadsFilePath))).filter((entry) => entry.endsWith(".tmp")),
+    [],
+  );
+});
+
+test("successful lead store creation and replacement preserve mode 0600", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const createdResponse = await postLead(url);
+
+  assert.equal(createdResponse.status, 201);
+  assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
+
+  await chmod(leadsFilePath, 0o400);
+  const replacedResponse = await postLead(url, completeAmazonScPayload({
+    companyName: "Replacement Permission Co.",
+  }));
+
+  assert.equal(replacedResponse.status, 201);
+  assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
+  assert.equal(JSON.parse(await readFile(leadsFilePath, "utf8")).length, 2);
   assert.deepEqual(
     (await readdir(path.dirname(leadsFilePath))).filter((entry) => entry.endsWith(".tmp")),
     [],
