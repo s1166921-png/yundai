@@ -4,9 +4,7 @@ import policyCycle from "./assets/policy-cycle.svg";
 import policyPrepay from "./assets/policy-prepay.svg";
 import policyRate from "./assets/policy-rate.svg";
 import policyTerm from "./assets/policy-term.svg";
-import { calculateCreditEstimate, creditDimensions, debtRatioOptions } from "./lib/creditEstimator";
-import { calculateSimpleEstimate, simpleDimensions } from "./lib/simpleEstimator";
-import { createAiInsight } from "./lib/aiInsight";
+import { FinancingIntake } from "./components/FinancingIntake";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -140,26 +138,6 @@ const applicationSteps = [
   ["03", "银行审批", "银行对资料进行审核及授信审批"],
   ["04", "支用放款", "发起支用，资金直达大陆对公账户"],
 ];
-
-const initialLeadForm = {
-  companyName: "",
-  contactName: "",
-  phone: "",
-  platform: "",
-  productInterest: "",
-  annualRevenue: "",
-  annualProfit: "",
-  businessStability: "",
-  bankCredit: "",
-  businessQualification: "",
-  controllerAssets: "",
-  debtOverRevenue70: "",
-  revenueGrowth: "",
-  employeeCount: "",
-  bankCount: "",
-  desiredAmount: "",
-  note: "",
-};
 
 function useScrollReveal() {
   useEffect(() => {
@@ -485,292 +463,66 @@ function AccessAndProcess() {
   );
 }
 
-function LeadForm() {
-  const [form, setForm] = useState(initialLeadForm);
-  const [status, setStatus] = useState({ type: "idle", message: "" });
-  const [estimate, setEstimate] = useState(null);
-  const [formMode, setFormMode] = useState("simple");
-  const [submittedMode, setSubmittedMode] = useState(null);
-  const [insight, setInsight] = useState(null);
+const formatMatchedAmount = (estimatedAmount) => {
+  if (!estimatedAmount) return "待资金方进一步核定";
+  if (estimatedAmount.note) return estimatedAmount.note;
+  const unit = estimatedAmount.currency === "USD" ? "美元" : "元";
+  const format = (value) => Number(value).toLocaleString("zh-CN");
+  if (Number.isFinite(estimatedAmount.min) && Number.isFinite(estimatedAmount.max)) {
+    return estimatedAmount.min === estimatedAmount.max
+      ? `${format(estimatedAmount.min)} ${unit}`
+      : `${format(estimatedAmount.min)} - ${format(estimatedAmount.max)} ${unit}`;
+  }
+  return "待资金方进一步核定";
+};
 
-  const updateField = (name, value) => {
-    setForm((current) => ({ ...current, [name]: value }));
-  };
-
-  const switchFormMode = (mode) => {
-    setFormMode(mode);
-    setEstimate(null);
-    setSubmittedMode(null);
-    setInsight(null);
-    setStatus({ type: "idle", message: "" });
-  };
-
-  const submitLead = async (event) => {
-    event.preventDefault();
-    setStatus({ type: "loading", message: "正在梳理经营信息并生成融资准备报告..." });
-    setEstimate(null);
-    setSubmittedMode(null);
-    setInsight(null);
-
-    try {
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, estimationMode: formMode }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "提交失败，请稍后再试");
-      }
-
-      const nextEstimate = formMode === "complex"
-        ? payload.lead?.estimate || calculateCreditEstimate(form)
-        : payload.lead?.estimate || calculateSimpleEstimate(form);
-      setEstimate(nextEstimate);
-      setInsight(payload.lead?.aiInsight || createAiInsight(form, nextEstimate, formMode));
-      setSubmittedMode(formMode);
-      setStatus({
-        type: "success",
-        message: "信息已提交，以下为您的 AI 融资准备报告。",
-      });
-    } catch (error) {
-      setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
-    }
-  };
-
+function MatchProductRow({ product, primary = false }) {
   return (
-    <section id="contact" className="lead-section cloud-cta">
-      <div className="lead-copy" data-reveal>
-        <p className="eyebrow">financing intake</p>
-        <h2>选择测算版本，提交企业经营信息</h2>
-        <p className="section-copy">
-          简易版快速匹配经营方向；完整版结合更多经营资料生成更完整的融资准备建议。
-        </p>
+    <section className={primary ? "match-product-row primary" : "match-product-row"}>
+      <div>
+        <small>{primary ? "优先匹配" : "备选产品"}</small>
+        <h4>{product.name}</h4>
+        <p>{product.institution}</p>
       </div>
-
-      <form className="lead-form" onSubmit={submitLead} data-reveal>
-        <div className="estimate-mode-switch" role="group" aria-label="选择测算版本">
-          <button type="button" className={formMode === "simple" ? "active" : ""} onClick={() => switchFormMode("simple")}>
-            <strong>简易版</strong>
-            <span>快速生成融资方向</span>
-          </button>
-          <button type="button" className={formMode === "complex" ? "active" : ""} onClick={() => switchFormMode("complex")}>
-            <strong>复杂版</strong>
-            <span>生成完整准备建议</span>
-          </button>
-        </div>
-        <div className="form-grid">
-          <label>
-            <span>企业名称</span>
-            <input
-              required
-              value={form.companyName}
-              onChange={(event) => updateField("companyName", event.target.value)}
-              placeholder="请输入企业名称"
-            />
-          </label>
-          <label>
-            <span>联系人</span>
-            <input
-              required
-              value={form.contactName}
-              onChange={(event) => updateField("contactName", event.target.value)}
-              placeholder="请输入联系人姓名"
-            />
-          </label>
-          <label>
-            <span>联系电话</span>
-            <input
-              required
-              value={form.phone}
-              onChange={(event) => updateField("phone", event.target.value)}
-              placeholder="请输入手机号码"
-            />
-          </label>
-          <label>
-            <span>主营平台</span>
-            <select required value={form.platform} onChange={(event) => updateField("platform", event.target.value)}>
-              <option value="" disabled>请选择主营平台</option>
-              <option>Amazon</option>
-              <option>Temu</option>
-              <option>TikTok Shop</option>
-              <option>多平台经营</option>
-              <option>其他</option>
-            </select>
-          </label>
-          <label>
-            <span>意向产品</span>
-            <select
-              required
-              value={form.productInterest}
-              onChange={(event) => updateField("productInterest", event.target.value)}
-            >
-              <option value="" disabled>请选择意向产品</option>
-              <option>货押贷</option>
-              <option>应收贷</option>
-              <option>两类都想了解</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="option-groups">
-          {formMode === "simple" && simpleDimensions.map((dimension) => (
-            <fieldset key={dimension.key} className="option-group">
-              <legend>{dimension.label}</legend>
-              <div>
-                {dimension.options.map((option) => (
-                  <label key={option.value} className={form[dimension.key] === option.value ? "selected" : ""}>
-                    <input required type="radio" name={dimension.key} value={option.value} checked={form[dimension.key] === option.value} onChange={(event) => updateField(dimension.key, event.target.value)} />
-                    <span>{option.value}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ))}
-          {formMode === "complex" && creditDimensions.map((dimension) => (
-            <fieldset key={dimension.key} className="option-group">
-              <legend>{dimension.label}</legend>
-              <div>
-                {dimension.options.map((option) => (
-                  <label key={option.value} className={form[dimension.key] === option.value ? "selected" : ""}>
-                    <input
-                      required
-                      type="radio"
-                      name={dimension.key}
-                      value={option.value}
-                      checked={form[dimension.key] === option.value}
-                      onChange={(event) => updateField(dimension.key, event.target.value)}
-                    />
-                    <span>{option.label}</span>
-                  </label>
-                ))}
-              </div>
-              <small>对应资料：{dimension.material}</small>
-            </fieldset>
-          ))}
-          {formMode === "complex" && <fieldset className="option-group debt-option-group">
-            <legend>现有贷款余额占营收比例</legend>
-            <div>
-              {debtRatioOptions.map((option) => (
-                <label key={option.value} className={form.debtOverRevenue70 === option.value ? "selected" : ""}>
-                  <input
-                    required
-                    type="radio"
-                    name="debtOverRevenue70"
-                    value={option.value}
-                    checked={form.debtOverRevenue70 === option.value}
-                    onChange={(event) => updateField("debtOverRevenue70", event.target.value)}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>}
-        </div>
-
-        <label className="full-field">
-          <span>补充说明</span>
-          <textarea
-            value={form.note}
-            onChange={(event) => updateField("note", event.target.value)}
-            placeholder="可填写行业、融资用途、现有贷款余额等补充信息"
-          />
-        </label>
-
-        <div className="form-actions">
-          <button className="hot-button" type="submit" disabled={status.type === "loading"}>
-            {status.type === "loading" ? "AI 分析中..." : formMode === "complex" ? "生成 AI 融资准备报告" : "开始 AI 快速诊断"}
-          </button>
-          {status.message && <p className={`form-status ${status.type}`}>{status.message}</p>}
-        </div>
-      </form>
-      {submittedMode === "complex" && estimate && insight && <CreditEstimateReport estimate={estimate} insight={insight} />}
-      {submittedMode === "simple" && estimate && insight && <SimpleEstimateReport estimate={estimate} insight={insight} />}
+      <dl>
+        <div><dt>参考额度</dt><dd>{formatMatchedAmount(product.estimatedAmount)}</dd></div>
+        {product.pricing && <div><dt>参考定价</dt><dd>{product.pricing}</dd></div>}
+        {product.term && <div><dt>期限安排</dt><dd>{product.term}</dd></div>}
+      </dl>
+      {product.whyMatched?.length > 0 && (
+        <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+      )}
     </section>
   );
 }
 
-function AiInsightContent({ insight }) {
-  return (
-    <div className="ai-report-content">
-      <div className="ai-report-lead">
-        <span className="ai-spark" aria-hidden="true">AI</span>
-        <div>
-          <small>AI 经营画像</small>
-          <h4>{insight.profile}</h4>
-          <p>{insight.headline}</p>
-        </div>
-        <b className={`priority-tag ${insight.priority === "优先跟进" ? "high" : ""}`}>{insight.priority}</b>
-      </div>
-      <div className="ai-insight-grid">
-        <section>
-          <small>经营优势</small>
-          <ul>{insight.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
-        </section>
-        <section>
-          <small>资金安排建议</small>
-          <p>{insight.financingDirection}</p>
-          <strong>{insight.nextStep}</strong>
-        </section>
-      </div>
-      <section className="ai-document-list">
-        <div>
-          <small>建议优先准备</small>
-          <p>后续由融资顾问结合实际资料进一步确认。</p>
-        </div>
-        <ul>{insight.documents.map((item) => <li key={item}>{item}</li>)}</ul>
-      </section>
-    </div>
-  );
-}
+function FinancingMatchReport({ lead }) {
+  const report = lead?.matchReport;
+  if (!report) return null;
 
-function SimpleEstimateReport({ estimate, insight }) {
   return (
-    <article className="quick-estimate-receipt ai-estimate-report" aria-live="polite">
-      <p className="eyebrow">AI financing insight</p>
-      <h3>AI 融资准备报告</h3>
-      <p>{estimate.summary}</p>
-      <div>
-        <span><small>匹配区间</small><strong>{estimate.band}</strong></span>
-        <span><small>参考额度</small><strong>{estimate.referenceAmountLabel}</strong></span>
-      </div>
-      <AiInsightContent insight={insight} />
-      <small>本额度为简易模型预估值，不构成放款承诺；实际可放款额度、利率和期限均以完整资料与最终审批结论为准。</small>
-    </article>
-  );
-}
-
-function CreditEstimateReport({ estimate, insight }) {
-  return (
-    <article className="estimate-report" aria-live="polite">
-      <header className="estimate-report-header">
-        <div>
-          <p className="eyebrow">AI financing insight</p>
-          <h3>AI 融资准备报告</h3>
-          <p>{estimate.summary}</p>
-        </div>
+    <article className="matching-report" aria-live="polite">
+      <header>
+        <p className="eyebrow">financing match</p>
+        <h3>{lead.estimationMode === "simple" ? "初步匹配结果" : "融资匹配结果"}</h3>
+        <p>{report.summary}</p>
       </header>
-      <div className="estimate-overview">
-        <div>
-          <span>测算参考额度</span>
-          <strong>{estimate.referenceAmountLabel}</strong>
-        </div>
-        <div>
-          <span>对应额度区间</span>
-          <strong>{estimate.band}</strong>
-        </div>
-      </div>
-      <AiInsightContent insight={insight} />
-      <p className="estimate-disclaimer">
-        本额度为简易模型预估值，未结合企业完整征信、流水、抵质押物等审批要素，测算结果仅供参考，不构成任何放款承诺，实际可放款额度、利率、期限均以美鸥云贷收取完整资料后的最终审批结论为准。
-      </p>
+      {report.primary && <MatchProductRow product={report.primary} primary />}
+      {report.alternatives?.map((product) => <MatchProductRow key={product.productId || product.name} product={product} />)}
+      {report.missingDocuments?.length > 0 && (
+        <section className="match-documents">
+          <h4>建议补充资料</h4>
+          <ul>{report.missingDocuments.map((document) => <li key={document}>{document}</li>)}</ul>
+        </section>
+      )}
+      <p className="match-disclaimer">{report.disclaimer}</p>
     </article>
   );
 }
 
 export function App() {
   useScrollReveal();
+  const [completedLead, setCompletedLead] = useState(null);
 
   return (
     <main className="site-shell template-command final-template">
@@ -833,7 +585,17 @@ export function App() {
 
       <ProductPanel />
 
-      <LeadForm />
+      <section id="contact" className="lead-section cloud-cta">
+        <div className="lead-copy" data-reveal>
+          <p className="eyebrow">financing intake</p>
+          <h2>选择匹配版本，提交企业经营信息</h2>
+          <p className="section-copy">
+            简易版快速生成初步匹配；复杂版会按业务模式补充专项资料，形成更完整的融资准备结果。
+          </p>
+        </div>
+        <FinancingIntake onComplete={setCompletedLead} />
+        {completedLead && <FinancingMatchReport lead={completedLead} />}
+      </section>
     </main>
   );
 }
