@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
 import { calculateSimpleEstimate } from "../src/lib/simpleEstimator.js";
 import { createAiInsight } from "../src/lib/aiInsight.js";
+import { normalizeCustomerProfile, validateCustomerProfile } from "../src/lib/matching/customerProfile.js";
+import { matchProducts } from "../src/lib/matching/productMatcher.js";
+import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
+import { getProductById } from "../src/lib/matching/productCatalog.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -17,7 +21,9 @@ const port = Number(process.env.PORT || 8787);
 const adminUsername = process.env.ADMIN_USERNAME || "admin";
 const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || "meiou2026";
 
-const baseFields = [
+const contactFields = ["companyName", "contactName", "phone"];
+
+const legacyBaseFields = [
   "companyName",
   "contactName",
   "phone",
@@ -52,6 +58,17 @@ const leadColumns = [
   ["phone", "联系电话"],
   ["platform", "主营平台"],
   ["productInterest", "意向产品"],
+  ["matching.primaryProduct", "第一推荐产品"],
+  ["matching.alternatives", "备选产品"],
+  ["matching.status", "匹配状态"],
+  ["matching.fitScore", "产品适配度"],
+  ["matching.confidence", "匹配可信度"],
+  ["matching.ruleVersion", "规则版本"],
+  ["matching.amountRange", "参考额度或范围"],
+  ["matching.currency", "币种"],
+  ["matching.missingFields", "缺失字段"],
+  ["matching.failedRules", "未通过条件"],
+  ["matching.advisorNextStep", "融资顾问跟进建议"],
   ["annualRevenue", "年营业收入"],
   ["annualProfit", "年净利润"],
   ["revenueGrowth", "预计营收增速"],
@@ -74,24 +91,31 @@ const leadColumns = [
   ["note", "补充说明"],
 ];
 
-async function ensureStore() {
-  await mkdir(dataDir, { recursive: true });
-  try {
-    await stat(leadsFile);
-  } catch {
-    await writeFile(leadsFile, "[]", "utf8");
+class PublicInputError extends Error {
+  constructor(errors) {
+    super("提交信息有误");
+    this.errors = errors;
   }
 }
 
-async function readLeads() {
-  await ensureStore();
-  const raw = await readFile(leadsFile, "utf8");
+async function ensureStore(leadsFilePath = leadsFile) {
+  await mkdir(path.dirname(leadsFilePath), { recursive: true });
+  try {
+    await stat(leadsFilePath);
+  } catch {
+    await writeFile(leadsFilePath, "[]", "utf8");
+  }
+}
+
+async function readLeads(leadsFilePath = leadsFile) {
+  await ensureStore(leadsFilePath);
+  const raw = await readFile(leadsFilePath, "utf8");
   return JSON.parse(raw || "[]");
 }
 
-async function writeLeads(leads) {
-  await ensureStore();
-  await writeFile(leadsFile, JSON.stringify(leads, null, 2), "utf8");
+async function writeLeads(leads, leadsFilePath = leadsFile) {
+  await ensureStore(leadsFilePath);
+  await writeFile(leadsFilePath, JSON.stringify(leads, null, 2), "utf8");
 }
 
 function sendJson(response, statusCode, payload) {
@@ -108,13 +132,27 @@ function readBody(request) {
     request.on("data", (chunk) => {
       body += chunk;
       if (body.length > 1_000_000) {
-        reject(new Error("请求内容过大"));
+        reject(new PublicInputError([{ field: "body", message: "is too large" }]));
         request.destroy();
       }
     });
     request.on("end", () => resolve(body));
     request.on("error", reject);
   });
+}
+
+function parseJsonBody(body) {
+  let input;
+  try {
+    input = JSON.parse(body || "{}");
+  } catch {
+    throw new PublicInputError([{ field: "body", message: "must be valid JSON" }]);
+  }
+
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new PublicInputError([{ field: "body", message: "must be a JSON object" }]);
+  }
+  return input;
 }
 
 function isAuthorized(request) {
@@ -141,23 +179,49 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function normalizeLead(input) {
-  const lead = {};
-  const estimationMode = input.estimationMode === "simple" ? "simple" : "complex";
-  const requiredFields = [...baseFields, ...(estimationMode === "simple" ? simpleEstimateFields : complexEstimateFields)];
-  const allFields = [...new Set([...baseFields, ...simpleEstimateFields, ...complexEstimateFields, "note"])];
+function addProductIdsToReport(report, matches) {
+  const rankedMatches = new Map(matches.filter((match) => match.rank != null).map((match) => [match.rank, match]));
+  return {
+    ...report,
+    primary: report.primary == null
+      ? null
+      : { productId: rankedMatches.get(1)?.productId ?? null, ...report.primary },
+    alternatives: report.alternatives.map((product, index) => ({
+      productId: rankedMatches.get(index + 2)?.productId ?? null,
+      ...product,
+    })),
+  };
+}
 
-  for (const key of allFields) {
-    lead[key] = String(input[key] || "").trim();
+function normalizeLead(input) {
+  const requestedMode = input.estimationMode ?? input.mode;
+  const estimationMode = requestedMode == null ? "complex" : String(requestedMode).trim().toLowerCase();
+  const profile = normalizeCustomerProfile(input);
+  const validation = validateCustomerProfile(profile, estimationMode);
+  const errors = [
+    ...contactFields
+      .filter((field) => !profile[field])
+      .map((field) => ({ field, message: "is required" })),
+    ...validation.errors.map((error) => (
+      error.field === "mode" ? { ...error, field: "estimationMode" } : error
+    )),
+  ];
+
+  if (errors.length > 0) {
+    throw new PublicInputError(errors);
   }
 
-  const missing = requiredFields.filter((key) => !lead[key]);
-  if (missing.length > 0) {
-    throw new Error("请完整填写必填项");
+  const lead = {};
+  const allFields = [...new Set([...legacyBaseFields, ...simpleEstimateFields, ...complexEstimateFields, "note"])];
+
+  for (const key of allFields) {
+    lead[key] = String(input[key] ?? "").trim();
   }
 
   const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : calculateSimpleEstimate(lead);
   const aiInsight = createAiInsight(lead, estimate, estimationMode);
+  const productMatches = matchProducts(profile);
+  const matchReport = addProductIdsToReport(buildCustomerMatchReport(profile, productMatches), productMatches);
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -166,6 +230,45 @@ function normalizeLead(input) {
     ...lead,
     estimate,
     aiInsight,
+    profile,
+    productMatches,
+    matchReport,
+    ruleVersion: matchReport.ruleVersion,
+  };
+}
+
+function publicProfile(profile) {
+  const { raw: _raw, ...safeProfile } = profile;
+  return safeProfile;
+}
+
+function publicEstimatedAmount(estimatedAmount) {
+  if (!estimatedAmount || typeof estimatedAmount !== "object") return null;
+  const { kind, currency, min, max, note } = estimatedAmount;
+  return { kind, currency, min, max, note };
+}
+
+function publicProductMatch(match) {
+  return {
+    productId: match.productId,
+    status: match.status,
+    rank: match.rank,
+    estimatedAmount: publicEstimatedAmount(match.estimatedAmount),
+    ruleVersion: match.ruleVersion,
+  };
+}
+
+function publicAiInsight(aiInsight) {
+  const { priority: _priority, ...safeInsight } = aiInsight;
+  return safeInsight;
+}
+
+function publicLead(lead) {
+  return {
+    ...lead,
+    profile: publicProfile(lead.profile),
+    productMatches: lead.productMatches.map(publicProductMatch),
+    aiInsight: publicAiInsight(lead.aiInsight),
   };
 }
 
@@ -173,7 +276,67 @@ function getLeadValue(lead, key) {
   return key.split(".").reduce((value, part) => value?.[part], lead) ?? "";
 }
 
+function getPrimaryMatch(lead) {
+  return lead.productMatches?.find((match) => match.rank === 1) ?? null;
+}
+
+function getProductName(productId) {
+  return getProductById(productId)?.name ?? productId ?? "";
+}
+
+function formatMatchStatus(status) {
+  return {
+    eligible: "符合准入",
+    needs_information: "待补充资料",
+    ineligible: "暂不匹配",
+  }[status] ?? status ?? "";
+}
+
+function formatAmountRange(estimatedAmount) {
+  if (!estimatedAmount || typeof estimatedAmount !== "object") return "";
+  const { min, max, note } = estimatedAmount;
+  if (Number.isFinite(min) && Number.isFinite(max)) {
+    return min === max ? String(min) : `${min} - ${max}`;
+  }
+  return note ?? "";
+}
+
+function formatMatchingValue(lead, key) {
+  const primaryMatch = getPrimaryMatch(lead);
+  switch (key) {
+    case "matching.primaryProduct":
+      return lead.matchReport?.primary?.name ?? getProductName(primaryMatch?.productId);
+    case "matching.alternatives":
+      return lead.matchReport?.alternatives?.map((product) => product.name).filter(Boolean).join("；") ?? "";
+    case "matching.status":
+      return primaryMatch == null ? "无推荐" : formatMatchStatus(primaryMatch.status);
+    case "matching.fitScore":
+      return Number.isFinite(primaryMatch?.fitScore) ? `${primaryMatch.fitScore} 分` : "";
+    case "matching.confidence":
+      return Number.isFinite(primaryMatch?.confidence) ? `${primaryMatch.confidence}%` : "";
+    case "matching.ruleVersion":
+      return lead.ruleVersion ?? primaryMatch?.ruleVersion ?? "";
+    case "matching.amountRange":
+      return formatAmountRange(primaryMatch?.estimatedAmount);
+    case "matching.currency":
+      return primaryMatch?.estimatedAmount?.currency ?? lead.matchReport?.primary?.currency ?? "";
+    case "matching.missingFields":
+      return primaryMatch?.missingFields?.join("；") ?? "";
+    case "matching.failedRules":
+      return (lead.productMatches ?? []).flatMap((match) => (
+        (match.failedRules ?? []).map((rule) => (
+          `${getProductName(match.productId)}：${rule.internalReason ?? rule.message ?? rule.id ?? "未通过"}`
+        ))
+      )).join("；");
+    case "matching.advisorNextStep":
+      return lead.aiInsight?.nextStep ?? "";
+    default:
+      return "";
+  }
+}
+
 function formatLeadValue(lead, key) {
+  if (key.startsWith("matching.")) return formatMatchingValue(lead, key);
   const value = getLeadValue(lead, key);
   if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
   if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
@@ -316,7 +479,37 @@ function buildAdminPage() {
       return username && password ? { Authorization: "Basic " + btoa(username + ":" + password) } : null;
     };
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const primaryMatchFor = (lead) => (lead.productMatches || []).find((match) => match.rank === 1) || null;
+    const productNameFor = (lead, productId) => {
+      const products = [lead.matchReport && lead.matchReport.primary].concat((lead.matchReport && lead.matchReport.alternatives) || []).filter(Boolean);
+      const product = products.find((item) => item.productId === productId);
+      return (product && product.name) || productId || "";
+    };
+    const formatMatchStatus = (status) => ({ eligible: "符合准入", needs_information: "待补充资料", ineligible: "暂不匹配" }[status] || status || "");
+    const formatAmountRange = (amount) => {
+      if (!amount || typeof amount !== "object") return "";
+      if (Number.isFinite(amount.min) && Number.isFinite(amount.max)) {
+        return amount.min === amount.max ? String(amount.min) : amount.min + " - " + amount.max;
+      }
+      return amount.note || "";
+    };
+    const formatMatchingValue = (lead, key) => {
+      const primaryMatch = primaryMatchFor(lead);
+      if (key === "matching.primaryProduct") return (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.name) || productNameFor(lead, primaryMatch && primaryMatch.productId);
+      if (key === "matching.alternatives") return (((lead.matchReport && lead.matchReport.alternatives) || []).map((product) => product.name).filter(Boolean).join("；"));
+      if (key === "matching.status") return primaryMatch ? formatMatchStatus(primaryMatch.status) : "无推荐";
+      if (key === "matching.fitScore") return primaryMatch && Number.isFinite(primaryMatch.fitScore) ? primaryMatch.fitScore + " 分" : "";
+      if (key === "matching.confidence") return primaryMatch && Number.isFinite(primaryMatch.confidence) ? primaryMatch.confidence + "%" : "";
+      if (key === "matching.ruleVersion") return lead.ruleVersion || (primaryMatch && primaryMatch.ruleVersion) || "";
+      if (key === "matching.amountRange") return formatAmountRange(primaryMatch && primaryMatch.estimatedAmount);
+      if (key === "matching.currency") return (primaryMatch && primaryMatch.estimatedAmount && primaryMatch.estimatedAmount.currency) || (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.currency) || "";
+      if (key === "matching.missingFields") return primaryMatch ? (primaryMatch.missingFields || []).join("；") : "";
+      if (key === "matching.failedRules") return (lead.productMatches || []).flatMap((match) => (match.failedRules || []).map((rule) => productNameFor(lead, match.productId) + "：" + (rule.internalReason || rule.message || rule.id || "未通过"))).join("；");
+      if (key === "matching.advisorNextStep") return (lead.aiInsight && lead.aiInsight.nextStep) || "";
+      return "";
+    };
     const formatLeadValue = (lead, key) => {
+      if (key.startsWith("matching.")) return formatMatchingValue(lead, key);
       const value = key.split(".").reduce((current, part) => current && current[part], lead);
       if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
       if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : "";
@@ -471,7 +664,7 @@ async function serveStatic(request, response, url) {
   }
 }
 
-const server = createServer(async (request, response) => {
+async function handleRequest(request, response, { leadsFilePath }) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
   if (request.method === "OPTIONS") {
@@ -498,11 +691,11 @@ const server = createServer(async (request, response) => {
 
     if (url.pathname === "/api/leads" && request.method === "POST") {
       const body = await readBody(request);
-      const lead = normalizeLead(JSON.parse(body || "{}"));
-      const leads = await readLeads();
+      const lead = normalizeLead(parseJsonBody(body));
+      const leads = await readLeads(leadsFilePath);
       leads.unshift(lead);
-      await writeLeads(leads);
-      sendJson(response, 201, { ok: true, lead });
+      await writeLeads(leads, leadsFilePath);
+      sendJson(response, 201, { ok: true, lead: publicLead(lead) });
       return;
     }
 
@@ -511,7 +704,7 @@ const server = createServer(async (request, response) => {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
-      sendJson(response, 200, { leads: await readLeads() });
+      sendJson(response, 200, { leads: await readLeads(leadsFilePath) });
       return;
     }
 
@@ -520,7 +713,7 @@ const server = createServer(async (request, response) => {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
-      const leads = await readLeads();
+      const leads = await readLeads(leadsFilePath);
       const selectedLeads = getSelectedLeads(url, leads);
       if (selectedLeads.length === 0) {
         sendJson(response, 400, { error: "请选择客户信息后导出" });
@@ -537,11 +730,21 @@ const server = createServer(async (request, response) => {
 
     await serveStatic(request, response, url);
   } catch (error) {
+    if (error instanceof PublicInputError) {
+      sendJson(response, 400, { error: error.message, errors: error.errors });
+      return;
+    }
     sendJson(response, 500, { error: error.message || "服务器错误" });
   }
-});
+}
 
-await ensureStore();
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
-});
+export function createMeiouServer({ leadsFilePath = leadsFile } = {}) {
+  return createServer((request, response) => handleRequest(request, response, { leadsFilePath }));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  await ensureStore(leadsFile);
+  createMeiouServer().listen(port, "127.0.0.1", () => {
+    console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
+  });
+}
