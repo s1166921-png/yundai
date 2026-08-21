@@ -593,7 +593,7 @@ export function App() {
             简易版快速生成初步匹配；复杂版会按业务模式补充专项资料，形成更完整的融资准备结果。
           </p>
         </div>
-        <FinancingIntake onComplete={setCompletedLead} />
+        <FinancingIntake onComplete={setCompletedLead} onInvalidate={() => setCompletedLead(null)} />
         {completedLead && <FinancingMatchReport lead={completedLead} />}
       </section>
     </main>

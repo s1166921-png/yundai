@@ -4,10 +4,13 @@ import {
   getVisibleIntakeFields,
   validateIntakeStep,
 } from "../lib/matching/intakeSchema.js";
+import { invalidateIntakeResult } from "../lib/matching/intakeLifecycle.js";
+import { postJson } from "../lib/http/jsonRequest.js";
 
 const initialProfile = {
   businessModels: [],
   platformSites: [],
+  consentToDataUse: false,
 };
 
 const errorMapFrom = (errors) => errors.reduce((result, error) => {
@@ -152,6 +155,38 @@ function StandardField({ field, value, error, onChange, inputRef }) {
   );
 }
 
+function ConsentField({ field, value, error, onChange, inputRef }) {
+  const inputId = `intake-${field.key}`;
+  const noticeId = `${inputId}-notice`;
+  const describedBy = [noticeId, describedByFor(field, error)].filter(Boolean).join(" ");
+
+  return (
+    <section className={`intake-field consent-field ${error ? "has-error" : ""}`} aria-labelledby={`${noticeId}-title`}>
+      <div className="information-use-notice" id={noticeId}>
+        <h4 id={`${noticeId}-title`}>信息使用说明</h4>
+        <p>
+          您提交的联系人及企业经营数据将用于融资产品匹配和融资顾问后续跟进。匹配结果仅供融资准备参考，不构成授信或放款承诺。
+        </p>
+      </div>
+      <label className="consent-checkbox" htmlFor={inputId}>
+        <input
+          id={inputId}
+          ref={inputRef}
+          type="checkbox"
+          name={field.key}
+          checked={value === true}
+          onChange={(event) => onChange(field.key, event.target.checked, "consent")}
+          aria-describedby={describedBy}
+          aria-invalid={error ? "true" : undefined}
+          required
+        />
+        <span>{field.label}</span>
+      </label>
+      <FieldSupport field={field} error={error} />
+    </section>
+  );
+}
+
 function IntakeField({ field, value, error, onChange, inputRef }) {
   if (field.type === "checkboxes") {
     return <ChoiceField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
@@ -159,10 +194,13 @@ function IntakeField({ field, value, error, onChange, inputRef }) {
   if (field.type === "boolean") {
     return <BooleanField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
   }
+  if (field.type === "consent") {
+    return <ConsentField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
+  }
   return <StandardField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
 }
 
-export function FinancingIntake({ onComplete }) {
+export function FinancingIntake({ onComplete, onInvalidate }) {
   const [profile, setProfile] = useState(initialProfile);
   const [mode, setMode] = useState("simple");
   const [currentStep, setCurrentStep] = useState(1);
@@ -193,6 +231,7 @@ export function FinancingIntake({ onComplete }) {
   };
 
   const updateField = (key, value, type) => {
+    invalidateIntakeResult(onInvalidate, "field_change");
     setProfile((current) => {
       if (type !== "checkboxes") return { ...current, [key]: value };
       const selected = Array.isArray(current[key]) ? current[key] : [];
@@ -222,6 +261,7 @@ export function FinancingIntake({ onComplete }) {
 
   const changeMode = (nextMode) => {
     if (nextMode === mode) return;
+    invalidateIntakeResult(onInvalidate, "mode_change");
     setMode(nextMode);
     setCurrentStep(1);
     setErrors({});
@@ -267,21 +307,11 @@ export function FinancingIntake({ onComplete }) {
     }, { estimationMode: mode });
 
     setErrors({});
+    invalidateIntakeResult(onInvalidate, "submit_start");
     setStatus({ type: "loading", message: "正在提交经营信息并生成匹配结果..." });
 
     try {
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const responsePayload = await response.json();
-
-      if (!response.ok) {
-        const serverError = new Error(responsePayload.error || "提交失败，请稍后再试");
-        serverError.fields = responsePayload.errors;
-        throw serverError;
-      }
+      const responsePayload = await postJson("/api/leads", payload);
 
       const leadResponse = responsePayload.lead;
       setStatus({
@@ -290,6 +320,7 @@ export function FinancingIntake({ onComplete }) {
       });
       if (typeof onComplete === "function") onComplete(leadResponse);
     } catch (error) {
+      invalidateIntakeResult(onInvalidate, "submit_failure");
       const serverErrors = Array.isArray(error.fields)
         ? error.fields
           .filter((item) => visibleFields.some((field) => field.key === item.field))

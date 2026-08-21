@@ -101,6 +101,7 @@ const BOOLEAN_FIELDS = Object.freeze([
   "spouseCreditAuthorization",
   "controllerCreditAuthorization",
   "applicableGuarantee",
+  "consentToDataUse",
 ]);
 
 const TEXT_FIELDS = Object.freeze([
@@ -304,6 +305,7 @@ export function normalizeCustomerProfile(input = {}) {
     applicableGuarantee: asBoolean(source.applicableGuarantee),
     firstOrderMonthsAgo: asNumber(source.firstOrderMonthsAgo),
     participatingStoreOperatingDays: asNumber(source.participatingStoreOperatingDays),
+    consentToDataUse: asBoolean(source.consentToDataUse),
     raw: input,
   };
 }

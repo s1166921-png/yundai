@@ -270,6 +270,7 @@ function normalizeLead(input) {
       : requestedMode;
   const profile = normalizeCustomerProfile(input);
   const validation = validateCustomerProfile(profile, estimationMode);
+  const consentHasTypeError = validation.errors.some((error) => error.field === "consentToDataUse");
   const errors = [
     ...contactFields
       .filter((field) => !profile[field])
@@ -277,6 +278,9 @@ function normalizeLead(input) {
     ...validation.errors.map((error) => (
       error.field === "mode" ? { ...error, field: "estimationMode" } : error
     )),
+    ...(profile.consentToDataUse === true || consentHasTypeError
+      ? []
+      : [{ field: "consentToDataUse", message: "must be accepted" }]),
   ];
 
   if (errors.length > 0) {
@@ -306,12 +310,8 @@ function normalizeLead(input) {
     productMatches,
     matchReport,
     ruleVersion: matchReport.ruleVersion,
+    consentToDataUse: profile.consentToDataUse,
   };
-}
-
-function publicProfile(profile) {
-  const { raw: _raw, ...safeProfile } = profile;
-  return safeProfile;
 }
 
 function publicEstimatedAmount(estimatedAmount) {
@@ -330,17 +330,42 @@ function publicProductMatch(match) {
   };
 }
 
-function publicAiInsight(aiInsight) {
-  const { priority: _priority, ...safeInsight } = aiInsight;
-  return safeInsight;
+function publicReportProduct(product) {
+  if (!product || typeof product !== "object") return null;
+  return {
+    productId: product.productId,
+    institution: product.institution,
+    name: product.name,
+    currency: product.currency,
+    pricing: product.pricing,
+    term: product.term,
+    limit: product.limit,
+    estimatedAmount: publicEstimatedAmount(product.estimatedAmount),
+    whyMatched: Array.isArray(product.whyMatched) ? [...product.whyMatched] : [],
+  };
+}
+
+function publicMatchReport(report) {
+  return {
+    primary: publicReportProduct(report?.primary),
+    alternatives: Array.isArray(report?.alternatives)
+      ? report.alternatives.map(publicReportProduct).filter(Boolean)
+      : [],
+    missingDocuments: Array.isArray(report?.missingDocuments) ? [...report.missingDocuments] : [],
+    summary: report?.summary ?? "",
+    disclaimer: report?.disclaimer ?? "",
+    ruleVersion: report?.ruleVersion ?? null,
+  };
 }
 
 function publicLead(lead) {
   return {
-    ...lead,
-    profile: publicProfile(lead.profile),
+    id: lead.id,
+    createdAt: lead.createdAt,
+    estimationMode: lead.estimationMode,
     productMatches: lead.productMatches.map(publicProductMatch),
-    aiInsight: publicAiInsight(lead.aiInsight),
+    matchReport: publicMatchReport(lead.matchReport),
+    ruleVersion: lead.ruleVersion,
   };
 }
 

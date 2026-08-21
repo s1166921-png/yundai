@@ -107,8 +107,25 @@ test("simple mode keeps only base intake fields across all five steps", () => {
   assert.ok(keys.includes("primaryPlatformOrBuyerName"));
   assert.ok(keys.includes("annualRevenueRmb"));
   assert.ok(keys.includes("requestedAmount"));
+  assert.ok(keys.includes("consentToDataUse"));
   assert.ok(!keys.includes("singleStoreGmvUsd"));
   assert.ok(!keys.includes("acceptsAccountControl"));
+});
+
+test("final step requires explicit true data-use consent", () => {
+  const baseProfile = {
+    preferredCurrency: "rmb",
+    requestedAmount: "3000000",
+    fundUse: "采购备货",
+  };
+
+  for (const consentToDataUse of [undefined, false]) {
+    const errors = validateIntakeStep({ ...baseProfile, consentToDataUse }, "simple", 5);
+    assert.ok(errors.some((error) => error.key === "consentToDataUse"));
+  }
+
+  assert.ok(!validateIntakeStep({ ...baseProfile, consentToDataUse: true }, "simple", 5)
+    .some((error) => error.key === "consentToDataUse"));
 });
 
 test("step validation reports required visible fields and ignores hidden branches", () => {

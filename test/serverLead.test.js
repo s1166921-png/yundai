@@ -39,6 +39,7 @@ const completeAmazonScPayload = (overrides = {}) => ({
   acceptsAccountControl: true,
   preferredCurrency: "usd",
   preferredTermMonths: 3,
+  consentToDataUse: true,
   ...overrides,
 });
 
@@ -149,13 +150,45 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.ok(payload.lead.productMatches.filter((match) => match.rank != null).length <= 3);
   assert.match(payload.lead.ruleVersion, /^2026-/);
   assert.equal(payload.lead.estimationMode, "complex");
-  assert.equal(typeof payload.lead.estimate.score, "number");
-  assert.ok(payload.lead.aiInsight);
+  assert.equal(payload.lead.estimate, undefined);
+  assert.equal(payload.lead.aiInsight, undefined);
 
   const persistedLeads = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  assert.equal(typeof persistedLeads[0].estimate.score, "number");
   assert.equal(persistedLeads[0].profile.raw.qualifiedStoreCount, 1);
   assert.equal(persistedLeads[0].productMatches[0].inputSnapshot.raw.companyName, "Amazon SC Trading Co.");
   assert.equal(persistedLeads[0].ruleVersion, payload.lead.ruleVersion);
+});
+
+for (const [label, consentToDataUse] of [
+  ["missing", undefined],
+  ["false", false],
+]) {
+  test(`POST /api/leads rejects ${label} data-use consent`, async (t) => {
+    const { url } = await startTestServer(t);
+    const response = await postLead(url, completeAmazonScPayload({ consentToDataUse }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.ok(payload.errors.some((error) => error.field === "consentToDataUse"));
+    assert.equal(payload.lead, undefined);
+    const adminResponse = await fetch(`${url}/api/leads`, {
+      headers: { Authorization: adminAuthorization },
+    });
+    assert.deepEqual((await adminResponse.json()).leads, []);
+  });
+}
+
+test("POST /api/leads persists accepted data-use consent as a canonical boolean", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({ consentToDataUse: true }));
+  const payload = await response.json();
+  const persistedLead = JSON.parse(await readFile(leadsFilePath, "utf8"))[0];
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.lead.consentToDataUse, undefined);
+  assert.equal(persistedLead.consentToDataUse, true);
+  assert.equal(persistedLead.profile.consentToDataUse, true);
 });
 
 test("POST /api/leads returns field-level 400 errors for missing and unknown values", async (t) => {
@@ -166,6 +199,7 @@ test("POST /api/leads returns field-level 400 errors for missing and unknown val
     contactName: "",
     phone: null,
     entityRegion: "moon",
+    consentToDataUse: true,
   });
   const payload = await response.json();
 
@@ -283,8 +317,15 @@ test("POST /api/leads keeps internal matching and advisor evidence out of the pu
   const serialized = JSON.stringify(payload);
 
   assert.equal(response.status, 201);
-  assert.equal(payload.lead.profile.raw, undefined);
-  assert.doesNotMatch(serialized, /"(?:fitScore|confidence|failedRules|internalReason|inputSnapshot|formulaKey|priority)"/);
+  assert.deepEqual(Object.keys(payload.lead).sort(), [
+    "createdAt",
+    "estimationMode",
+    "id",
+    "matchReport",
+    "productMatches",
+    "ruleVersion",
+  ]);
+  assert.doesNotMatch(serialized, /"(?:score|rawScore|debtPenalty|breakdown|estimate|fitScore|confidence|failedRules|internalReason|inputSnapshot|formulaKey|priority)"/);
   for (const match of payload.lead.productMatches) {
     assert.deepEqual(Object.keys(match).sort(), [
       "estimatedAmount",

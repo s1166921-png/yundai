@@ -508,6 +508,14 @@ const INTAKE_FIELDS = Object.freeze([
     requiredFor: COMPLEX_MODE,
     visibleWhen: complexBusinessModels("amazon_vc", "b2b_supermarket"),
   }),
+  field({
+    key: "consentToDataUse",
+    step: 5,
+    label: "我已了解并同意上述信息使用说明",
+    type: "consent",
+    requiredFor: BOTH_MODES,
+    help: "提交前需要明确勾选同意。",
+  }),
 ]);
 
 const isEmpty = (value) => (
@@ -535,6 +543,10 @@ export function validateIntakeStep(profile = {}, mode = "simple", step) {
 
   for (const fieldDefinition of fields) {
     const value = profile[fieldDefinition.key];
+    if (fieldDefinition.key === "consentToDataUse" && value !== true) {
+      errors.push(fieldError(fieldDefinition, "请勾选同意信息使用说明"));
+      continue;
+    }
     if (isRequired(fieldDefinition, mode) && isEmpty(value)) {
       errors.push(fieldError(fieldDefinition, `请填写${fieldDefinition.label}`));
       continue;
