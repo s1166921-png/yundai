@@ -15,7 +15,22 @@ const ENUM_VALUES = Object.freeze({
   foreignExchangeClassification: Object.freeze(["a", "b", "c"]),
   amazonAccountStatus: Object.freeze(["normal", "abnormal"]),
   preferredCurrency: Object.freeze(["rmb", "usd"]),
+  applicantRole: Object.freeze(["法人", "第一大自然人股东", "个体工商户负责人"]),
+  taxRecordAndInvoiceCustomerTier: Object.freeze(["tax_invoice", "non_tax_invoice"]),
 });
+
+const RATING_VALUES = Object.freeze([
+  "5C",
+  "5C+",
+  "5B",
+  "5B+",
+  "5A",
+  "5A+",
+  "6A",
+  "6A+",
+  "6AA",
+  "6AAA",
+]);
 
 const MONEY_CURRENCIES = Object.freeze({
   singleStoreGmv: "USD",
@@ -28,6 +43,8 @@ const MONEY_CURRENCIES = Object.freeze({
   accountsReceivableBalance: "USD",
   annualRevenue: "RMB",
   annualNetProfit: "RMB",
+  taxInvoiceAmount: "RMB",
+  collectionsLast12Months: "RMB",
   totalApprovedCredit: "RMB",
   loanBalance: "RMB",
   requestedAmount: Object.freeze({ rmb: "RMB", usd: "USD", default: "RMB" }),
@@ -48,6 +65,7 @@ const NON_NEGATIVE_NUMBER_FIELDS = Object.freeze([
   "controllerIndustryExperienceYears",
   "platformHistoryMonths",
   "storeCount",
+  "qualifiedStoreCount",
   "amazonAhrScore",
   "fbaInventoryTurnoverCount",
   "daysSinceLatestImportExport",
@@ -56,6 +74,10 @@ const NON_NEGATIVE_NUMBER_FIELDS = Object.freeze([
   "averagePaymentTermDays",
   "creditBankCount",
   "preferredTermMonths",
+  "settlementAccountOpenedMonths",
+  "creditExposureToNetAssets",
+  "firstOrderMonthsAgo",
+  "participatingStoreOperatingDays",
 ]);
 
 const BOOLEAN_FIELDS = Object.freeze([
@@ -70,6 +92,31 @@ const BOOLEAN_FIELDS = Object.freeze([
   "hasAbnormalOperations",
   "acceptsAccountControl",
   "acceptsReceivablesAssignment",
+  "settlementAccountFlowNormal",
+  "hasRiskWarning",
+  "isOnAmlBlacklist",
+  "hasAdverseCreditStatus",
+  "financialStatementsContinuous",
+  "controllerStatusNormal",
+  "spouseCreditAuthorization",
+  "controllerCreditAuthorization",
+  "applicableGuarantee",
+]);
+
+const TEXT_FIELDS = Object.freeze([
+  "companyName",
+  "contactName",
+  "phone",
+  "registeredProvince",
+  "registeredCity",
+  "industry",
+  "primaryPlatformOrBuyerName",
+  "customsCreditClassification",
+  "buyerName",
+  "buyerCountry",
+  "buyerPlatformType",
+  "fundUse",
+  "preferredRepaymentMethod",
 ]);
 
 const asText = (value) => {
@@ -104,6 +151,8 @@ const asEnum = (value, allowedValues) => {
   return normalized;
 };
 
+const asRating = (value) => asText(value)?.toUpperCase() ?? null;
+
 const asEnumList = (value, allowedValues) => {
   if (value == null || value === "") return [];
   const values = Array.isArray(value) ? value : [value];
@@ -113,6 +162,21 @@ const asEnumList = (value, allowedValues) => {
 };
 
 const asMoney = (value, currency) => ({ amount: asNumber(value), currency });
+
+const asInputMoney = (source, amountField, structuredField, currency) => {
+  if (Object.hasOwn(source, amountField)) return asMoney(source[amountField], currency);
+  const structuredValue = source[structuredField];
+  if (structuredValue == null) return asMoney(null, currency);
+  if (typeof structuredValue !== "object" || Array.isArray(structuredValue)) {
+    return { amount: Number.NaN, currency };
+  }
+  return {
+    amount: asNumber(structuredValue.amount),
+    currency: structuredValue.currency == null
+      ? currency
+      : String(structuredValue.currency).trim().toUpperCase(),
+  };
+};
 
 const hasInvalidEnumValue = (value, allowedValues) => (
   value != null && !allowedValues.includes(value)
@@ -149,6 +213,7 @@ export function normalizeCustomerProfile(input = {}) {
     platformSites: asEnumList(source.platformSites, ENUM_VALUES.platformSites),
     platformHistoryMonths: asNumber(source.platformHistoryMonths),
     storeCount: asNumber(source.storeCount),
+    qualifiedStoreCount: asNumber(source.qualifiedStoreCount),
     selfOperatedImportExport: asBoolean(source.selfOperatedImportExport),
     hasImportExportLicense: asBoolean(source.hasImportExportLicense),
 
@@ -183,7 +248,17 @@ export function normalizeCustomerProfile(input = {}) {
 
     annualRevenue: asMoney(source.annualRevenueRmb, "RMB"),
     annualNetProfit: asMoney(source.annualNetProfitRmb, "RMB"),
-    taxRecordAndInvoiceCustomerTier: asText(source.taxRecordAndInvoiceCustomerTier),
+    taxInvoiceAmount: asInputMoney(source, "taxInvoiceAmountRmb", "taxInvoiceAmount", "RMB"),
+    collectionsLast12Months: asInputMoney(
+      source,
+      "collectionsLast12MonthsRmb",
+      "collectionsLast12Months",
+      "RMB",
+    ),
+    taxRecordAndInvoiceCustomerTier: asEnum(
+      source.taxRecordAndInvoiceCustomerTier,
+      ENUM_VALUES.taxRecordAndInvoiceCustomerTier,
+    ),
     assetLiabilityRatioPercent: asNumber(source.assetLiabilityRatioPercent),
     coreAssetLiabilityRatioPercent: asNumber(source.coreAssetLiabilityRatioPercent),
     twoYearSalesDeclinePercent: asNumber(source.twoYearSalesDeclinePercent),
@@ -202,6 +277,23 @@ export function normalizeCustomerProfile(input = {}) {
     preferredRepaymentMethod: asText(source.preferredRepaymentMethod),
     acceptsAccountControl: asBoolean(source.acceptsAccountControl),
     acceptsReceivablesAssignment: asBoolean(source.acceptsReceivablesAssignment),
+
+    applicantRole: asEnum(source.applicantRole, ENUM_VALUES.applicantRole),
+    settlementAccountOpenedMonths: asNumber(source.settlementAccountOpenedMonths),
+    settlementAccountFlowNormal: asBoolean(source.settlementAccountFlowNormal),
+    companyCreditRating: asRating(source.companyCreditRating),
+    internalBankRating: asRating(source.internalBankRating),
+    creditExposureToNetAssets: asNumber(source.creditExposureToNetAssets),
+    hasRiskWarning: asBoolean(source.hasRiskWarning),
+    isOnAmlBlacklist: asBoolean(source.isOnAmlBlacklist),
+    hasAdverseCreditStatus: asBoolean(source.hasAdverseCreditStatus),
+    financialStatementsContinuous: asBoolean(source.financialStatementsContinuous),
+    controllerStatusNormal: asBoolean(source.controllerStatusNormal),
+    spouseCreditAuthorization: asBoolean(source.spouseCreditAuthorization),
+    controllerCreditAuthorization: asBoolean(source.controllerCreditAuthorization),
+    applicableGuarantee: asBoolean(source.applicableGuarantee),
+    firstOrderMonthsAgo: asNumber(source.firstOrderMonthsAgo),
+    participatingStoreOperatingDays: asNumber(source.participatingStoreOperatingDays),
     raw: input,
   };
 }
@@ -218,14 +310,31 @@ export function validateCustomerProfile(profile, mode) {
     return { valid: false, errors };
   }
 
+  const source = profile.raw;
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    for (const field of TEXT_FIELDS) {
+      if (source[field] != null && typeof source[field] !== "string") {
+        errors.push(validationError(field, "must be text"));
+      }
+    }
+  }
+
   for (const [field, allowedValues] of Object.entries({
     entityRegion: ENUM_VALUES.entityRegion,
     entityType: ENUM_VALUES.entityType,
     foreignExchangeClassification: ENUM_VALUES.foreignExchangeClassification,
     amazonAccountStatus: ENUM_VALUES.amazonAccountStatus,
     preferredCurrency: ENUM_VALUES.preferredCurrency,
+    applicantRole: ENUM_VALUES.applicantRole,
+    taxRecordAndInvoiceCustomerTier: ENUM_VALUES.taxRecordAndInvoiceCustomerTier,
   })) {
     if (hasInvalidEnumValue(profile[field], allowedValues)) {
+      errors.push(validationError(field, "contains an unknown value"));
+    }
+  }
+
+  for (const field of ["companyCreditRating", "internalBankRating"]) {
+    if (hasInvalidEnumValue(profile[field], RATING_VALUES)) {
       errors.push(validationError(field, "contains an unknown value"));
     }
   }

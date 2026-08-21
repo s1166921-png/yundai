@@ -65,7 +65,7 @@ test("missing documents use the fixed field map, deduplicate, and stop at five",
       "allStoreRepayments.amount",
       "annualRevenue.amount",
       "acceptsAccountControl",
-      "raw.participatingStoreOperatingDays",
+      "participatingStoreOperatingDays",
     ],
   }]);
 
@@ -78,11 +78,11 @@ test("missing documents use the fixed field map, deduplicate, and stop at five",
   ]);
 });
 
-test("missing-document map covers raw and percentage rule fields", () => {
+test("missing-document map covers canonical and percentage rule fields", () => {
   const report = buildCustomerMatchReport(profileFixture, [{
     ...matchFixture[0],
     status: "needs_information",
-    missingFields: ["raw.applicantRole", "importExportRevenueSharePercent"],
+    missingFields: ["applicantRole", "importExportRevenueSharePercent"],
   }]);
 
   assert.deepEqual(report.missingDocuments, [

@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PRODUCT_CATALOG, PRODUCT_IDS, getProductById } from "../src/lib/matching/productCatalog.js";
+import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
+
+function configuredProfilePaths(rule) {
+  const paths = [rule.field];
+  for (const [key, value] of Object.entries(rule.value ?? {})) {
+    if (key.endsWith("Field") && typeof value === "string") paths.push(value);
+    if (["fields", "requiresAllTruthy"].includes(key) && Array.isArray(value)) {
+      for (const item of value) paths.push(typeof item === "string" ? item : item.field);
+    }
+  }
+  return paths.filter(Boolean);
+}
 
 test("catalog exposes all seven unique, versioned products", () => {
   assert.deepEqual(PRODUCT_IDS, [
@@ -19,6 +31,19 @@ test("catalog exposes all seven unique, versioned products", () => {
     assert.ok(product.ruleSet.length > 0);
   }
   assert.equal(getProductById("linklogis-amazon-sc").currency, "USD");
+});
+
+test("every catalog and custom-evaluator input uses a canonical customer profile field", () => {
+  const canonicalFields = new Set(Object.keys(normalizeCustomerProfile({})));
+  const configuredPaths = PRODUCT_CATALOG.flatMap((product) => (
+    product.ruleSet.flatMap(configuredProfilePaths)
+  ));
+
+  assert.deepEqual(configuredPaths.filter((field) => field.startsWith("raw.")), []);
+  assert.deepEqual(
+    configuredPaths.filter((field) => !canonicalFields.has(field.split(".")[0])),
+    [],
+  );
 });
 
 test("tax-loan supplementary authorizations apply as hard requirements from 500,000 RMB", () => {

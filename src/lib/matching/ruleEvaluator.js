@@ -53,7 +53,7 @@ const companyAgeOrRating = (rule, profile, actual) => {
 const conditionalAllTruthy = (rule, profile, actual) => {
   if (isUnknown(actual) || !hasRequiredCurrency(rule, profile)) return "unknown";
   if (actual < rule.value.whenAtLeast) return "passed";
-  const values = rule.value.requiresAllTruthy.map((field) => profile[field] ?? profile.raw?.[field]);
+  const values = rule.value.requiresAllTruthy.map((field) => profile[field]);
   if (values.some((value) => value === false)) return "failed";
   return values.some(isUnknown) ? "unknown" : "passed";
 };

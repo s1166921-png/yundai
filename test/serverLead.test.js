@@ -1,14 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, readdir, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createMeiouServer } from "../server/index.mjs";
 
-const adminAuthorization = `Basic ${Buffer.from(
-  `${process.env.ADMIN_USERNAME || "admin"}:${process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || "meiou2026"}`,
-).toString("base64")}`;
+const serverEntryPath = fileURLToPath(new URL("../server/index.mjs", import.meta.url));
+
+const testAdminCredentials = Object.freeze({
+  username: "integration-admin",
+  password: "integration-password",
+});
+
+const basicAuthorization = (username, password) => (
+  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
+);
+
+const adminAuthorization = basicAuthorization(
+  testAdminCredentials.username,
+  testAdminCredentials.password,
+);
 
 const completeAmazonScPayload = (overrides = {}) => ({
   estimationMode: "complex",
@@ -28,10 +42,14 @@ const completeAmazonScPayload = (overrides = {}) => ({
   ...overrides,
 });
 
-async function startTestServer(t) {
+async function startTestServer(t, options = {}) {
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "meiou-leads-"));
   const leadsFilePath = path.join(temporaryDirectory, "leads.json");
-  const server = createMeiouServer({ leadsFilePath });
+  const server = createMeiouServer({
+    leadsFilePath,
+    adminCredentials: testAdminCredentials,
+    ...options,
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
 
@@ -57,6 +75,69 @@ async function postLead(url, payload = completeAmazonScPayload()) {
     body: JSON.stringify(payload),
   });
 }
+
+test("createMeiouServer authenticates only the explicitly injected credentials", async (t) => {
+  const { url } = await startTestServer(t);
+  const explicitResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const oldFallbackResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: basicAuthorization("admin", "meiou2026") },
+  });
+
+  assert.equal(explicitResponse.status, 200);
+  assert.equal(oldFallbackResponse.status, 401);
+});
+
+test("a server constructed without credentials cannot authenticate admin requests", async (t) => {
+  const { url } = await startTestServer(t, { adminCredentials: null });
+  const explicitResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const oldFallbackResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: basicAuthorization("admin", "meiou2026") },
+  });
+
+  assert.equal(explicitResponse.status, 401);
+  assert.equal(oldFallbackResponse.status, 401);
+});
+
+test("direct server startup fails clearly when required production credentials are absent", async () => {
+  const environment = { ...process.env };
+  delete environment.MEIOU_ADMIN_USER;
+  delete environment.MEIOU_ADMIN_PASSWORD;
+  environment.ADMIN_USERNAME = "ignored-legacy-user";
+  environment.ADMIN_PASSWORD = "ignored-legacy-password";
+  environment.ADMIN_TOKEN = "ignored-legacy-token";
+  const child = spawn(process.execPath, [serverEntryPath], {
+    env: environment,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const exitResult = once(child, "exit").then(([code, signal]) => ({ code, signal }));
+  let timeoutId;
+  const timeoutResult = new Promise((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), 1000);
+  });
+  const result = await Promise.race([
+    exitResult,
+    timeoutResult,
+  ]);
+  clearTimeout(timeoutId);
+
+  if (result == null) {
+    child.kill("SIGTERM");
+    await exitResult;
+    assert.fail("direct startup did not fail when production credentials were absent");
+  }
+  assert.equal(result.code, 1);
+  assert.equal(result.signal, null);
+  assert.match(stderr, /MEIOU_ADMIN_USER and MEIOU_ADMIN_PASSWORD are required/);
+});
 
 test("POST /api/leads matches a complete Amazon SC profile and persists audit evidence", async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
@@ -97,6 +178,67 @@ test("POST /api/leads returns field-level 400 errors for missing and unknown val
   ]);
 });
 
+test("POST /api/leads rejects non-text contact values", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({
+    contactName: { value: "Ada Chen" },
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.ok(payload.errors.some((error) => error.field === "contactName"));
+});
+
+test("POST /api/leads rejects negative qualified store counts", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({
+    qualifiedStoreCount: -1,
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.ok(payload.errors.some((error) => error.field === "qualifiedStoreCount"));
+});
+
+test("POST /api/leads rejects unknown applicant roles and ratings", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({
+    applicantRole: "代理顾问",
+    companyCreditRating: "7Z",
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.ok(payload.errors.some((error) => error.field === "applicantRole"));
+  assert.ok(payload.errors.some((error) => error.field === "companyCreditRating"));
+});
+
+test("POST /api/leads rejects malformed rating and raw-rule boolean values", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({
+    internalBankRating: { level: "6A" },
+    settlementAccountFlowNormal: "sometimes",
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.ok(payload.errors.some((error) => error.field === "internalBankRating"));
+  assert.ok(payload.errors.some((error) => error.field === "settlementAccountFlowNormal"));
+});
+
+test("POST /api/leads rejects negative matching-only month and money values", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeAmazonScPayload({
+    firstOrderMonthsAgo: -1,
+    taxInvoiceAmount: { amount: -100, currency: "RMB" },
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.ok(payload.errors.some((error) => error.field === "firstOrderMonthsAgo"));
+  assert.ok(payload.errors.some((error) => error.field === "taxInvoiceAmount"));
+});
+
 test("POST /api/leads returns a field-level 400 for malformed JSON", async (t) => {
   const { url } = await startTestServer(t);
   const response = await fetch(`${url}/api/leads`, {
@@ -128,6 +270,55 @@ test("POST /api/leads keeps internal matching and advisor evidence out of the pu
       "status",
     ]);
   }
+});
+
+test("concurrent POST /api/leads requests persist every accepted lead exactly once", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const expectedCompanyNames = Array.from(
+    { length: 12 },
+    (_, index) => `Concurrent Amazon SC ${String(index).padStart(2, "0")}`,
+  );
+  const responses = await Promise.all(expectedCompanyNames.map((companyName) => (
+    postLead(url, completeAmazonScPayload({ companyName }))
+  )));
+
+  assert.ok(responses.every((response) => response.status === 201));
+
+  const response = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const payload = await response.json();
+  const persistedNames = payload.leads.map((lead) => lead.companyName).sort();
+  const persistedIds = new Set(payload.leads.map((lead) => lead.id));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(persistedNames, expectedCompanyNames);
+  assert.equal(persistedIds.size, expectedCompanyNames.length);
+  assert.deepEqual(
+    (await readdir(path.dirname(leadsFilePath))).filter((entry) => entry.endsWith(".tmp")),
+    [],
+  );
+});
+
+test("a failed queued lead update does not poison the next POST", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  await mkdir(leadsFilePath);
+
+  const failedResponse = await postLead(url);
+  assert.equal(failedResponse.status, 500);
+
+  await rm(leadsFilePath, { recursive: true, force: true });
+  const recoveredResponse = await postLead(url, completeAmazonScPayload({
+    companyName: "Recovered Queue Co.",
+  }));
+  assert.equal(recoveredResponse.status, 201);
+
+  const response = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.leads.map((lead) => lead.companyName), ["Recovered Queue Co."]);
 });
 
 test("GET /api/leads and GET /api/leads/export reject unauthenticated requests", async (t) => {

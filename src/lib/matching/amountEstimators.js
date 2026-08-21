@@ -33,19 +33,19 @@ const resolveEstimatorKey = (product) => {
 };
 
 const moneyAmount = (profile, field, currency) => {
-  const value = profile?.[field] ?? profile?.raw?.[field];
+  const value = profile?.[field];
   return value?.currency === currency && Number.isFinite(value.amount) && value.amount >= 0
     ? value.amount
     : null;
 };
 
 const nonNegativeNumber = (profile, field) => {
-  const value = profile?.[field] ?? profile?.raw?.[field];
+  const value = profile?.[field];
   return Number.isFinite(value) && value >= 0 ? value : null;
 };
 
 const pinganLogistics = (profile) => {
-  const industry = INDUSTRY_COEFFICIENTS[profile?.industry ?? profile?.raw?.industry];
+  const industry = INDUSTRY_COEFFICIENTS[profile?.industry];
   const annualRevenue = moneyAmount(profile, "annualRevenue", "RMB");
   const taxInvoiceAmount = moneyAmount(profile, "taxInvoiceAmount", "RMB");
 

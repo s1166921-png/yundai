@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { createReadStream } from "node:fs";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateCreditEstimate } from "../src/lib/creditEstimator.js";
@@ -18,10 +18,9 @@ const dataDir = path.join(__dirname, "data");
 const leadsFile = path.join(dataDir, "leads.json");
 const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 8787);
-const adminUsername = process.env.ADMIN_USERNAME || "admin";
-const adminPassword = process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || "meiou2026";
 
 const contactFields = ["companyName", "contactName", "phone"];
+const leadUpdateQueues = new Map();
 
 const legacyBaseFields = [
   "companyName",
@@ -102,8 +101,13 @@ async function ensureStore(leadsFilePath = leadsFile) {
   await mkdir(path.dirname(leadsFilePath), { recursive: true });
   try {
     await stat(leadsFilePath);
-  } catch {
-    await writeFile(leadsFilePath, "[]", "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    try {
+      await writeFile(leadsFilePath, "[]", { encoding: "utf8", flag: "wx" });
+    } catch (writeError) {
+      if (writeError.code !== "EEXIST") throw writeError;
+    }
   }
 }
 
@@ -115,7 +119,41 @@ async function readLeads(leadsFilePath = leadsFile) {
 
 async function writeLeads(leads, leadsFilePath = leadsFile) {
   await ensureStore(leadsFilePath);
-  await writeFile(leadsFilePath, JSON.stringify(leads, null, 2), "utf8");
+  const temporaryFilePath = path.join(
+    path.dirname(leadsFilePath),
+    `.${path.basename(leadsFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    await writeFile(temporaryFilePath, JSON.stringify(leads, null, 2), "utf8");
+    await rename(temporaryFilePath, leadsFilePath);
+  } catch (error) {
+    try {
+      await unlink(temporaryFilePath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== "ENOENT") {
+        error.cause = cleanupError;
+      }
+    }
+    throw error;
+  }
+}
+
+function updateLeads(leadsFilePath, updater) {
+  const queueKey = path.resolve(leadsFilePath);
+  const previousOperation = leadUpdateQueues.get(queueKey) ?? Promise.resolve();
+  const operation = previousOperation.then(async () => {
+    const leads = await readLeads(queueKey);
+    const updatedLeads = await updater(leads);
+    await writeLeads(updatedLeads, queueKey);
+    return updatedLeads;
+  });
+  let queueTail;
+  const clearQueue = () => {
+    if (leadUpdateQueues.get(queueKey) === queueTail) leadUpdateQueues.delete(queueKey);
+  };
+  queueTail = operation.then(clearQueue, clearQueue);
+  leadUpdateQueues.set(queueKey, queueTail);
+  return operation;
 }
 
 function sendJson(response, statusCode, payload) {
@@ -155,13 +193,32 @@ function parseJsonBody(body) {
   return input;
 }
 
-function isAuthorized(request) {
+function normalizeAdminCredentials(credentials) {
+  if (!credentials || typeof credentials !== "object") return null;
+  const username = typeof credentials.username === "string" ? credentials.username.trim() : "";
+  const password = typeof credentials.password === "string" ? credentials.password : "";
+  return username && password ? { username, password } : null;
+}
+
+function requiredStartupAdminCredentials(environment = process.env) {
+  const credentials = normalizeAdminCredentials({
+    username: environment.MEIOU_ADMIN_USER,
+    password: environment.MEIOU_ADMIN_PASSWORD,
+  });
+  if (credentials == null) {
+    throw new Error("MEIOU_ADMIN_USER and MEIOU_ADMIN_PASSWORD are required to start the Meiou server");
+  }
+  return credentials;
+}
+
+function isAuthorized(request, adminCredentials) {
+  if (adminCredentials == null) return false;
   const authorization = request.headers.authorization || "";
   if (!authorization.startsWith("Basic ")) return false;
 
   try {
     const [username, password] = Buffer.from(authorization.slice(6), "base64").toString("utf8").split(":");
-    const expected = `${adminUsername}:${adminPassword}`;
+    const expected = `${adminCredentials.username}:${adminCredentials.password}`;
     const received = `${username || ""}:${password || ""}`;
     const expectedBuffer = Buffer.from(expected);
     const receivedBuffer = Buffer.from(received);
@@ -664,7 +721,7 @@ async function serveStatic(request, response, url) {
   }
 }
 
-async function handleRequest(request, response, { leadsFilePath }) {
+async function handleRequest(request, response, { leadsFilePath, adminCredentials }) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
   if (request.method === "OPTIONS") {
@@ -692,15 +749,13 @@ async function handleRequest(request, response, { leadsFilePath }) {
     if (url.pathname === "/api/leads" && request.method === "POST") {
       const body = await readBody(request);
       const lead = normalizeLead(parseJsonBody(body));
-      const leads = await readLeads(leadsFilePath);
-      leads.unshift(lead);
-      await writeLeads(leads, leadsFilePath);
+      await updateLeads(leadsFilePath, (leads) => [lead, ...leads]);
       sendJson(response, 201, { ok: true, lead: publicLead(lead) });
       return;
     }
 
     if (url.pathname === "/api/leads" && request.method === "GET") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, adminCredentials)) {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
@@ -709,7 +764,7 @@ async function handleRequest(request, response, { leadsFilePath }) {
     }
 
     if (url.pathname === "/api/leads/export" && request.method === "GET") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, adminCredentials)) {
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
@@ -738,13 +793,19 @@ async function handleRequest(request, response, { leadsFilePath }) {
   }
 }
 
-export function createMeiouServer({ leadsFilePath = leadsFile } = {}) {
-  return createServer((request, response) => handleRequest(request, response, { leadsFilePath }));
+export function createMeiouServer({ leadsFilePath = leadsFile, adminCredentials = null } = {}) {
+  const credentials = normalizeAdminCredentials(adminCredentials);
+  const resolvedLeadsFilePath = path.resolve(leadsFilePath);
+  return createServer((request, response) => handleRequest(request, response, {
+    leadsFilePath: resolvedLeadsFilePath,
+    adminCredentials: credentials,
+  }));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const adminCredentials = requiredStartupAdminCredentials();
   await ensureStore(leadsFile);
-  createMeiouServer().listen(port, "127.0.0.1", () => {
+  createMeiouServer({ adminCredentials }).listen(port, "127.0.0.1", () => {
     console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
   });
 }

@@ -77,7 +77,7 @@ test("WeBank applies AHR, percentage-point refund, and US-site boundaries", () =
     fbaInventoryTurnoverCount: 3,
     borrowerMatchesCollectionEntity: true,
     acceptsAccountControl: true,
-    raw: { participatingStoreOperatingDays: 180 },
+    participatingStoreOperatingDays: 180,
   });
 
   assert.equal(evaluateEligibility(product, profile({ ahr: 200 })).status, "ineligible");
@@ -105,15 +105,15 @@ test("CMB retains inclusive RMB revenue and maximum-four-bank boundaries", () =>
   assert.equal(evaluateRule(bankRule, { creditBankCount: 5 }).status, "failed");
 });
 
-test("CMB accepts a qualifying company credit rating from raw profile data", () => {
+test("CMB accepts qualifying canonical company and internal ratings", () => {
   const companyAgeRule = rule("cmb-guangdong-business-loan", "company-age-and-rating");
   const internalRatingRule = rule("cmb-guangdong-business-loan", "internal-rating-minimum");
 
-  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: { companyCreditRating: "5C+" } }).status, "passed");
-  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: { companyCreditRating: "5C" } }).status, "failed");
-  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: {} }).status, "unknown");
-  assert.equal(evaluateRule(internalRatingRule, { raw: { internalBankRating: "6A" } }).status, "passed");
-  assert.equal(evaluateRule(internalRatingRule, { raw: { internalBankRating: "5C+" } }).status, "failed");
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, companyCreditRating: "5C+" }).status, "passed");
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, companyCreditRating: "5C" }).status, "failed");
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36 }).status, "unknown");
+  assert.equal(evaluateRule(internalRatingRule, { internalBankRating: "6A" }).status, "passed");
+  assert.equal(evaluateRule(internalRatingRule, { internalBankRating: "5C+" }).status, "failed");
 });
 
 test("Amazon SC and B2B admit canonical company regions and require a limited company", () => {
@@ -136,7 +136,7 @@ test("RMB conditional rules do not compare USD request amounts", () => {
 
   assert.equal(evaluateRule(orangeRule, {
     requestedAmount: { amount: 500000, currency: "USD" },
-    raw: { spouseCreditAuthorization: false },
+    spouseCreditAuthorization: false,
   }).status, "unknown");
   assert.equal(evaluateRule(logisticsRule, {
     requestedAmount: { amount: 3000001, currency: "USD" },
@@ -163,7 +163,7 @@ test("CMB retains exact negatives and the controller-status exclusion", () => {
   assert.equal(cmb.ruleSet.some((item) => item.id === "no-major-litigation"), false);
   assert.equal(cmb.ruleSet.some((item) => item.id === "no-abnormal-operations"), false);
   assert.equal(cmb.ruleSet.some((item) => item.id === "no-current-overdue"), false);
-  assert.equal(evaluateRule(controllerStatusRule, { raw: { controllerStatusNormal: false } }).status, "failed");
+  assert.equal(evaluateRule(controllerStatusRule, { controllerStatusNormal: false }).status, "failed");
 });
 
 test("Ping An Orange accepts 24 company months and rejects applicant age 66", () => {
