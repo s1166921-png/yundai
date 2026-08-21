@@ -7,6 +7,7 @@ const rule = (productId, ruleId) => getProductById(productId).ruleSet.find((item
 
 const amazonScProfile = (gmv) => ({
   entityRegion: "mainland",
+  entityType: "limited_company",
   primaryPlatformOrBuyerName: "Amazon",
   singleStoreGmv: { amount: gmv, currency: "USD" },
   platformHistoryMonths: 13,
@@ -34,12 +35,18 @@ test("Amazon VC requires more than six history months with a US site and eligibl
 
   assert.equal(evaluateEligibility(product, profile(6)).status, "ineligible");
   assert.equal(evaluateEligibility(product, profile(7)).status, "eligible");
+  assert.equal(evaluateEligibility(product, {
+    ...profile(7),
+    acceptsNoa: null,
+    acceptsAccountControl: false,
+  }).status, "ineligible");
 });
 
 test("B2B factoring uses the USD annual-trade amount and strict boundary", () => {
   const product = getProductById("linklogis-b2b-factoring");
   const profile = (amount) => ({
     entityRegion: "other_overseas",
+    entityType: "limited_company",
     buyerTradingHistoryMonths: 13,
     annualB2bTrade: { amount, currency: "USD" },
     buyerCountry: "已列明准入国家",
@@ -96,6 +103,67 @@ test("CMB retains inclusive RMB revenue and maximum-four-bank boundaries", () =>
 
   assert.equal(evaluateRule(revenueRule, { annualRevenue: { amount: 10000000, currency: "RMB" } }).status, "passed");
   assert.equal(evaluateRule(bankRule, { creditBankCount: 5 }).status, "failed");
+});
+
+test("CMB accepts a qualifying company credit rating from raw profile data", () => {
+  const companyAgeRule = rule("cmb-guangdong-business-loan", "company-age-and-rating");
+  const internalRatingRule = rule("cmb-guangdong-business-loan", "internal-rating-minimum");
+
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: { companyCreditRating: "5C+" } }).status, "passed");
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: { companyCreditRating: "5C" } }).status, "failed");
+  assert.equal(evaluateRule(companyAgeRule, { companyAgeMonths: 36, raw: {} }).status, "unknown");
+  assert.equal(evaluateRule(internalRatingRule, { raw: { internalBankRating: "6A" } }).status, "passed");
+  assert.equal(evaluateRule(internalRatingRule, { raw: { internalBankRating: "5C+" } }).status, "failed");
+});
+
+test("Amazon SC and B2B admit canonical company regions and require a limited company", () => {
+  const regions = ["mainland", "hong_kong", "united_states", "other_overseas"];
+
+  for (const productId of ["linklogis-amazon-sc", "linklogis-b2b-factoring"]) {
+    const regionRule = rule(productId, "eligible-company-location");
+    const entityRule = rule(productId, "limited-company-entity");
+    for (const entityRegion of regions) {
+      assert.equal(evaluateRule(regionRule, { entityRegion }).status, "passed");
+    }
+    assert.equal(evaluateRule(entityRule, { entityType: "limited_company" }).status, "passed");
+    assert.equal(evaluateRule(entityRule, { entityType: "individual_business" }).status, "failed");
+  }
+});
+
+test("RMB conditional rules do not compare USD request amounts", () => {
+  const orangeRule = rule("pingan-orange-tax-loan", "additional-authorizations-over-500k");
+  const logisticsRule = rule("pingan-foreign-trade-logistics-loan", "additional-conditions-over-3m");
+
+  assert.equal(evaluateRule(orangeRule, {
+    requestedAmount: { amount: 500000, currency: "USD" },
+    raw: { spouseCreditAuthorization: false },
+  }).status, "unknown");
+  assert.equal(evaluateRule(logisticsRule, {
+    requestedAmount: { amount: 3000001, currency: "USD" },
+    taxRecordAndInvoiceCustomerTier: "tax_invoice",
+    companyAgeMonths: 60,
+  }).status, "unknown");
+});
+
+test("logistics treats only tax-invoice tiers as tax-invoice quality", () => {
+  const ruleDefinition = rule("pingan-foreign-trade-logistics-loan", "additional-conditions-over-3m");
+
+  assert.equal(evaluateRule(ruleDefinition, {
+    requestedAmount: { amount: 3000001, currency: "RMB" },
+    taxRecordAndInvoiceCustomerTier: "non_tax_invoice",
+    importExportRevenueSharePercent: 49,
+    companyAgeMonths: 60,
+  }).status, "failed");
+});
+
+test("CMB retains exact negatives and the controller-status exclusion", () => {
+  const cmb = getProductById("cmb-guangdong-business-loan");
+  const controllerStatusRule = rule("cmb-guangdong-business-loan", "controller-status-normal");
+
+  assert.equal(cmb.ruleSet.some((item) => item.id === "no-major-litigation"), false);
+  assert.equal(cmb.ruleSet.some((item) => item.id === "no-abnormal-operations"), false);
+  assert.equal(cmb.ruleSet.some((item) => item.id === "no-current-overdue"), false);
+  assert.equal(evaluateRule(controllerStatusRule, { raw: { controllerStatusNormal: false } }).status, "failed");
 });
 
 test("Ping An Orange accepts 24 company months and rejects applicant age 66", () => {

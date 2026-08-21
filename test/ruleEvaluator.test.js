@@ -90,3 +90,20 @@ test("custom evaluators are selected only by their internal names", () => {
   }
   assert.equal(evaluateRule({ field: "value", operator: "custom", value: { evaluator: "notProvided" } }, { value: true }).status, "failed");
 });
+
+test("custom composites inspect explicit failures when their anchor is unanswered", () => {
+  const rule = {
+    field: "acceptsNoa",
+    operator: "custom",
+    value: { evaluator: "allTruthy", fields: ["acceptsNoa", "acceptsAccountControl"] },
+  };
+
+  assert.equal(evaluateRule(rule, { acceptsNoa: null, acceptsAccountControl: false }).status, "failed");
+});
+
+test("prototype properties are not custom evaluators", () => {
+  const rule = { field: "value", operator: "custom", value: { evaluator: "constructor" } };
+
+  assert.equal(evaluateRule(rule, { value: true }).status, "failed");
+  assert.equal(evaluateRule({ ...rule, value: { evaluator: "toString" } }, { value: true }).status, "failed");
+});

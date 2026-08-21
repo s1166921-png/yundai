@@ -2,6 +2,24 @@ const readPath = (value, path) => path.split(".").reduce((current, key) => curre
 
 const isUnknown = (value) => value == null || (Array.isArray(value) && value.length === 0);
 
+const RATING_RANKS = Object.freeze({
+  "5C": 1,
+  "5C+": 2,
+  "5B": 3,
+  "5B+": 4,
+  "5A": 5,
+  "5A+": 6,
+  "6A": 7,
+  "6A+": 8,
+  "6AA": 9,
+  "6AAA": 10,
+});
+
+const hasRequiredCurrency = (rule, profile) => {
+  if (!rule.value.currencyField) return true;
+  return readPath(profile, rule.value.currencyField) === rule.value.requiredCurrency;
+};
+
 const allTruthy = (rule, profile) => {
   const values = rule.value.fields.map((field) => readPath(profile, field));
   if (values.some((value) => value === false)) return "failed";
@@ -14,21 +32,26 @@ const anyFieldEquals = (rule, profile) => {
   return values.some(({ actual }) => isUnknown(actual)) ? "unknown" : "failed";
 };
 
-const arrayIncludes = (rule, profile, actual) => (
-  Array.isArray(actual) && actual.includes(rule.value.value) ? "passed" : "failed"
-);
+const arrayIncludes = (rule, profile, actual) => {
+  if (isUnknown(actual)) return "unknown";
+  return Array.isArray(actual) && actual.includes(rule.value.value) ? "passed" : "failed";
+};
 
-const belowPercentage = (rule, profile, actual) => actual < rule.value.threshold ? "passed" : "failed";
+const belowPercentage = (rule, profile, actual) => isUnknown(actual) ? "unknown" : actual < rule.value.threshold ? "passed" : "failed";
 
-const abovePercentage = (rule, profile, actual) => actual > rule.value.threshold ? "failed" : "passed";
+const abovePercentage = (rule, profile, actual) => isUnknown(actual) ? "unknown" : actual > rule.value.threshold ? "failed" : "passed";
 
 const companyAgeOrRating = (rule, profile, actual) => {
+  if (isUnknown(actual)) return "unknown";
   if (actual >= rule.value.minimumMonths) return "passed";
   if (actual < rule.value.minimumMonthsWithRating) return "failed";
-  return "unknown";
+  const rating = readPath(profile, rule.value.ratingField);
+  if (isUnknown(rating)) return "unknown";
+  return RATING_RANKS[rating] >= RATING_RANKS[rule.value.minimumRating] ? "passed" : "failed";
 };
 
 const conditionalAllTruthy = (rule, profile, actual) => {
+  if (isUnknown(actual) || !hasRequiredCurrency(rule, profile)) return "unknown";
   if (actual < rule.value.whenAtLeast) return "passed";
   const values = rule.value.requiresAllTruthy.map((field) => profile[field] ?? profile.raw?.[field]);
   if (values.some((value) => value === false)) return "failed";
@@ -36,11 +59,13 @@ const conditionalAllTruthy = (rule, profile, actual) => {
 };
 
 const logisticsAdditionalConditions = (rule, profile, actual) => {
+  if (isUnknown(actual) || !hasRequiredCurrency(rule, profile)) return "unknown";
   if (actual <= rule.value.whenAbove) return "passed";
   const taxInvoiceQuality = readPath(profile, rule.value.taxInvoiceQualityField);
   const revenueShare = readPath(profile, rule.value.revenueShareField);
   const companyAge = readPath(profile, rule.value.companyAgeField);
-  const hasAlternative = taxInvoiceQuality != null || revenueShare >= rule.value.minimumRevenueShare;
+  const hasAlternative = taxInvoiceQuality === rule.value.qualifyingTaxInvoiceTier
+    || revenueShare >= rule.value.minimumRevenueShare;
 
   if (!hasAlternative && !isUnknown(taxInvoiceQuality) && !isUnknown(revenueShare)) return "failed";
   if (companyAge < rule.value.minimumCompanyAgeMonths) return "failed";
@@ -49,6 +74,7 @@ const logisticsAdditionalConditions = (rule, profile, actual) => {
 };
 
 const coreAssetLiability = (rule, profile, actual) => {
+  if (isUnknown(actual) || !hasRequiredCurrency(rule, profile)) return "unknown";
   const taxTier = readPath(profile, rule.value.nonTaxInvoiceField);
   const nonTaxInvoice = taxTier === rule.value.nonTaxInvoiceValue;
   const aboveAmount = actual > rule.value.whenAbove;
@@ -62,19 +88,25 @@ const coreAssetLiability = (rule, profile, actual) => {
 
 const logisticsDebtRatio = (rule, profile, actual) => {
   const { industry, taxRecordAndInvoiceCustomerTier: tier } = profile;
-  if (isUnknown(industry) || isUnknown(tier)) return "unknown";
+  if (isUnknown(actual) || isUnknown(industry) || isUnknown(tier)) return "unknown";
   const thresholds = tier === "tax_invoice" ? rule.value.taxInvoice : rule.value.nonTaxInvoice;
   const threshold = thresholds[industry];
   return threshold == null ? "failed" : actual <= threshold ? "passed" : "failed";
 };
 
-const notDisallowed = (rule, profile, actual) => rule.value.disallowed.includes(actual) ? "failed" : "passed";
+const notDisallowed = (rule, profile, actual) => isUnknown(actual) ? "unknown" : rule.value.disallowed.includes(actual) ? "failed" : "passed";
 
 const singleStoreHistory = (rule, profile, actual) => {
+  if (isUnknown(actual)) return "unknown";
   if (actual !== 1) return actual > 1 ? "passed" : "failed";
   const history = readPath(profile, rule.value.historyField);
   if (isUnknown(history)) return "unknown";
   return history > rule.value.minimumMonths ? "passed" : "failed";
+};
+
+const ratingAtLeast = (rule, profile, actual) => {
+  if (isUnknown(actual)) return "unknown";
+  return RATING_RANKS[actual] >= RATING_RANKS[rule.value.minimumRating] ? "passed" : "failed";
 };
 
 const CUSTOM_EVALUATORS = Object.freeze({
@@ -89,6 +121,7 @@ const CUSTOM_EVALUATORS = Object.freeze({
   logisticsAdditionalConditions,
   logisticsDebtRatio,
   notDisallowed,
+  ratingAtLeast,
   singleStoreHistory,
 });
 
@@ -112,11 +145,14 @@ export function evaluateRule(rule, profile = {}) {
   const actual = readPath(profile, rule.field);
   let status;
 
-  if (isUnknown(actual)) {
-    status = "unknown";
-  } else if (rule.operator === "custom") {
-    const evaluator = CUSTOM_EVALUATORS[rule.value?.evaluator];
+  if (rule.operator === "custom") {
+    const evaluatorName = rule.value?.evaluator;
+    const evaluator = Object.hasOwn(CUSTOM_EVALUATORS, evaluatorName)
+      ? CUSTOM_EVALUATORS[evaluatorName]
+      : undefined;
     status = evaluator ? evaluator(rule, profile, actual) : "failed";
+  } else if (isUnknown(actual)) {
+    status = "unknown";
   } else {
     status = evaluateStandard(rule.operator, actual, rule.value);
   }
