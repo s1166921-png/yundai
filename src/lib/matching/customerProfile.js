@@ -11,26 +11,27 @@ const ENUM_VALUES = Object.freeze({
     "wholesale_retail",
     "other",
   ]),
+  platformSites: Object.freeze(["united_states", "other"]),
   foreignExchangeClassification: Object.freeze(["a", "b", "c"]),
   amazonAccountStatus: Object.freeze(["normal", "abnormal"]),
   preferredCurrency: Object.freeze(["rmb", "usd"]),
 });
 
-const MONEY_FIELDS = Object.freeze([
-  "singleStoreGmv",
-  "allStoreSales",
-  "allStoreRepayments",
-  "averageMonthlyFbaInventoryValue",
-  "importExportAmountLast12Months",
-  "importExportAmountMonths13To24",
-  "annualB2bTrade",
-  "accountsReceivableBalance",
-  "annualRevenue",
-  "annualNetProfit",
-  "totalApprovedCredit",
-  "loanBalance",
-  "requestedAmount",
-]);
+const MONEY_CURRENCIES = Object.freeze({
+  singleStoreGmv: "USD",
+  allStoreSales: "RMB",
+  allStoreRepayments: "RMB",
+  averageMonthlyFbaInventoryValue: "USD",
+  importExportAmountLast12Months: "USD",
+  importExportAmountMonths13To24: "USD",
+  annualB2bTrade: "USD",
+  accountsReceivableBalance: "USD",
+  annualRevenue: "RMB",
+  annualNetProfit: "RMB",
+  totalApprovedCredit: "RMB",
+  loanBalance: "RMB",
+  requestedAmount: Object.freeze({ rmb: "RMB", usd: "USD", default: "RMB" }),
+});
 
 const PERCENTAGE_FIELDS = Object.freeze([
   "revenueGrowthPercent",
@@ -78,12 +79,13 @@ const asText = (value) => {
 };
 
 const asNumber = (value) => {
-  if (value == null || (typeof value === "string" && value.trim() === "")) return null;
-  try {
-    return Number(value);
-  } catch {
-    return Number.NaN;
-  }
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
+  if (typeof value !== "string") return Number.NaN;
+  const normalized = value.trim();
+  if (normalized === "") return null;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : Number.NaN;
 };
 
 const asBoolean = (value) => {
@@ -118,6 +120,11 @@ const hasInvalidEnumValue = (value, allowedValues) => (
 
 const validationError = (field, message) => ({ field, message });
 
+const expectedMoneyCurrency = (field, profile) => {
+  const currency = MONEY_CURRENCIES[field];
+  return typeof currency === "string" ? currency : currency[profile.preferredCurrency] ?? currency.default;
+};
+
 export function normalizeCustomerProfile(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const preferredCurrency = asEnum(source.preferredCurrency, ENUM_VALUES.preferredCurrency);
@@ -139,7 +146,7 @@ export function normalizeCustomerProfile(input = {}) {
 
     businessModels: asEnumList(source.businessModels, ENUM_VALUES.businessModels),
     primaryPlatformOrBuyerName: asText(source.primaryPlatformOrBuyerName),
-    platformSites: asEnumList(source.platformSites, []),
+    platformSites: asEnumList(source.platformSites, ENUM_VALUES.platformSites),
     platformHistoryMonths: asNumber(source.platformHistoryMonths),
     storeCount: asNumber(source.storeCount),
     selfOperatedImportExport: asBoolean(source.selfOperatedImportExport),
@@ -223,10 +230,15 @@ export function validateCustomerProfile(profile, mode) {
     }
   }
 
-  if (!Array.isArray(profile.businessModels)) {
-    errors.push(validationError("businessModels", "must be a list"));
-  } else if (profile.businessModels.some((value) => hasInvalidEnumValue(value, ENUM_VALUES.businessModels))) {
-    errors.push(validationError("businessModels", "contains an unknown value"));
+  for (const [field, allowedValues] of Object.entries({
+    businessModels: ENUM_VALUES.businessModels,
+    platformSites: ENUM_VALUES.platformSites,
+  })) {
+    if (!Array.isArray(profile[field])) {
+      errors.push(validationError(field, "must be a list"));
+    } else if (profile[field].some((value) => hasInvalidEnumValue(value, allowedValues))) {
+      errors.push(validationError(field, "contains an unknown value"));
+    }
   }
 
   for (const field of BOOLEAN_FIELDS) {
@@ -235,10 +247,11 @@ export function validateCustomerProfile(profile, mode) {
     }
   }
 
-  for (const field of MONEY_FIELDS) {
+  for (const field of Object.keys(MONEY_CURRENCIES)) {
     const money = profile[field];
-    if (!money || typeof money !== "object" || !["RMB", "USD"].includes(money.currency)) {
-      errors.push(validationError(field, "must be a money value with RMB or USD currency"));
+    const currency = expectedMoneyCurrency(field, profile);
+    if (!money || typeof money !== "object" || money.currency !== currency) {
+      errors.push(validationError(field, `must be a money value in ${currency}`));
       continue;
     }
     if (money.amount != null && (!Number.isFinite(money.amount) || money.amount < 0)) {

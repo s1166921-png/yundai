@@ -27,3 +27,46 @@ test("rejects invalid percentages and negative money", () => {
   assert.equal(result.valid, false);
   assert.deepEqual(result.errors.map((error) => error.field).sort(), ["annualRevenue", "refundRatePercent"]);
 });
+
+test("rejects malformed JSON values for numbers and money while leaving empty values unanswered", () => {
+  const profile = normalizeCustomerProfile({
+    companyAgeMonths: true,
+    refundRatePercent: [],
+    annualRevenueRmb: false,
+    annualNetProfitRmb: {},
+    platformHistoryMonths: "",
+    loanBalanceRmb: "",
+  });
+  const result = validateCustomerProfile(profile, "complex");
+
+  assert.ok(Number.isNaN(profile.companyAgeMonths));
+  assert.ok(Number.isNaN(profile.refundRatePercent));
+  assert.ok(Number.isNaN(profile.annualRevenue.amount));
+  assert.ok(Number.isNaN(profile.annualNetProfit.amount));
+  assert.equal(profile.platformHistoryMonths, null);
+  assert.equal(profile.loanBalance.amount, null);
+  assert.deepEqual(result.errors.map((error) => error.field).sort(), [
+    "annualNetProfit",
+    "annualRevenue",
+    "companyAgeMonths",
+    "refundRatePercent",
+  ]);
+});
+
+test("requires each canonical money field to retain its specified currency", () => {
+  const profile = normalizeCustomerProfile({ annualRevenueRmb: "100", singleStoreGmvUsd: "200" });
+  profile.annualRevenue = { amount: 100, currency: "USD" };
+  profile.singleStoreGmv = { amount: 200, currency: "RMB" };
+
+  const result = validateCustomerProfile(profile, "simple");
+
+  assert.deepEqual(result.errors.map((error) => error.field).sort(), ["annualRevenue", "singleStoreGmv"]);
+});
+
+test("normalizes known platform sites and rejects unknown platform site enums", () => {
+  const profile = normalizeCustomerProfile({ platformSites: ["UNITED_STATES", "other", "unknown"] });
+  const result = validateCustomerProfile(profile, "simple");
+
+  assert.deepEqual(profile.platformSites, ["united_states", "other", "unknown"]);
+  assert.deepEqual(result.errors.map((error) => error.field), ["platformSites"]);
+});
