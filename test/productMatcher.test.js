@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { GOLDEN_PROFILES } from "./fixtures/customerProfiles.js";
+import { PRODUCT_IDS } from "../src/lib/matching/productCatalog.js";
 import { matchProducts } from "../src/lib/matching/productMatcher.js";
+
+const isDeeplyFrozen = (value) => (
+  value === null
+  || typeof value !== "object"
+  || (Object.isFrozen(value) && Object.values(value).every(isDeeplyFrozen))
+);
 
 const completeAmazonScProfile = () => ({
   entityRegion: "mainland",
@@ -38,6 +46,7 @@ test("all products remain available while only the first three non-failures rece
   const matches = matchProducts({});
 
   assert.equal(matches.length, 7);
+  assert.ok(matches.every((match) => match.status === "needs_information"));
   assert.deepEqual(matches.filter((match) => match.rank != null).map((match) => match.rank), [1, 2, 3]);
   assert.deepEqual(matches.slice(0, 3).map((match) => match.productId), [
     "cmb-guangdong-business-loan",
@@ -80,3 +89,45 @@ test("fit score is bounded and reflects all catalog weighting dimensions", () =>
   assert.equal(complete.fitScore, 100);
   assert.ok(incomplete.fitScore >= 0 && incomplete.fitScore < complete.fitScore);
 });
+
+test("golden profiles name at least 20 explicit outcomes and cover every product", () => {
+  assert.ok(GOLDEN_PROFILES.length >= 20);
+  assert.ok(isDeeplyFrozen(GOLDEN_PROFILES), "golden fixtures must be recursively frozen");
+  assert.equal(new Set(GOLDEN_PROFILES.map(({ name }) => name)).size, GOLDEN_PROFILES.length);
+  assert.deepEqual(
+    [...new Set(GOLDEN_PROFILES.map(({ expectedPrimary }) => expectedPrimary).filter(Boolean))].sort(),
+    [...PRODUCT_IDS].sort(),
+  );
+  assert.ok(GOLDEN_PROFILES.some(({ expectedPrimary }) => expectedPrimary === null));
+
+  const allHardFailure = GOLDEN_PROFILES.find(({ name }) => name === "all-products-explicit-hard-failure");
+  assert.ok(allHardFailure, "an explicit all-product hard-failure fixture is required");
+  assert.deepEqual(
+    matchProducts(allHardFailure.profile)
+      .filter(({ status }) => status === "ineligible")
+      .map(({ productId }) => productId)
+      .sort(),
+    [...PRODUCT_IDS].sort(),
+  );
+});
+
+for (const { name, profile, expectedPrimary, expectedRankedPrefix } of GOLDEN_PROFILES) {
+  test(`golden profile: ${name}`, () => {
+    const beforeMatch = structuredClone(profile);
+    const first = matchProducts(profile);
+    const second = matchProducts(profile);
+    const ranked = first.filter(({ rank }) => rank != null);
+
+    assert.deepEqual(first, second, "matcher output must be deterministic");
+    assert.deepEqual(profile, beforeMatch, "matcher must not mutate golden profile input");
+    assert.ok(ranked.length <= 3, "customer output may rank at most three products");
+    assert.ok(ranked.every(({ status }) => status !== "ineligible"), "hard failures must not be recommended");
+    assert.equal(ranked[0]?.productId ?? null, expectedPrimary);
+    if (expectedRankedPrefix) {
+      assert.deepEqual(
+        ranked.slice(0, expectedRankedPrefix.length).map(({ productId }) => productId),
+        expectedRankedPrefix,
+      );
+    }
+  });
+}
