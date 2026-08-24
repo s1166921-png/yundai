@@ -208,6 +208,8 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const fieldRefs = useRef({});
   const pendingFocusKey = useRef(null);
+  const requestVersion = useRef(0);
+  const requestController = useRef(null);
 
   const visibleFields = useMemo(() => getVisibleIntakeFields(profile, mode), [profile, mode]);
   const stepFields = useMemo(
@@ -226,11 +228,23 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     }
   }, [currentStep, errors]);
 
+  useEffect(() => () => {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+  }, []);
+
+  const cancelPendingSubmission = () => {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+  };
+
   const registerField = (key) => (control) => {
     if (control) fieldRefs.current[key] = control;
   };
 
   const updateField = (key, value, type) => {
+    cancelPendingSubmission();
     invalidateIntakeResult(onInvalidate, "field_change");
     setProfile((current) => {
       if (type !== "checkboxes") return { ...current, [key]: value };
@@ -261,6 +275,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
 
   const changeMode = (nextMode) => {
     if (nextMode === mode) return;
+    cancelPendingSubmission();
     invalidateIntakeResult(onInvalidate, "mode_change");
     setMode(nextMode);
     setCurrentStep(1);
@@ -309,9 +324,14 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     setErrors({});
     invalidateIntakeResult(onInvalidate, "submit_start");
     setStatus({ type: "loading", message: "正在提交经营信息并生成匹配结果..." });
+    cancelPendingSubmission();
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    requestController.current = controller;
+    const submissionVersion = requestVersion.current;
 
     try {
-      const responsePayload = await postJson("/api/leads", payload);
+      const responsePayload = await postJson("/api/leads", payload, controller == null ? {} : { signal: controller.signal });
+      if (controller?.signal.aborted || submissionVersion !== requestVersion.current) return;
 
       const leadResponse = responsePayload.lead;
       setStatus({
@@ -320,6 +340,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       });
       if (typeof onComplete === "function") onComplete(leadResponse);
     } catch (error) {
+      if (controller?.signal.aborted || submissionVersion !== requestVersion.current || error.name === "AbortError") return;
       invalidateIntakeResult(onInvalidate, "submit_failure");
       const serverErrors = Array.isArray(error.fields)
         ? error.fields
@@ -331,6 +352,8 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
         focusErrors(serverErrors, firstInvalidField?.step ?? currentStep);
       }
       setStatus({ type: "error", message: error.message || "提交失败，请稍后再试" });
+    } finally {
+      if (submissionVersion === requestVersion.current) requestController.current = null;
     }
   };
 

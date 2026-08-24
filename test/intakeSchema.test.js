@@ -38,6 +38,8 @@ test("Amazon SC reveals store fields and hides customs fields", () => {
   assert.ok(keys.includes("singleStoreGmvUsd"));
   assert.ok(keys.includes("platformHistoryMonths"));
   assert.ok(keys.includes("acceptsAccountControl"));
+  assert.ok(keys.includes("hasCompatibleCollectionAccount"));
+  assert.ok(keys.includes("hasMaterialCreditOrJudicialNegative"));
   assert.ok(!keys.includes("customsCreditClassification"));
 });
 
@@ -46,6 +48,8 @@ test("Amazon VC reveals US site, entity, and receivables fields", () => {
   assert.ok(keys.includes("platformSites"));
   assert.ok(keys.includes("borrowerMatchesCollectionEntity"));
   assert.ok(keys.includes("accountsReceivableBalanceUsd"));
+  assert.ok(keys.includes("amazonAnnualGmvUsd"));
+  assert.ok(keys.includes("acceptsAccountControl"));
   assert.ok(!keys.includes("customsCreditClassification"));
 });
 
@@ -63,6 +67,7 @@ test("general import export reveals canonical customs and FX fields", () => {
   assert.ok(keys.includes("importExportAmountLast12MonthsUsd"));
   assert.ok(keys.includes("foreignExchangeClassification"));
   assert.ok(keys.includes("selfOperatedImportExport"));
+  assert.ok(keys.includes("controllerIndustryExperienceYears"));
   assert.ok(keys.includes("customsCreditClassification"));
   assert.ok(!keys.includes("singleStoreGmvUsd"));
 });
@@ -71,10 +76,12 @@ test("B2B supermarket reveals buyer, trade history, receivables, and NOA fields"
   const keys = keysFor(["b2b_supermarket"]);
   assert.ok(keys.includes("buyerName"));
   assert.ok(keys.includes("buyerCountry"));
+  assert.ok(keys.includes("buyerCountryEligibility"));
   assert.ok(keys.includes("buyerTradingHistoryMonths"));
   assert.ok(keys.includes("accountsReceivableBalanceUsd"));
   assert.ok(keys.includes("acceptsNoa"));
   assert.ok(keys.includes("acceptsReceivablesAssignment"));
+  assert.ok(keys.includes("acceptsAccountControl"));
 });
 
 test("manufacturing, wholesale, and other models receive coherent operating fields", () => {
@@ -86,7 +93,30 @@ test("manufacturing, wholesale, and other models receive coherent operating fiel
   assert.ok(manufacturing.includes("controllerIndustryExperienceYears"));
   assert.ok(wholesale.includes("primaryPlatformOrBuyerName"));
   assert.ok(wholesale.includes("allStoreSalesRmb"));
+  assert.ok(wholesale.includes("controllerIndustryExperienceYears"));
+  assert.ok(wholesale.includes("selfOperatedImportExport"));
+  assert.ok(wholesale.includes("customsCreditClassification"));
   assert.ok(other.includes("primaryPlatformOrBuyerName"));
+});
+
+test("buyer, purpose, repayment, and industry values use controlled selections", () => {
+  const fields = getVisibleIntakeFields({ businessModels: ["b2b_supermarket"] }, "complex");
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+
+  assert.equal(byKey.get("buyerPlatformType").type, "select");
+  assert.deepEqual(byKey.get("buyerPlatformType").options.map(({ value }) => value), [
+    "admitted_1p_retailer",
+    "other",
+  ]);
+  assert.equal(byKey.get("buyerCountryEligibility").type, "select");
+  assert.deepEqual(byKey.get("buyerCountryEligibility").options.map(({ value }) => value), [
+    "confirmed_admitted",
+    "confirmed_not_admitted",
+    "needs_review",
+  ]);
+  assert.equal(byKey.get("fundUse").type, "select");
+  assert.equal(byKey.get("preferredRepaymentMethod").type, "select");
+  assert.equal(byKey.get("industry").type, "select");
 });
 
 test("multiple business models merge branches without duplicate fields", () => {

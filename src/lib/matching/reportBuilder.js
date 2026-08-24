@@ -20,6 +20,7 @@ const DOCUMENT_BY_FIELD = Object.freeze({
   buyerTradingHistoryMonths: "买方交易历史证明",
   storeCount: "平台店铺经营证明",
   singleStoreGmv: "平台经营数据证明",
+  amazonAnnualGmv: "Amazon 近 12 个月 GMV 证明",
   allStoreSales: "近 12 个月销售数据证明",
   allStoreRepayments: "近 12 个月回款记录",
   annualRevenue: "近一年财务报表或纳税申报摘要",
@@ -45,13 +46,17 @@ const DOCUMENT_BY_FIELD = Object.freeze({
   fbaInventoryTurnoverCount: "FBA 库存周转数据",
   borrowerMatchesCollectionEntity: "借款主体与收款主体关系证明",
   acceptsAccountControl: "回款账户安排确认",
+  hasCompatibleCollectionAccount: "兼容收款账户证明",
+  acceptsReceivablesAssignment: "应收账款转让安排确认",
   acceptsNoa: "NOA 及回款账户安排确认",
   accountsReceivableBalance: "应收账款明细",
   buyerCountry: "买方所在地及准入证明",
   buyerPlatformType: "买方平台类型证明",
+  buyerCountryEligibility: "买方国家准入核验资料",
   creditBankCount: "现有银行授信情况说明",
   hasCurrentOverdue: "企业还款状态核验资料",
   hasMajorLitigation: "企业信用与司法信息核验资料",
+  hasMaterialCreditOrJudicialNegative: "企业及个人信用与司法信息核验资料",
   hasDishonestyRecord: "企业公开信息核验资料",
   settlementAccountOpenedMonths: "结算账户开户证明",
   applicantRole: "申请人身份说明",
@@ -118,6 +123,18 @@ const customerAmount = (estimate) => {
   };
 };
 
+const presentationFor = (match, role) => {
+  const sufficientlyEvidenced = match.status === "eligible" && match.confidence >= 80;
+  if (sufficientlyEvidenced) {
+    return {
+      label: role === "primary" ? "优先匹配" : "备选方向",
+      showAmount: true,
+    };
+  }
+  if (match.confidence < 50) return { label: "可能方向", showAmount: false };
+  return { label: "待补信息", showAmount: false };
+};
+
 const safeWhyMatched = (product, passedRules = []) => {
   const passedRuleIds = new Set(passedRules.map((rule) => rule.id));
   return product.ruleSet
@@ -127,9 +144,10 @@ const safeWhyMatched = (product, passedRules = []) => {
     .slice(0, 3);
 };
 
-const reportProduct = (match) => {
+const reportProduct = (match, role) => {
   const product = getProductById(match.productId);
   if (product == null) return null;
+  const presentation = presentationFor(match, role);
 
   return {
     institution: product.institution,
@@ -138,7 +156,8 @@ const reportProduct = (match) => {
     pricing: formatPricing(product.pricing),
     term: formatTerm(product.term),
     limit: formatLimit(product.limit),
-    estimatedAmount: customerAmount(match.estimatedAmount),
+    presentationLabel: presentation.label,
+    estimatedAmount: presentation.showAmount ? customerAmount(match.estimatedAmount) : null,
     whyMatched: safeWhyMatched(product, match.passedRules),
   };
 };
@@ -162,8 +181,8 @@ const missingDocumentsFor = (matches) => {
 export function buildCustomerMatchReport(_profile = {}, matches = []) {
   const primaryMatch = rankedMatch(matches, 1);
   const alternativeMatches = [2, 3].map((rank) => rankedMatch(matches, rank)).filter(Boolean);
-  const primary = primaryMatch == null ? null : reportProduct(primaryMatch);
-  const alternatives = alternativeMatches.map(reportProduct).filter(Boolean);
+  const primary = primaryMatch == null ? null : reportProduct(primaryMatch, "primary");
+  const alternatives = alternativeMatches.map((match) => reportProduct(match, "alternative")).filter(Boolean);
   const recommendedMatches = [primaryMatch, ...alternativeMatches].filter(Boolean);
   const nonMatches = matches
     .filter((match) => match?.status === "ineligible")
@@ -178,8 +197,11 @@ export function buildCustomerMatchReport(_profile = {}, matches = []) {
     missingDocuments: missingDocumentsFor(recommendedMatches),
     summary: primary == null
       ? "当前资料中暂无可展示的推荐产品，请补充相关资料后再评估。"
-      : `已为您整理 1 款优先产品及 ${alternatives.length} 款备选产品。`,
+      : primary.presentationLabel === "优先匹配"
+        ? `已为您整理 1 款优先产品及 ${alternatives.length} 款备选产品。`
+        : primary.presentationLabel === "可能方向"
+          ? "已根据现有资料整理可能方向；补充关键信息后可进一步判断匹配与额度。"
+          : "已整理待补信息的产品方向；完善资料后可进一步判断匹配与额度。",
     disclaimer: MATCH_DISCLAIMER,
-    ruleVersion: primaryMatch?.ruleVersion ?? matches.find((match) => typeof match?.ruleVersion === "string")?.ruleVersion ?? null,
   };
 }

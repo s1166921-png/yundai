@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PRODUCT_CATALOG, PRODUCT_IDS, getProductById } from "../src/lib/matching/productCatalog.js";
 import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
+import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 
 function configuredProfilePaths(rule) {
   const paths = [rule.field];
@@ -34,8 +35,33 @@ test("catalog exposes all seven unique, versioned products", () => {
     assert.ok(product.customerTargetProfile.length > 0);
     assert.equal(typeof product.customerPrerequisite, "string");
     assert.ok(product.customerPrerequisite.length > 0);
+    assert.deepEqual(Object.keys(product.fitProfile).sort(), [
+      "businessModels",
+      "cashFlowFields",
+      "controlGroups",
+      "purposes",
+      "repaymentMethods",
+      "scaleRuleIds",
+    ]);
+    assert.doesNotMatch(product.customerTargetProfile, /。；/);
   }
   assert.equal(getProductById("linklogis-amazon-sc").currency, "USD");
+});
+
+test("catalog models sourced VC GMV, WeBank negatives, SC exemption, and canonical buyer review semantics", () => {
+  const webank = getProductById("webank-cross-border-data-loan");
+  const sc = getProductById("linklogis-amazon-sc");
+  const vc = getProductById("linklogis-amazon-vc");
+  const b2b = getProductById("linklogis-b2b-factoring");
+
+  assert.equal(
+    webank.ruleSet.find((rule) => rule.id === "no-material-credit-or-judicial-issues").field,
+    "hasMaterialCreditOrJudicialNegative",
+  );
+  assert.equal(sc.ruleSet.find((rule) => rule.id === "collection-account-arrangement").value.evaluator, "anyTruthy");
+  assert.equal(vc.ruleSet.find((rule) => rule.id === "amazon-annual-gmv").field, "amazonAnnualGmv.amount");
+  assert.equal(b2b.ruleSet.find((rule) => rule.id === "eligible-buyer").value.evaluator, "buyerEligibility");
+  assert.doesNotMatch(JSON.stringify(b2b.ruleSet), /准入 1P 商超|已列明准入国家/);
 });
 
 test("every catalog and custom-evaluator input uses a canonical customer profile field", () => {
@@ -88,4 +114,11 @@ test("rule values are immutable", () => {
     companyAgeRule.value.minimumMonths = 61;
   }, TypeError);
   assert.equal(companyAgeRule.value.minimumMonths, 60);
+});
+
+test("public product projection preserves normalized target-profile punctuation", () => {
+  for (const product of getPublicProducts()) {
+    assert.doesNotMatch(product.targetProfile, /。；/);
+    assert.equal(product.targetProfile, getProductById(product.id).customerTargetProfile);
+  }
 });

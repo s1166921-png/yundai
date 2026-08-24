@@ -17,6 +17,23 @@ const ENUM_VALUES = Object.freeze({
   preferredCurrency: Object.freeze(["rmb", "usd"]),
   applicantRole: Object.freeze(["法人", "第一大自然人股东", "个体工商户负责人"]),
   taxRecordAndInvoiceCustomerTier: Object.freeze(["tax_invoice", "non_tax_invoice"]),
+  buyerPlatformType: Object.freeze(["admitted_1p_retailer", "other"]),
+  buyerCountryEligibility: Object.freeze(["confirmed_admitted", "confirmed_not_admitted", "needs_review"]),
+  fundUse: Object.freeze([
+    "inventory_procurement",
+    "logistics_working_capital",
+    "receivables_turnover",
+    "platform_operations",
+    "tax_business_operations",
+    "other",
+  ]),
+  preferredRepaymentMethod: Object.freeze([
+    "revolving",
+    "interest_then_principal",
+    "equal_installments",
+    "receivables_collection",
+    "other",
+  ]),
 });
 
 const RATING_VALUES = Object.freeze([
@@ -34,6 +51,7 @@ const RATING_VALUES = Object.freeze([
 
 const MONEY_CURRENCIES = Object.freeze({
   singleStoreGmv: "USD",
+  amazonAnnualGmv: "USD",
   allStoreSales: "RMB",
   allStoreRepayments: "RMB",
   averageMonthlyFbaInventoryValue: "USD",
@@ -89,8 +107,10 @@ const BOOLEAN_FIELDS = Object.freeze([
   "hasCurrentOverdue",
   "hasDishonestyRecord",
   "hasMajorLitigation",
+  "hasMaterialCreditOrJudicialNegative",
   "hasAbnormalOperations",
   "acceptsAccountControl",
+  "hasCompatibleCollectionAccount",
   "acceptsReceivablesAssignment",
   "settlementAccountFlowNormal",
   "hasRiskWarning",
@@ -115,9 +135,6 @@ const TEXT_FIELDS = Object.freeze([
   "customsCreditClassification",
   "buyerName",
   "buyerCountry",
-  "buyerPlatformType",
-  "fundUse",
-  "preferredRepaymentMethod",
 ]);
 
 const asText = (value) => {
@@ -229,6 +246,7 @@ export function normalizeCustomerProfile(input = {}) {
     hasImportExportLicense: asBoolean(source.hasImportExportLicense),
 
     singleStoreGmv: asMoney(source.singleStoreGmvUsd, "USD"),
+    amazonAnnualGmv: asMoney(source.amazonAnnualGmvUsd, "USD"),
     allStoreSales: asMoney(source.allStoreSalesRmb, "RMB"),
     allStoreRepayments: asMoney(source.allStoreRepaymentsRmb, "RMB"),
     revenueGrowthPercent: asNumber(source.revenueGrowthPercent),
@@ -250,7 +268,8 @@ export function normalizeCustomerProfile(input = {}) {
 
     buyerName: asText(source.buyerName),
     buyerCountry: asText(source.buyerCountry),
-    buyerPlatformType: asText(source.buyerPlatformType),
+    buyerPlatformType: asEnum(source.buyerPlatformType, ENUM_VALUES.buyerPlatformType),
+    buyerCountryEligibility: asEnum(source.buyerCountryEligibility, ENUM_VALUES.buyerCountryEligibility),
     buyerTradingHistoryMonths: asNumber(source.buyerTradingHistoryMonths),
     annualB2bTrade: asMoney(source.annualB2bTradeUsd, "USD"),
     accountsReceivableBalance: asMoney(source.accountsReceivableBalanceUsd, "USD"),
@@ -279,14 +298,16 @@ export function normalizeCustomerProfile(input = {}) {
     hasCurrentOverdue: asBoolean(source.hasCurrentOverdue),
     hasDishonestyRecord: asBoolean(source.hasDishonestyRecord),
     hasMajorLitigation: asBoolean(source.hasMajorLitigation),
+    hasMaterialCreditOrJudicialNegative: asBoolean(source.hasMaterialCreditOrJudicialNegative),
     hasAbnormalOperations: asBoolean(source.hasAbnormalOperations),
 
     preferredCurrency,
     requestedAmount: asMoney(source.requestedAmount, requestedAmountCurrency),
-    fundUse: asText(source.fundUse),
+    fundUse: asEnum(source.fundUse, ENUM_VALUES.fundUse),
     preferredTermMonths: asNumber(source.preferredTermMonths),
-    preferredRepaymentMethod: asText(source.preferredRepaymentMethod),
+    preferredRepaymentMethod: asEnum(source.preferredRepaymentMethod, ENUM_VALUES.preferredRepaymentMethod),
     acceptsAccountControl: asBoolean(source.acceptsAccountControl),
+    hasCompatibleCollectionAccount: asBoolean(source.hasCompatibleCollectionAccount),
     acceptsReceivablesAssignment: asBoolean(source.acceptsReceivablesAssignment),
 
     applicantRole: asEnum(source.applicantRole, ENUM_VALUES.applicantRole),
@@ -306,7 +327,6 @@ export function normalizeCustomerProfile(input = {}) {
     firstOrderMonthsAgo: asNumber(source.firstOrderMonthsAgo),
     participatingStoreOperatingDays: asNumber(source.participatingStoreOperatingDays),
     consentToDataUse: asBoolean(source.consentToDataUse),
-    raw: input,
   };
 }
 
@@ -336,6 +356,10 @@ export function validateCustomerProfile(profile, mode) {
     preferredCurrency: ENUM_VALUES.preferredCurrency,
     applicantRole: ENUM_VALUES.applicantRole,
     taxRecordAndInvoiceCustomerTier: ENUM_VALUES.taxRecordAndInvoiceCustomerTier,
+    buyerPlatformType: ENUM_VALUES.buyerPlatformType,
+    buyerCountryEligibility: ENUM_VALUES.buyerCountryEligibility,
+    fundUse: ENUM_VALUES.fundUse,
+    preferredRepaymentMethod: ENUM_VALUES.preferredRepaymentMethod,
   })) {
     if (hasInvalidEnumValue(profile[field], allowedValues)) {
       errors.push(validationError(field, "contains an unknown value"));

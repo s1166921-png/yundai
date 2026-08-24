@@ -27,7 +27,7 @@ test("Amazon VC requires more than six history months with a US site and eligibl
     entityRegion: "mainland",
     businessModels: ["amazon_vc"],
     platformSites: ["united_states"],
-    singleStoreGmv: { amount: 2000001, currency: "USD" },
+    amazonAnnualGmv: { amount: 2000001, currency: "USD" },
     platformHistoryMonths,
     acceptsNoa: true,
     acceptsAccountControl: true,
@@ -49,7 +49,8 @@ test("B2B factoring uses the USD annual-trade amount and strict boundary", () =>
     entityType: "limited_company",
     buyerTradingHistoryMonths: 13,
     annualB2bTrade: { amount, currency: "USD" },
-    buyerCountry: "已列明准入国家",
+    buyerPlatformType: "other",
+    buyerCountryEligibility: "confirmed_admitted",
     acceptsAccountControl: true,
   });
 
@@ -65,7 +66,7 @@ test("WeBank applies AHR, percentage-point refund, and US-site boundaries", () =
     companyAgeMonths: 6,
     legalRepresentativeAge: 23,
     hasCurrentOverdue: false,
-    hasMajorLitigation: false,
+    hasMaterialCreditOrJudicialNegative: false,
     platformHistoryMonths: 24,
     storeCount: 2,
     allStoreSales: { amount: 2000000, currency: "RMB" },
@@ -130,19 +131,19 @@ test("Amazon SC and B2B admit canonical company regions and require a limited co
   }
 });
 
-test("RMB conditional rules do not compare USD request amounts", () => {
+test("RMB conditional rules are neutral for USD request amounts", () => {
   const orangeRule = rule("pingan-orange-tax-loan", "additional-authorizations-over-500k");
   const logisticsRule = rule("pingan-foreign-trade-logistics-loan", "additional-conditions-over-3m");
 
   assert.equal(evaluateRule(orangeRule, {
     requestedAmount: { amount: 500000, currency: "USD" },
     spouseCreditAuthorization: false,
-  }).status, "unknown");
+  }).status, "passed");
   assert.equal(evaluateRule(logisticsRule, {
     requestedAmount: { amount: 3000001, currency: "USD" },
     taxRecordAndInvoiceCustomerTier: "tax_invoice",
     companyAgeMonths: 60,
-  }).status, "unknown");
+  }).status, "passed");
 });
 
 test("logistics treats only tax-invoice tiers as tax-invoice quality", () => {
@@ -182,4 +183,60 @@ test("catalog rules use canonical field paths and percentage-point thresholds", 
   assert.equal(rule("linklogis-b2b-factoring", "annual-trading-volume").field, "annualB2bTrade.amount");
   assert.equal(rule("webank-cross-border-data-loan", "refund-rate-last-three-months").value, 40);
   assert.equal(rule("pingan-foreign-trade-logistics-loan", "import-export-revenue-share").value, 50);
+});
+
+test("WeBank broad credit and judicial negative has pass, fail, and unknown outcomes", () => {
+  const negativeRule = rule("webank-cross-border-data-loan", "no-material-credit-or-judicial-issues");
+
+  assert.equal(evaluateRule(negativeRule, { hasMaterialCreditOrJudicialNegative: false }).status, "passed");
+  assert.equal(evaluateRule(negativeRule, { hasMaterialCreditOrJudicialNegative: true }).status, "failed");
+  assert.deepEqual(
+    evaluateRule(negativeRule, { hasMaterialCreditOrJudicialNegative: null }).missingFields,
+    ["hasMaterialCreditOrJudicialNegative"],
+  );
+});
+
+test("Amazon SC accepts switching or an existing compatible account and preserves unknown", () => {
+  const accountRule = rule("linklogis-amazon-sc", "collection-account-arrangement");
+
+  assert.equal(evaluateRule(accountRule, {
+    acceptsAccountControl: true,
+    hasCompatibleCollectionAccount: false,
+  }).status, "passed");
+  assert.equal(evaluateRule(accountRule, {
+    acceptsAccountControl: false,
+    hasCompatibleCollectionAccount: true,
+  }).status, "passed");
+  assert.equal(evaluateRule(accountRule, {
+    acceptsAccountControl: false,
+    hasCompatibleCollectionAccount: false,
+  }).status, "failed");
+  assert.deepEqual(evaluateRule(accountRule, {
+    acceptsAccountControl: false,
+    hasCompatibleCollectionAccount: null,
+  }).missingFields, ["hasCompatibleCollectionAccount"]);
+});
+
+test("B2B buyer admission uses canonical pass, fail, and honest review states", () => {
+  const buyerRule = rule("linklogis-b2b-factoring", "eligible-buyer");
+
+  assert.equal(evaluateRule(buyerRule, {
+    buyerPlatformType: "admitted_1p_retailer",
+    buyerCountryEligibility: "needs_review",
+  }).status, "passed");
+  assert.equal(evaluateRule(buyerRule, {
+    buyerPlatformType: "other",
+    buyerCountryEligibility: "confirmed_not_admitted",
+  }).status, "failed");
+  assert.deepEqual(evaluateRule(buyerRule, {
+    buyerPlatformType: "other",
+    buyerCountryEligibility: "needs_review",
+  }).missingFields, ["buyerCountryEligibility"]);
+});
+
+test("Amazon VC uses its annual GMV input at the exclusive boundary", () => {
+  const gmvRule = rule("linklogis-amazon-vc", "amazon-annual-gmv");
+
+  assert.equal(evaluateRule(gmvRule, { amazonAnnualGmv: { amount: 2000000 } }).status, "failed");
+  assert.equal(evaluateRule(gmvRule, { amazonAnnualGmv: { amount: 2000001 } }).status, "passed");
 });

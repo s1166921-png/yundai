@@ -105,3 +105,43 @@ test("normalizes known platform sites and rejects unknown platform site enums", 
   assert.deepEqual(profile.platformSites, ["united_states", "other", "unknown"]);
   assert.deepEqual(result.errors.map((error) => error.field), ["platformSites"]);
 });
+
+test("normalizes VC, buyer-admission, source-negative, and account-exemption inputs canonically", () => {
+  const profile = normalizeCustomerProfile({
+    amazonAnnualGmvUsd: "2500000",
+    buyerPlatformType: "ADMITTED_1P_RETAILER",
+    buyerCountryEligibility: "CONFIRMED_ADMITTED",
+    fundUse: "RECEIVABLES_TURNOVER",
+    preferredRepaymentMethod: "RECEIVABLES_COLLECTION",
+    hasMaterialCreditOrJudicialNegative: false,
+    hasCompatibleCollectionAccount: true,
+  });
+  const result = validateCustomerProfile(profile, "complex");
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(profile.amazonAnnualGmv, { amount: 2500000, currency: "USD" });
+  assert.equal(profile.buyerPlatformType, "admitted_1p_retailer");
+  assert.equal(profile.buyerCountryEligibility, "confirmed_admitted");
+  assert.equal(profile.fundUse, "receivables_turnover");
+  assert.equal(profile.preferredRepaymentMethod, "receivables_collection");
+  assert.equal(profile.hasMaterialCreditOrJudicialNegative, false);
+  assert.equal(profile.hasCompatibleCollectionAccount, true);
+  assert.equal(Object.hasOwn(profile, "raw"), false);
+});
+
+test("rejects unknown controlled buyer, purpose, and repayment selections", () => {
+  const profile = normalizeCustomerProfile({
+    buyerPlatformType: "magic buyer",
+    buyerCountryEligibility: "probably admitted",
+    fundUse: "anything",
+    preferredRepaymentMethod: "whenever",
+  });
+  const result = validateCustomerProfile(profile, "complex");
+
+  assert.deepEqual(result.errors.map((error) => error.field).sort(), [
+    "buyerCountryEligibility",
+    "buyerPlatformType",
+    "fundUse",
+    "preferredRepaymentMethod",
+  ]);
+});

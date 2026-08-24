@@ -18,6 +18,7 @@ const customerReport = {
     pricing: "年化9%-11%",
     term: "90天或随借随还",
     limit: "单店最高300万美元，可循环",
+    presentationLabel: "优先匹配",
     estimatedAmount: { currency: "USD", min: 1000000, max: 3000000 },
     whyMatched: ["需为 Amazon 店铺。"],
     fitScore: 98,
@@ -33,6 +34,7 @@ const customerReport = {
       pricing: "年化8%-10%",
       term: "最长120天，可循环",
       limit: "额度不设固定上限。",
+      presentationLabel: "备选方向",
       estimatedAmount: { currency: "USD", note: "额度不设固定上限。" },
       whyMatched: ["申请主体需为 Amazon VC 主体。"],
       priority: "high",
@@ -45,6 +47,7 @@ const customerReport = {
       pricing: "年化8%-12%",
       term: "最长120天",
       limit: "额度按交易应收数据评估，无固定上限。",
+      presentationLabel: "备选方向",
       estimatedAmount: { currency: "USD", note: "按交易应收数据评估" },
       whyMatched: ["与买方交易历史需超过 12 个月。"],
     },
@@ -98,7 +101,7 @@ test("pre-submission view groups all seven products with catalog-backed facts", 
       label: "Amazon 平台",
       order: 3,
     },
-    targetProfile: "需为 Amazon 店铺。；Amazon 单店铺年 GMV 需大于 500 万美元。",
+    targetProfile: "需为 Amazon 店铺；Amazon 单店铺年 GMV 需大于 500 万美元。",
     keyPrerequisite: "需为 Amazon 店铺。",
   });
 });
@@ -152,4 +155,54 @@ test("scroll falls back to the legacy boolean form when Safari rejects options",
 
 test("scroll returns false when the match center is unavailable", () => {
   assert.equal(scrollProductMatchCenterIntoView(null, {}), false);
+});
+
+test("exact and range amounts render numeric conclusions before notes while manual stays note-only", () => {
+  const baseReport = {
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      presentationLabel: "优先匹配",
+      estimatedAmount: {
+        kind: "range",
+        currency: "USD",
+        min: 1000000,
+        max: 3000000,
+        note: "最终额度以机构评估为准。",
+      },
+    },
+    alternatives: [{
+      ...customerReport.alternatives[0],
+      presentationLabel: "备选方向",
+      estimatedAmount: {
+        kind: "manual",
+        currency: "USD",
+        min: null,
+        max: null,
+        note: "按可融资应收账款评估。",
+      },
+    }],
+  };
+  const view = buildProductMatchView(baseReport, PUBLIC_PRODUCTS);
+
+  assert.equal(view.primary.amount, "100万-300万美元");
+  assert.equal(view.primary.amountNote, "最终额度以机构评估为准。");
+  assert.equal(view.alternatives[0].amount, "按可融资应收账款评估。");
+  assert.equal(view.alternatives[0].amountNote, null);
+});
+
+test("suppressed reports retain safe presentation labels without catalog amount fallback", () => {
+  const view = buildProductMatchView({
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      presentationLabel: "待补信息",
+      estimatedAmount: null,
+    },
+    alternatives: [],
+  }, PUBLIC_PRODUCTS);
+
+  assert.equal(view.primary.presentationLabel, "待补信息");
+  assert.equal(view.primary.amount, "待补信息后测算");
+  assert.doesNotMatch(view.primary.amount, /300万/);
 });

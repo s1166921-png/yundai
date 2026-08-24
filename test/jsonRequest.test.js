@@ -128,3 +128,23 @@ test("postJson preserves JSON error messages and field errors in the XHR fallbac
     },
   );
 });
+
+test("postJson forwards an AbortSignal to the in-flight fetch request", async () => {
+  const controller = new AbortController();
+  let receivedSignal;
+
+  const result = await postJson("/api/leads", { estimationMode: "simple" }, {
+    signal: controller.signal,
+    fetchImpl: async (_url, options) => {
+      receivedSignal = options.signal;
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ ok: true }),
+      };
+    },
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(receivedSignal, controller.signal);
+});

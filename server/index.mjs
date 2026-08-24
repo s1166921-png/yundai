@@ -12,6 +12,7 @@ import { matchProducts } from "../src/lib/matching/productMatcher.js";
 import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
+import { INTAKE_FIELD_KEYS } from "../src/lib/matching/intakeSchema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -23,6 +24,7 @@ const port = Number(process.env.PORT || 8787);
 const contactFields = ["companyName", "contactName", "phone"];
 const leadUpdateQueues = new Map();
 const storeFileMode = 0o600;
+const maximumBodyBytes = 1_000_000;
 
 const legacyBaseFields = [
   "companyName",
@@ -50,6 +52,16 @@ const complexEstimateFields = [
   "controllerAssets",
   "debtOverRevenue70",
 ];
+
+const persistedRawInputFields = Object.freeze([...new Set([
+  ...INTAKE_FIELD_KEYS,
+  "estimationMode",
+  "mode",
+  ...legacyBaseFields,
+  ...simpleEstimateFields,
+  ...complexEstimateFields,
+  "note",
+])]);
 
 const leadColumns = [
   ["createdAt", "提交时间"],
@@ -99,10 +111,14 @@ class PublicInputError extends Error {
   }
 }
 
+class PayloadTooLargeError extends Error {}
+class UnsupportedMediaTypeError extends Error {}
+
 async function ensureStore(leadsFilePath = leadsFile) {
   await mkdir(path.dirname(leadsFilePath), { recursive: true });
   try {
-    await stat(leadsFilePath);
+    const target = await stat(leadsFilePath);
+    if (target.isFile()) await chmod(leadsFilePath, storeFileMode);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     try {
@@ -114,6 +130,8 @@ async function ensureStore(leadsFilePath = leadsFile) {
       await chmod(leadsFilePath, storeFileMode);
     } catch (writeError) {
       if (writeError.code !== "EEXIST") throw writeError;
+      const target = await stat(leadsFilePath);
+      if (target.isFile()) await chmod(leadsFilePath, storeFileMode);
     }
   }
 }
@@ -171,23 +189,48 @@ function updateLeads(leadsFilePath, updater) {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
   });
   response.end(JSON.stringify(payload));
 }
 
 function readBody(request) {
   return new Promise((resolve, reject) => {
-    let body = "";
-    request.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 1_000_000) {
-        reject(new PublicInputError([{ field: "body", message: "is too large" }]));
-        request.destroy();
+    const contentLength = Number(request.headers["content-length"]);
+    if (Number.isFinite(contentLength) && contentLength > maximumBodyBytes) {
+      request.resume();
+      reject(new PayloadTooLargeError("request body is too large"));
+      return;
+    }
+
+    const chunks = [];
+    let receivedBytes = 0;
+    let settled = false;
+    const rejectOversized = () => {
+      if (settled) return;
+      settled = true;
+      request.off("data", onData);
+      request.resume();
+      reject(new PayloadTooLargeError("request body is too large"));
+    };
+    const onData = (chunk) => {
+      receivedBytes += chunk.length;
+      if (receivedBytes > maximumBodyBytes) {
+        rejectOversized();
+        return;
       }
+      chunks.push(chunk);
+    };
+    request.on("data", onData);
+    request.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
     });
-    request.on("end", () => resolve(body));
-    request.on("error", reject);
+    request.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
 }
 
@@ -203,6 +246,42 @@ function parseJsonBody(body) {
     throw new PublicInputError([{ field: "body", message: "must be a JSON object" }]);
   }
   return input;
+}
+
+function normalizeAllowedOrigins(origins) {
+  const values = origins == null
+    ? String(process.env.MEIOU_ALLOWED_ORIGINS ?? "").split(",")
+    : typeof origins === "string" ? origins.split(",") : [...origins];
+  return new Set(values.map((value) => String(value).trim()).filter(Boolean).map((value) => {
+    try {
+      return new URL(value).origin;
+    } catch {
+      return "";
+    }
+  }).filter(Boolean));
+}
+
+function applyCorsHeaders(request, response, url, allowedOrigins) {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+
+  let normalizedOrigin;
+  try {
+    normalizedOrigin = new URL(origin).origin;
+  } catch {
+    return false;
+  }
+  if (normalizedOrigin !== url.origin && !allowedOrigins.has(normalizedOrigin)) return false;
+
+  response.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
+  response.setHeader("Access-Control-Allow-Credentials", "true");
+  response.setHeader("Vary", "Origin");
+  return true;
+}
+
+function hasJsonContentType(request) {
+  const contentType = request.headers["content-type"];
+  return typeof contentType === "string" && /^application\/json(?:\s*;|$)/i.test(contentType);
 }
 
 function normalizeAdminCredentials(credentials) {
@@ -262,6 +341,12 @@ function addProductIdsToReport(report, matches) {
   };
 }
 
+function allowlistedRawInput(input) {
+  return Object.fromEntries(persistedRawInputFields
+    .filter((key) => Object.hasOwn(input, key))
+    .map((key) => [key, structuredClone(input[key])]));
+}
+
 function normalizeLead(input) {
   const requestedMode = input.estimationMode ?? input.mode;
   const estimationMode = requestedMode == null
@@ -308,9 +393,10 @@ function normalizeLead(input) {
     estimate,
     aiInsight,
     profile,
+    rawInput: allowlistedRawInput(input),
     productMatches,
     matchReport,
-    ruleVersion: matchReport.ruleVersion,
+    ruleVersion: productMatches.find((match) => typeof match.ruleVersion === "string")?.ruleVersion ?? null,
     consentToDataUse: profile.consentToDataUse,
   };
 }
@@ -319,15 +405,6 @@ function publicEstimatedAmount(estimatedAmount) {
   if (!estimatedAmount || typeof estimatedAmount !== "object") return null;
   const { kind, currency, min, max, note } = estimatedAmount;
   return { kind, currency, min, max, note };
-}
-
-function publicProductMatch(match) {
-  return {
-    productId: match.productId,
-    status: match.status,
-    rank: match.rank,
-    estimatedAmount: publicEstimatedAmount(match.estimatedAmount),
-  };
 }
 
 function publicReportProduct(product) {
@@ -340,6 +417,7 @@ function publicReportProduct(product) {
     pricing: product.pricing,
     term: product.term,
     limit: product.limit,
+    presentationLabel: product.presentationLabel,
     estimatedAmount: publicEstimatedAmount(product.estimatedAmount),
     whyMatched: Array.isArray(product.whyMatched) ? [...product.whyMatched] : [],
   };
@@ -374,7 +452,6 @@ function publicLead(lead) {
     id: lead.id,
     createdAt: lead.createdAt,
     estimationMode: lead.estimationMode,
-    productMatches: lead.productMatches.map(publicProductMatch),
     matchReport: publicMatchReport(lead.matchReport),
   };
 }
@@ -496,7 +573,50 @@ function getSelectedLeads(url, leads) {
   return leads.filter((lead) => selected.has(lead.id));
 }
 
+function filterLeads(url, leads) {
+  const search = (url.searchParams.get("search") ?? url.searchParams.get("customer") ?? "").trim().toLowerCase();
+  const productId = (url.searchParams.get("product") ?? "").trim();
+  const institution = (url.searchParams.get("institution") ?? "").trim();
+  const currency = (url.searchParams.get("currency") ?? "").trim().toUpperCase();
+  const status = (url.searchParams.get("status") ?? "").trim();
+  const amountMin = Number(url.searchParams.get("amountMin"));
+  const amountMax = Number(url.searchParams.get("amountMax"));
+  const hasAmountMin = url.searchParams.has("amountMin") && Number.isFinite(amountMin);
+  const hasAmountMax = url.searchParams.has("amountMax") && Number.isFinite(amountMax);
+  const dateFrom = url.searchParams.get("dateFrom");
+  const dateTo = url.searchParams.get("dateTo");
+  const fromTime = dateFrom ? Date.parse(`${dateFrom}T00:00:00`) : Number.NaN;
+  const toTime = dateTo ? Date.parse(`${dateTo}T23:59:59.999`) : Number.NaN;
+
+  return leads.filter((lead) => {
+    const primary = getPrimaryMatch(lead);
+    const product = getProductById(primary?.productId);
+    const submittedAmount = lead.profile?.requestedAmount?.amount;
+    const createdTime = Date.parse(lead.createdAt);
+    const searchable = [lead.companyName, lead.contactName, lead.phone]
+      .map((value) => String(value ?? "").toLowerCase());
+
+    if (search && !searchable.some((value) => value.includes(search))) return false;
+    if (productId && primary?.productId !== productId) return false;
+    if (institution && product?.institution !== institution) return false;
+    if (currency && product?.currency !== currency) return false;
+    if (status && primary?.status !== status) return false;
+    if (hasAmountMin && (!Number.isFinite(submittedAmount) || submittedAmount < amountMin)) return false;
+    if (hasAmountMax && (!Number.isFinite(submittedAmount) || submittedAmount > amountMax)) return false;
+    if (Number.isFinite(fromTime) && (!Number.isFinite(createdTime) || createdTime < fromTime)) return false;
+    if (Number.isFinite(toTime) && (!Number.isFinite(createdTime) || createdTime > toTime)) return false;
+    return true;
+  });
+}
+
 function buildAdminPage() {
+  const publicProducts = getPublicProducts();
+  const productOptions = publicProducts
+    .map((product) => `<option value="${escapeHtml(product.id)}">${escapeHtml(product.name)}</option>`)
+    .join("");
+  const institutionOptions = [...new Set(publicProducts.map((product) => product.institution))]
+    .map((institution) => `<option value="${escapeHtml(institution)}">${escapeHtml(institution)}</option>`)
+    .join("");
   const headerCells = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
   const rowCells = leadColumns
     .map(([key]) => {
@@ -516,18 +636,22 @@ function buildAdminPage() {
     * { box-sizing: border-box; }
     body { margin: 0; min-width: 320px; background: #f5f7fb; }
     main { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 40px; }
-    .panel { border: 1px solid #d9e1ee; border-radius: 14px; background: #fff; box-shadow: 0 12px 34px rgba(22,34,58,.08); }
+    .panel { border: 1px solid #d9e1ee; border-radius: 8px; background: #fff; box-shadow: 0 12px 34px rgba(22,34,58,.08); }
     .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e7edf5; }
     h1 { margin: 0; font-size: 22px; line-height: 1.2; }
     .tools { display: flex; flex-wrap: wrap; gap: 10px; }
-    input, button, a { font: inherit; }
-    input { width: 220px; height: 40px; padding: 0 12px; border: 1px solid #cbd6e5; border-radius: 8px; color: #17243d; outline: none; }
-    input:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91,141,239,.14); }
+    input, select, button, a { font: inherit; }
+    input, select { width: 220px; height: 40px; padding: 0 12px; border: 1px solid #cbd6e5; border-radius: 6px; color: #17243d; background: #fff; outline: none; }
+    input:focus, select:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91,141,239,.14); }
     button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 14px; border: 1px solid #cbd6e5; border-radius: 8px; background: #fff; color: #17243d; font-weight: 700; text-decoration: none; cursor: pointer; }
     button:hover, a:hover { background: #f5f8fc; }
     a.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
     a.primary:hover { background: #1d4ed8; }
     a.disabled { opacity: .45; pointer-events: none; }
+    .filters { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e7edf5; }
+    .filters label { display: grid; gap: 6px; min-width: 0; color: #53637a; font-size: 12px; font-weight: 700; }
+    .filters input, .filters select { width: 100%; }
+    .filter-actions { display: flex; align-items: end; gap: 8px; }
     .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #e7edf5; color: #53637a; font-size: 14px; }
     .summary strong { color: #17243d; }
     .table-wrap { overflow-x: auto; }
@@ -538,7 +662,8 @@ function buildAdminPage() {
     td:last-child { max-width: 360px; white-space: normal; line-height: 1.55; }
     .select-col { width: 48px; text-align: center; }
     input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
-    @media (max-width: 720px) { main { width: min(100% - 20px, 1440px); padding-top: 12px; } .topbar { align-items: stretch; flex-direction: column; } .tools, input, button, a { width: 100%; } }
+    @media (max-width: 980px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 720px) { main { width: min(100% - 20px, 1440px); padding-top: 12px; } .topbar { align-items: stretch; flex-direction: column; } .tools, .tools input, .tools button, .tools a, .filters { width: 100%; } .filters { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -552,6 +677,18 @@ function buildAdminPage() {
           <button id="load" type="button">读取客户信息</button>
           <button id="export" class="primary" type="button" disabled>导出选中 Excel</button>
         </div>
+      </div>
+      <div class="filters" aria-label="客户筛选">
+        <label>客户搜索<input id="searchFilter" type="search" placeholder="企业、联系人或电话" /></label>
+        <label>第一推荐产品<select id="productFilter"><option value="">全部产品</option>${productOptions}</select></label>
+        <label>机构<select id="institutionFilter"><option value="">全部机构</option>${institutionOptions}</select></label>
+        <label>币种<select id="currencyFilter"><option value="">全部币种</option><option value="RMB">RMB</option><option value="USD">USD</option></select></label>
+        <label>匹配状态<select id="statusFilter"><option value="">全部状态</option><option value="eligible">符合准入</option><option value="needs_information">待补充资料</option><option value="ineligible">暂不匹配</option></select></label>
+        <label>融资金额下限<input id="amountMinFilter" type="number" min="0" step="1" inputmode="decimal" /></label>
+        <label>融资金额上限<input id="amountMaxFilter" type="number" min="0" step="1" inputmode="decimal" /></label>
+        <label>提交日期起<input id="dateFromFilter" type="date" /></label>
+        <label>提交日期止<input id="dateToFilter" type="date" /></label>
+        <div class="filter-actions"><button id="applyFilters" type="button">应用筛选</button><button id="clearFilters" type="button">清空</button></div>
       </div>
       <div class="summary">
         <span id="status">请输入管理员账户和密码。</span>
@@ -578,12 +715,34 @@ function buildAdminPage() {
     const selectedCountNode = document.querySelector("#selectedCount");
     const selectAllNode = document.querySelector("#selectAll");
     const rowsNode = document.querySelector("#rows");
+    const filterInputs = {
+      search: document.querySelector("#searchFilter"),
+      product: document.querySelector("#productFilter"),
+      institution: document.querySelector("#institutionFilter"),
+      currency: document.querySelector("#currencyFilter"),
+      status: document.querySelector("#statusFilter"),
+      amountMin: document.querySelector("#amountMinFilter"),
+      amountMax: document.querySelector("#amountMaxFilter"),
+      dateFrom: document.querySelector("#dateFromFilter"),
+      dateTo: document.querySelector("#dateToFilter"),
+    };
+    const applyFiltersButton = document.querySelector("#applyFilters");
+    const clearFiltersButton = document.querySelector("#clearFilters");
     let loadedLeads = [];
     const selectedIds = new Set();
     const getAuthHeaders = () => {
       const username = usernameInput.value.trim();
       const password = passwordInput.value;
       return username && password ? { Authorization: "Basic " + btoa(username + ":" + password) } : null;
+    };
+    const getFilterQuery = () => {
+      const params = new URLSearchParams();
+      Object.entries(filterInputs).forEach(([key, input]) => {
+        const value = input.value.trim();
+        if (value) params.set(key, value);
+      });
+      const query = params.toString();
+      return query ? "?" + query : "";
     };
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     const primaryMatchFor = (lead) => (lead.productMatches || []).find((match) => match.rank === 1) || null;
@@ -660,7 +819,7 @@ function buildAdminPage() {
       }
       renderRows();
     });
-    loadButton.addEventListener("click", async () => {
+    const loadLeads = async () => {
       const headers = getAuthHeaders();
       if (!headers) {
         statusNode.textContent = "请输入管理员账户和密码。";
@@ -669,7 +828,7 @@ function buildAdminPage() {
       syncExport();
       statusNode.textContent = "正在读取客户信息...";
       try {
-        const response = await fetch("/api/leads", { headers });
+        const response = await fetch("/api/leads" + getFilterQuery(), { headers, cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "读取失败");
         loadedLeads = payload.leads;
@@ -683,6 +842,12 @@ function buildAdminPage() {
         selectedIds.clear();
         syncExport();
       }
+    };
+    loadButton.addEventListener("click", loadLeads);
+    applyFiltersButton.addEventListener("click", loadLeads);
+    clearFiltersButton.addEventListener("click", () => {
+      Object.values(filterInputs).forEach((input) => { input.value = ""; });
+      loadLeads();
     });
     exportLink.addEventListener("click", async () => {
       const headers = getAuthHeaders();
@@ -771,14 +936,27 @@ async function serveStatic(request, response, url) {
   }
 }
 
-async function handleRequest(request, response, { leadsFilePath, adminCredentials }) {
+async function handleRequest(request, response, {
+  leadsFilePath,
+  adminCredentials,
+  allowedOrigins,
+  logger,
+}) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+
+  if (["/admin", "/api/leads", "/api/leads/export"].includes(url.pathname)) {
+    response.setHeader("Cache-Control", "no-store");
+  }
+
+  if (!applyCorsHeaders(request, response, url, allowedOrigins)) {
+    sendJson(response, 403, { error: "请求来源不被允许" });
+    return;
+  }
 
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
     });
     response.end();
     return;
@@ -802,6 +980,7 @@ async function handleRequest(request, response, { leadsFilePath, adminCredential
     }
 
     if (url.pathname === "/api/leads" && request.method === "POST") {
+      if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const body = await readBody(request);
       const lead = normalizeLead(parseJsonBody(body));
       await updateLeads(leadsFilePath, (leads) => [lead, ...leads]);
@@ -814,7 +993,8 @@ async function handleRequest(request, response, { leadsFilePath, adminCredential
         sendJson(response, 401, { error: "后台口令不正确" });
         return;
       }
-      sendJson(response, 200, { leads: await readLeads(leadsFilePath) });
+      const leads = await readLeads(leadsFilePath);
+      sendJson(response, 200, { leads: filterLeads(url, leads) });
       return;
     }
 
@@ -833,6 +1013,7 @@ async function handleRequest(request, response, { leadsFilePath, adminCredential
       response.writeHead(200, {
         "Content-Type": "application/vnd.ms-excel; charset=utf-8",
         "Content-Disposition": `attachment; filename="meiou-leads-${new Date().toISOString().slice(0, 10)}.xls"`,
+        "Cache-Control": "no-store",
       });
       response.end(excel);
       return;
@@ -840,20 +1021,43 @@ async function handleRequest(request, response, { leadsFilePath, adminCredential
 
     await serveStatic(request, response, url);
   } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      response.setHeader("Connection", "close");
+      sendJson(response, 413, { error: "请求内容过大" });
+      return;
+    }
+    if (error instanceof UnsupportedMediaTypeError) {
+      sendJson(response, 415, { error: "请使用 application/json 提交" });
+      return;
+    }
     if (error instanceof PublicInputError) {
       sendJson(response, 400, { error: error.message, errors: error.errors });
       return;
     }
-    sendJson(response, 500, { error: error.message || "服务器错误" });
+    logger.error("Unhandled Meiou server request error", {
+      method: request.method,
+      pathname: url.pathname,
+      error,
+    });
+    sendJson(response, 500, { error: "服务器暂时无法处理请求" });
   }
 }
 
-export function createMeiouServer({ leadsFilePath = leadsFile, adminCredentials = null } = {}) {
+export function createMeiouServer({
+  leadsFilePath = leadsFile,
+  adminCredentials = null,
+  allowedOrigins = null,
+  logger = console,
+} = {}) {
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
+  const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
+  const safeLogger = logger && typeof logger.error === "function" ? logger : console;
   return createServer((request, response) => handleRequest(request, response, {
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
+    allowedOrigins: normalizedOrigins,
+    logger: safeLogger,
   }));
 }
 

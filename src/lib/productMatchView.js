@@ -30,15 +30,26 @@ const catalogProductFor = (reportProduct, products) => products.find((product) =
   || (product.name === reportProduct?.name && product.institution === reportProduct?.institution)
 ));
 
-const formatEstimatedAmount = (estimatedAmount, fallback) => {
-  if (typeof estimatedAmount?.note === "string" && estimatedAmount.note) return estimatedAmount.note;
+const SAFE_PRESENTATION_LABELS = new Set(["优先匹配", "备选方向", "可能方向", "待补信息"]);
+
+const formatEstimatedAmount = (estimatedAmount) => {
+  if (estimatedAmount == null) return { amount: "待补信息后测算", amountNote: null };
+  const note = typeof estimatedAmount.note === "string" && estimatedAmount.note
+    ? estimatedAmount.note
+    : null;
+  if (estimatedAmount.kind === "manual") {
+    return { amount: note ?? "待资金方进一步核定", amountNote: null };
+  }
   const minimum = formatAmountValue(estimatedAmount?.min);
   const maximum = formatAmountValue(estimatedAmount?.max);
   const unit = currencyUnit(estimatedAmount?.currency);
   if (minimum != null && maximum != null) {
-    return minimum === maximum ? `${minimum}${unit}` : `${minimum}-${maximum}${unit}`;
+    return {
+      amount: minimum === maximum ? `${minimum}${unit}` : `${minimum}-${maximum}${unit}`,
+      amountNote: note,
+    };
   }
-  return fallback ?? "待资金方进一步核定";
+  return { amount: note ?? "待资金方进一步核定", amountNote: null };
 };
 
 const safeReportProduct = (reportProduct, products) => {
@@ -46,6 +57,11 @@ const safeReportProduct = (reportProduct, products) => {
   const catalog = catalogProductFor(reportProduct, products);
   const limit = reportProduct.limit ?? catalog?.limit ?? null;
   const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
+  const presentationLabel = SAFE_PRESENTATION_LABELS.has(reportProduct.presentationLabel)
+    ? reportProduct.presentationLabel
+    : "可能方向";
+  const canShowAmount = presentationLabel === "优先匹配" || presentationLabel === "备选方向";
+  const amountPresentation = formatEstimatedAmount(canShowAmount ? reportProduct.estimatedAmount : null);
 
   return {
     productId: reportProduct.productId ?? catalog?.id ?? null,
@@ -54,7 +70,8 @@ const safeReportProduct = (reportProduct, products) => {
     whyMatched: Array.isArray(reportProduct.whyMatched)
       ? reportProduct.whyMatched.filter((reason) => typeof reason === "string").slice(0, 3)
       : [],
-    amount: formatEstimatedAmount(reportProduct.estimatedAmount, limit),
+    presentationLabel,
+    ...amountPresentation,
     currency,
     term: reportProduct.term ?? catalog?.term ?? "目录暂未提供",
     pricing: reportProduct.pricing ?? catalog?.pricing ?? "目录暂未提供",

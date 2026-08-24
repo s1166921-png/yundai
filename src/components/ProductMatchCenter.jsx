@@ -52,17 +52,23 @@ function PrimaryResult({ product }) {
     <article className="match-primary-result">
       <header className="primary-result-heading">
         <div>
-          <span className="result-rank">优先匹配</span>
+          <span className="result-rank">{product.presentationLabel}</span>
           <p>{product.institution}</p>
           <h3>{product.name}</h3>
         </div>
-        <strong>{product.amount}</strong>
+        <div className="primary-result-amount">
+          <strong>{product.amount}</strong>
+          {product.amountNote && <small>{product.amountNote}</small>}
+        </div>
       </header>
 
       <dl className="primary-result-metrics">
         <div>
           <dt>参考额度</dt>
-          <dd>{product.amount}</dd>
+          <dd>
+            {product.amount}
+            {product.amountNote && <small className="amount-note">{product.amountNote}</small>}
+          </dd>
         </div>
         <div>
           <dt>币种</dt>
@@ -84,7 +90,9 @@ function PrimaryResult({ product }) {
           {product.whyMatched.length > 0 ? (
             <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
           ) : (
-            <p>当前已提交信息支持优先评估该产品方向。</p>
+            <p>{product.presentationLabel === "优先匹配"
+              ? "当前已提交信息支持优先评估该产品方向。"
+              : "当前资料支持将该产品作为进一步核验方向。"}</p>
           )}
         </section>
         <section>
@@ -100,12 +108,18 @@ function AlternativeResult({ product }) {
   return (
     <article className="match-alternative-result">
       <header>
-        <span>备选方向</span>
+        <span>{product.presentationLabel}</span>
         <p>{product.institution}</p>
         <h4>{product.name}</h4>
       </header>
       <dl className="alternative-result-metrics">
-        <div><dt>参考额度</dt><dd>{product.amount}</dd></div>
+        <div>
+          <dt>参考额度</dt>
+          <dd>
+            {product.amount}
+            {product.amountNote && <small className="amount-note">{product.amountNote}</small>}
+          </dd>
+        </div>
         <div><dt>期限</dt><dd>{product.term}</dd></div>
       </dl>
       <section>
@@ -140,7 +154,7 @@ function MatchResults({ view }) {
         <section className="match-alternatives" aria-labelledby="match-alternatives-title">
           <header>
             <p className="eyebrow">alternative options</p>
-            <h3 id="match-alternatives-title">备选产品</h3>
+            <h3 id="match-alternatives-title">其他产品方向</h3>
           </header>
           <div className="match-alternative-grid">
             {view.alternatives.map((product) => (

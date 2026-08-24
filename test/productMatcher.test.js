@@ -19,8 +19,12 @@ const completeAmazonScProfile = () => ({
   singleStoreGmv: { amount: 6000000, currency: "USD" },
   qualifiedStoreCount: 1,
   acceptsAccountControl: true,
+  hasCompatibleCollectionAccount: false,
   preferredCurrency: "usd",
+  requestedAmount: { amount: 2000000, currency: "USD" },
   preferredTermMonths: 3,
+  fundUse: "inventory_procurement",
+  preferredRepaymentMethod: "revolving",
 });
 
 test("Amazon SC customer ranks SC first and never recommends hard failures", () => {
@@ -64,18 +68,18 @@ test("eligible status outranks needs-information even when its fit evidence is l
   assert.ok(firstNeedsInformation > matches.indexOf(amazonSc));
 });
 
-test("matcher persists a detached profile snapshot and product rule version with every estimate", () => {
+test("matcher persists detached estimator provenance and a product rule version", () => {
   const profile = completeAmazonScProfile();
   const match = matchProducts(profile).find((item) => item.productId === "linklogis-amazon-sc");
 
-  profile.singleStoreGmv.amount = 1;
+  profile.qualifiedStoreCount = 9;
 
   assert.deepEqual(match.estimatedAmount, {
     kind: "range", currency: "USD", min: 0, max: 3000000,
     formulaKey: "linklogis_sc_v1", note: "单店最高300万美元，最终额度以机构评估为准。",
   });
-  assert.equal(match.ruleVersion, "2026-08-21");
-  assert.equal(match.inputSnapshot.singleStoreGmv.amount, 6000000);
+  assert.equal(match.ruleVersion, "2026-08-24");
+  assert.deepEqual(match.inputSnapshot, { qualifiedStoreCount: 1 });
 });
 
 test("fit score is bounded and reflects all catalog weighting dimensions", () => {
@@ -88,6 +92,108 @@ test("fit score is bounded and reflects all catalog weighting dimensions", () =>
 
   assert.equal(complete.fitScore, 100);
   assert.ok(incomplete.fitScore >= 0 && incomplete.fitScore < complete.fitScore);
+});
+
+test("fit dimensions compare requested scale, purpose, repayment, currency, term, and controls", () => {
+  const shared = {
+    ...completeAmazonScProfile(),
+    hasCompatibleCollectionAccount: false,
+    requestedAmount: { amount: 3000000, currency: "USD" },
+    fundUse: "inventory_procurement",
+    preferredRepaymentMethod: "revolving",
+  };
+  const aligned = matchProducts(shared).find((item) => item.productId === "linklogis-amazon-sc");
+  const misaligned = matchProducts({
+    ...shared,
+    businessModels: ["platform_ecommerce"],
+    requestedAmount: { amount: 3000001, currency: "USD" },
+    preferredCurrency: "rmb",
+    preferredTermMonths: 4,
+    fundUse: "receivables_turnover",
+    preferredRepaymentMethod: "equal_installments",
+  }).find((item) => item.productId === "linklogis-amazon-sc");
+
+  assert.deepEqual(Object.keys(aligned.fitDimensions).sort(), [
+    "businessModel",
+    "cashFlow",
+    "controlAcceptance",
+    "currencyTermUse",
+    "documentation",
+    "scaleAndLimit",
+  ]);
+  for (const dimension of Object.values(aligned.fitDimensions)) {
+    assert.ok(dimension >= 0 && dimension <= 100);
+  }
+  assert.ok(aligned.fitDimensions.businessModel > misaligned.fitDimensions.businessModel);
+  assert.ok(aligned.fitDimensions.scaleAndLimit > misaligned.fitDimensions.scaleAndLimit);
+  assert.ok(aligned.fitDimensions.cashFlow > misaligned.fitDimensions.cashFlow);
+  assert.ok(aligned.fitDimensions.currencyTermUse > misaligned.fitDimensions.currencyTermUse);
+  assert.ok(aligned.fitScore > misaligned.fitScore);
+});
+
+test("non-applicable fit dimensions are neutral rather than scored as failures", () => {
+  const cmb = matchProducts({}).find((item) => item.productId === "cmb-guangdong-business-loan");
+
+  assert.equal(cmb.fitDimensions.businessModel, 50);
+  assert.equal(cmb.fitDimensions.controlAcceptance, 50);
+});
+
+test("catalog fit boundaries can change ordering between fully eligible SC and VC products", () => {
+  const profile = {
+    entityRegion: "mainland",
+    entityType: "limited_company",
+    businessModels: ["amazon_sc", "amazon_vc"],
+    primaryPlatformOrBuyerName: "Amazon",
+    platformSites: ["united_states"],
+    platformHistoryMonths: 13,
+    singleStoreGmv: { amount: 6000000, currency: "USD" },
+    amazonAnnualGmv: { amount: 3000000, currency: "USD" },
+    accountsReceivableBalance: { amount: 1000000, currency: "USD" },
+    qualifiedStoreCount: 1,
+    acceptsAccountControl: true,
+    hasCompatibleCollectionAccount: false,
+    acceptsNoa: true,
+    acceptsReceivablesAssignment: true,
+    preferredCurrency: "usd",
+    requestedAmount: { amount: 2000000, currency: "USD" },
+  };
+  const scLed = matchProducts({
+    ...profile,
+    preferredTermMonths: 3,
+    fundUse: "inventory_procurement",
+    preferredRepaymentMethod: "revolving",
+  }).filter(({ rank }) => rank != null);
+  const vcLed = matchProducts({
+    ...profile,
+    preferredTermMonths: 3,
+    fundUse: "receivables_turnover",
+    preferredRepaymentMethod: "receivables_collection",
+  }).filter(({ rank }) => rank != null);
+
+  assert.equal(scLed[0].productId, "linklogis-amazon-sc");
+  assert.equal(vcLed[0].productId, "linklogis-amazon-vc");
+});
+
+test("amount provenance snapshots contain estimator inputs only", () => {
+  const profile = {
+    ...completeAmazonScProfile(),
+    companyName: "must not be copied seven times",
+    annualRevenue: { amount: 40000000, currency: "RMB" },
+    taxInvoiceAmount: { amount: 3000000, currency: "RMB" },
+    collectionsLast12Months: { amount: 12000000, currency: "RMB" },
+    industry: "加工制造",
+  };
+  const matches = matchProducts(profile);
+  const sc = matches.find((item) => item.productId === "linklogis-amazon-sc");
+  const logistics = matches.find((item) => item.productId === "pingan-foreign-trade-logistics-loan");
+
+  assert.deepEqual(sc.inputSnapshot, { qualifiedStoreCount: 1 });
+  assert.deepEqual(logistics.inputSnapshot, {
+    annualRevenue: { amount: 40000000, currency: "RMB" },
+    industry: "加工制造",
+    taxInvoiceAmount: { amount: 3000000, currency: "RMB" },
+  });
+  assert.ok(matches.every((match) => !Object.hasOwn(match.inputSnapshot, "companyName")));
 });
 
 test("golden profiles name at least 20 explicit outcomes and cover every product", () => {

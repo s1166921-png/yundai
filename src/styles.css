@@ -2219,15 +2219,35 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.primary-result-heading > strong {
+.primary-result-amount {
+  display: grid;
+  justify-items: end;
+  gap: 0.35rem;
   flex: 0 1 420px;
   max-width: 46%;
   margin-left: 30px;
+  min-width: 0;
+  text-align: right;
+}
+
+.primary-result-amount strong {
+  max-width: 100%;
   color: #fff;
   font-size: 27px;
   line-height: 1.25;
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.primary-result-amount small,
+.amount-note {
+  display: block;
+  max-width: 34rem;
+  margin-top: 0.25rem;
+  color: rgba(224, 237, 255, 0.62);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .primary-result-metrics {
@@ -3256,7 +3276,7 @@ h2 {
     font-size: 24px;
   }
 
-  .primary-result-heading > strong {
+  .primary-result-amount {
     flex: 0 1 auto;
     width: 100%;
     max-width: 100%;
@@ -3502,7 +3522,7 @@ h2 {
   .product-match-heading > p,
   .scenario-heading > span,
   .product-catalog-card,
-  .primary-result-heading > strong,
+  .primary-result-amount,
   .primary-result-reasons section,
   .match-alternative-result,
   .match-document-list > ul,

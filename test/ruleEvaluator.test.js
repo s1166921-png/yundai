@@ -107,3 +107,69 @@ test("prototype properties are not custom evaluators", () => {
   assert.equal(evaluateRule(rule, { value: true }).status, "failed");
   assert.equal(evaluateRule({ ...rule, value: { evaluator: "toString" } }, { value: true }).status, "failed");
 });
+
+test("custom evaluators report the actual unanswered dependency paths", () => {
+  const allTruthyResult = evaluateRule({
+    id: "controls",
+    field: "acceptsNoa",
+    operator: "custom",
+    value: { evaluator: "allTruthy", fields: ["acceptsNoa", "acceptsAccountControl"] },
+  }, { acceptsNoa: true, acceptsAccountControl: null });
+  const companyAgeResult = evaluateRule({
+    id: "age-or-rating",
+    field: "companyAgeMonths",
+    operator: "custom",
+    value: {
+      evaluator: "companyAgeOrRating",
+      minimumMonths: 60,
+      minimumMonthsWithRating: 36,
+      ratingField: "companyCreditRating",
+      minimumRating: "5C+",
+    },
+  }, { companyAgeMonths: 40, companyCreditRating: null });
+
+  assert.deepEqual(allTruthyResult.missingFields, ["acceptsAccountControl"]);
+  assert.deepEqual(companyAgeResult.missingFields, ["companyCreditRating"]);
+  assert.deepEqual(evaluateEligibility({ ruleSet: [{
+    id: "controls",
+    field: "acceptsNoa",
+    operator: "custom",
+    value: { evaluator: "allTruthy", fields: ["acceptsNoa", "acceptsAccountControl"] },
+  }] }, { acceptsNoa: true }).missingFields, ["acceptsAccountControl"]);
+});
+
+test("non-applicable currency conditions are neutral instead of pretending data is missing", () => {
+  const result = evaluateRule({
+    id: "rmb-only",
+    field: "requestedAmount.amount",
+    operator: "custom",
+    value: {
+      evaluator: "conditionalAllTruthy",
+      whenAtLeast: 500000,
+      currencyField: "requestedAmount.currency",
+      requiredCurrency: "RMB",
+      requiresAllTruthy: ["authorization"],
+    },
+  }, {
+    requestedAmount: { amount: 800000, currency: "USD" },
+    authorization: false,
+  });
+
+  assert.equal(result.status, "passed");
+  assert.equal(result.missingFields, undefined);
+
+  const unansweredAmount = evaluateRule({
+    id: "rmb-only-unanswered-amount",
+    field: "requestedAmount.amount",
+    operator: "custom",
+    value: {
+      evaluator: "conditionalAllTruthy",
+      whenAtLeast: 500000,
+      currencyField: "requestedAmount.currency",
+      requiredCurrency: "RMB",
+      requiresAllTruthy: ["authorization"],
+    },
+  }, { requestedAmount: { amount: null, currency: "USD" } });
+  assert.equal(unansweredAmount.status, "passed");
+  assert.equal(unansweredAmount.missingFields, undefined);
+});

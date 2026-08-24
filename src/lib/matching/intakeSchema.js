@@ -137,10 +137,20 @@ const INTAKE_FIELDS = Object.freeze([
     min: 18,
     max: 100,
   }),
-  textField("industry", 1, "主营行业", {
+  field({
+    key: "industry",
+    step: 1,
+    label: "主营行业",
+    type: "select",
+    options: Object.freeze([
+      Object.freeze({ value: "批发零售", label: "批发零售" }),
+      Object.freeze({ value: "加工制造", label: "加工制造" }),
+      Object.freeze({ value: "跨境电商", label: "跨境电商" }),
+      Object.freeze({ value: "其他", label: "其他" }),
+    ]),
     requiredFor: COMPLEX_MODE,
     visibleWhen: complexOnly,
-    help: "例如消费电子、家居用品或服装。",
+    help: "请选择与企业主营收入最匹配的行业分类。",
   }),
 
   field({
@@ -176,7 +186,7 @@ const INTAKE_FIELDS = Object.freeze([
   }),
   numberField("controllerIndustryExperienceYears", 2, "实控人从业年限", "年", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("processing_manufacturing"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   booleanField("hasFixedBusinessPremises", 2, "是否有固定经营场所", {
     requiredFor: COMPLEX_MODE,
@@ -184,11 +194,11 @@ const INTAKE_FIELDS = Object.freeze([
   }),
   booleanField("selfOperatedImportExport", 2, "是否为自营进出口", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   booleanField("hasImportExportLicense", 2, "是否拥有进出口经营权", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
 
   textField("primaryPlatformOrBuyerName", 3, "主要平台或买方名称", {
@@ -198,6 +208,11 @@ const INTAKE_FIELDS = Object.freeze([
   numberField("singleStoreGmvUsd", 3, "单店近 12 个月 GMV", "美元", {
     requiredFor: COMPLEX_MODE,
     visibleWhen: complexBusinessModels("amazon_sc"),
+  }),
+  numberField("amazonAnnualGmvUsd", 3, "Amazon 近 12 个月 GMV", "美元", {
+    requiredFor: COMPLEX_MODE,
+    visibleWhen: complexBusinessModels("amazon_vc"),
+    help: "请填写 Amazon VC 主体近 12 个月总 GMV。",
   }),
   numberField("allStoreSalesRmb", 3, "所有店铺近 12 个月销售额", "人民币元", {
     requiredFor: COMPLEX_MODE,
@@ -270,29 +285,29 @@ const INTAKE_FIELDS = Object.freeze([
 
   numberField("importExportAmountLast12MonthsUsd", 3, "近 12 个月进出口额", "美元", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   numberField("importExportAmountMonths13To24Usd", 3, "13-24 个月进出口额", "美元", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   numberField("daysSinceLatestImportExport", 3, "最近一次进出口距今天数", "天", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   numberField("importExportCountLast12Months", 3, "近 12 个月进出口次数", "次", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   numberField("importExportRevenueSharePercent", 3, "进出口业务占总营收比例", "%", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
     min: 0,
     max: 100,
   }),
   numberField("commodityRevenueSharePercent", 3, "大宗商品业务占比", "%", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
     min: 0,
     max: 100,
   }),
@@ -307,11 +322,11 @@ const INTAKE_FIELDS = Object.freeze([
       Object.freeze({ value: "c", label: "C 类" }),
     ]),
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   textField("customsCreditClassification", 3, "海关信用等级", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("general_import_export"),
+    visibleWhen: complexBusinessModels("general_import_export", "processing_manufacturing", "wholesale_retail"),
     help: "例如高级认证企业、一般认证企业或一般信用企业。",
   }),
 
@@ -323,10 +338,32 @@ const INTAKE_FIELDS = Object.freeze([
     requiredFor: COMPLEX_MODE,
     visibleWhen: complexBusinessModels("b2b_supermarket", "wholesale_retail"),
   }),
-  textField("buyerPlatformType", 3, "买方平台类型", {
+  field({
+    key: "buyerPlatformType",
+    step: 3,
+    label: "买方平台类型",
+    type: "select",
+    options: Object.freeze([
+      Object.freeze({ value: "admitted_1p_retailer", label: "准入的一方零售商" }),
+      Object.freeze({ value: "other", label: "其他买方类型" }),
+    ]),
     requiredFor: COMPLEX_MODE,
     visibleWhen: complexBusinessModels("b2b_supermarket"),
-    help: "例如商超、平台采购或品牌方。",
+    help: "请选择买方是否属于产品准入的一方零售商类型。",
+  }),
+  field({
+    key: "buyerCountryEligibility",
+    step: 3,
+    label: "买方国家准入状态",
+    type: "select",
+    options: Object.freeze([
+      Object.freeze({ value: "confirmed_admitted", label: "已确认属于准入国家" }),
+      Object.freeze({ value: "confirmed_not_admitted", label: "已确认不属于准入国家" }),
+      Object.freeze({ value: "needs_review", label: "待产品人员核验" }),
+    ]),
+    requiredFor: COMPLEX_MODE,
+    visibleWhen: complexBusinessModels("b2b_supermarket"),
+    help: "准入国家名单以产品方最新审核结果为准；不确定时请选择待核验。",
   }),
   numberField("buyerTradingHistoryMonths", 3, "与买方交易历史", "个月", {
     requiredFor: COMPLEX_MODE,
@@ -446,6 +483,11 @@ const INTAKE_FIELDS = Object.freeze([
   booleanField("hasMajorLitigation", 4, "是否存在重大诉讼", {
     requiredFor: BOTH_MODES,
   }),
+  booleanField("hasMaterialCreditOrJudicialNegative", 4, "是否存在重大征信或司法负面记录", {
+    requiredFor: COMPLEX_MODE,
+    visibleWhen: complexOnly,
+    help: "包括会影响授信判断的重大征信、执行或司法负面信息。",
+  }),
   booleanField("hasAbnormalOperations", 4, "是否存在经营异常", {
     requiredFor: BOTH_MODES,
   }),
@@ -489,20 +531,48 @@ const INTAKE_FIELDS = Object.freeze([
     requiredFor: BOTH_MODES,
     help: "金额币种以本步骤选择为准。",
   }),
-  textField("fundUse", 5, "资金用途", {
+  field({
+    key: "fundUse",
+    step: 5,
+    label: "资金用途",
+    type: "select",
+    options: Object.freeze([
+      Object.freeze({ value: "inventory_procurement", label: "采购备货" }),
+      Object.freeze({ value: "logistics_working_capital", label: "物流周转" }),
+      Object.freeze({ value: "receivables_turnover", label: "应收账款周转" }),
+      Object.freeze({ value: "platform_operations", label: "平台经营周转" }),
+      Object.freeze({ value: "tax_business_operations", label: "税务经营周转" }),
+      Object.freeze({ value: "other", label: "其他经营用途" }),
+    ]),
     requiredFor: BOTH_MODES,
-    help: "例如采购备货、物流周转或应收账款周转。",
+    help: "请选择本次融资的主要经营用途。",
   }),
   numberField("preferredTermMonths", 5, "期望期限", "个月", {
     visibleWhen: complexOnly,
   }),
-  textField("preferredRepaymentMethod", 5, "偏好还款方式", {
+  field({
+    key: "preferredRepaymentMethod",
+    step: 5,
+    label: "偏好还款方式",
+    type: "select",
+    options: Object.freeze([
+      Object.freeze({ value: "revolving", label: "循环使用或随借随还" }),
+      Object.freeze({ value: "interest_then_principal", label: "按期付息、到期还本" }),
+      Object.freeze({ value: "equal_installments", label: "等额分期" }),
+      Object.freeze({ value: "receivables_collection", label: "应收账款回款还款" }),
+      Object.freeze({ value: "other", label: "其他方式" }),
+    ]),
     visibleWhen: complexOnly,
-    help: "例如按月付息到期还本、等额本息或随借随还。",
+    help: "请选择更符合企业现金流安排的还款方式。",
   }),
   booleanField("acceptsAccountControl", 5, "是否接受回款账户切换或支付公司锁定", {
     requiredFor: COMPLEX_MODE,
-    visibleWhen: complexBusinessModels("amazon_sc", "platform_ecommerce"),
+    visibleWhen: complexBusinessModels("amazon_sc", "amazon_vc", "platform_ecommerce", "b2b_supermarket"),
+  }),
+  booleanField("hasCompatibleCollectionAccount", 5, "是否已有产品方认可的兼容收款账户", {
+    requiredFor: COMPLEX_MODE,
+    visibleWhen: complexBusinessModels("amazon_sc"),
+    help: "已有兼容收款账户可作为 Amazon SC 回款账户切换要求的替代条件。",
   }),
   booleanField("acceptsReceivablesAssignment", 5, "是否接受应收账款转让", {
     requiredFor: COMPLEX_MODE,
@@ -517,6 +587,8 @@ const INTAKE_FIELDS = Object.freeze([
     help: "提交前需要明确勾选同意。",
   }),
 ]);
+
+export const INTAKE_FIELD_KEYS = Object.freeze(INTAKE_FIELDS.map(({ key }) => key));
 
 const isEmpty = (value) => (
   value == null

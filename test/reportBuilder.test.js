@@ -101,6 +101,7 @@ test("report copies customer product facts from the versioned catalog", () => {
     pricing: "年化9%-11%",
     term: "90天或随借随还",
     limit: "单店最高300万美元，可循环",
+    presentationLabel: "优先匹配",
     estimatedAmount: {
       kind: "range",
       currency: "USD",
@@ -111,7 +112,7 @@ test("report copies customer product facts from the versioned catalog", () => {
     whyMatched: ["需为 Amazon 店铺。"],
   });
   assert.equal(report.disclaimer, "本结果基于您提交的信息和当前产品规则进行初步匹配，仅供融资准备参考，不构成授信、放款、利率或期限承诺，最终结果以资金方审核为准。");
-  assert.equal(report.ruleVersion, "2026-08-21");
+  assert.equal(report.ruleVersion, undefined);
   assert.deepEqual(buildProductReport(profileFixture, matchFixture), report);
 });
 
@@ -146,4 +147,46 @@ test("report does not promote ineligible products when no ranked result exists",
     name: "联易融 Amazon SC 卖家融资贷",
     reason: "当前资料暂未满足该产品的部分基础准入要求。",
   }]);
+});
+
+test("low-evidence and needs-information profiles are possible directions with amounts suppressed", () => {
+  const report = buildCustomerMatchReport({}, [{
+    ...matchFixture[0],
+    status: "needs_information",
+    confidence: 25,
+    missingFields: ["platformHistoryMonths"],
+  }]);
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.primary.presentationLabel, "可能方向");
+  assert.equal(report.primary.estimatedAmount, null);
+  assert.match(report.summary, /可能方向/);
+  assert.doesNotMatch(serialized, /needs_information|confidence|fitScore|ruleVersion|formulaKey|inputSnapshot|failedRules/);
+});
+
+test("eligible and sufficiently evidenced primary may expose a priority estimate", () => {
+  const report = buildCustomerMatchReport(profileFixture, matchFixture);
+
+  assert.equal(report.primary.presentationLabel, "优先匹配");
+  assert.deepEqual(report.primary.estimatedAmount, {
+    kind: "range",
+    currency: "USD",
+    min: 0,
+    max: 3000000,
+    note: "单店最高300万美元，最终额度以机构评估为准。",
+  });
+});
+
+test("missing documents use dependency-level composite provenance", () => {
+  const report = buildCustomerMatchReport(profileFixture, [{
+    ...matchFixture[0],
+    status: "needs_information",
+    confidence: 70,
+    missingFields: ["acceptsAccountControl", "companyCreditRating"],
+  }]);
+
+  assert.deepEqual(report.missingDocuments, [
+    "回款账户安排确认",
+    "企业信用评级资料",
+  ]);
 });

@@ -17,6 +17,9 @@ Each product definition includes:
 - `ruleSet`: ordered eligibility and review rules.
 - `amountEstimator`: formula metadata and documented inputs.
 - `fitWeights`: catalog-owned ranking dimensions.
+- `fitProfile`: catalog-owned business models, scale rules, cash-flow inputs, purposes,
+  repayment methods, and control groups. Keep non-applicable lists empty so the matcher
+  treats those dimensions neutrally.
 
 Every rule contains `id`, `field`, `operator`, `value`, `severity`, and `message`.
 `severity` is `hard` for a true eligibility prerequisite and `review` for a condition
@@ -44,9 +47,11 @@ The standard operators implemented by `src/lib/matching/ruleEvaluator.js` are:
 | `falsy` | Value must be exactly `false`. |
 | `custom` | Invoke a named evaluator already registered in `CUSTOM_EVALUATORS`. |
 
-Missing scalars and empty arrays evaluate as `unknown`. A hard failure makes the product
-`ineligible`; otherwise unknown data makes it `needs_information`. Never turn missing
-data into a hard failure.
+Missing scalars and empty arrays evaluate as `unknown`. Composite evaluators report the
+actual unanswered dependency paths, not only the rule's anchor field. A hard failure
+makes the product `ineligible`; otherwise unknown data makes it `needs_information`.
+Never turn missing data into a hard failure. A currency-specific condition is neutral
+when the request uses another currency.
 
 Before adding a new custom evaluator, prefer a standard operator. If a custom evaluator
 is necessary, keep it pure, register it in `CUSTOM_EVALUATORS`, and add focused passed,
@@ -74,6 +79,10 @@ version was bumped with it.
 coefficients. Every estimate retains its `formulaKey`, input snapshot, product rule
 version, currency, and calculation note through the internal match result.
 
+Each match snapshot contains only fields consumed by that product's estimator; never
+copy the full profile or raw intake into every snapshot. Exact and range estimates render
+their numeric value before any note, while manual estimates remain note-only.
+
 When a coefficient, exchange rate, cap, or other required input is unknown, return a
 `manual` estimate with `min: null` and `max: null` plus a factual follow-up note. Never
 invent a coefficient, infer an exchange rate, or convert RMB and USD to produce a more
@@ -92,10 +101,20 @@ internal reasons, fit scores, confidence values, advisor priority, input snapsho
 formula keys, or rule versions. Customer non-match copy is a safe summary, not a raw
 failure label.
 
+`buildCustomerMatchReport` is itself a customer-safe boundary. Only an eligible result
+with at least 80 confidence may be labelled `优先匹配` and retain an amount. Incomplete
+results use `可能方向` below 50 confidence or `待补信息` otherwise, with amounts removed.
+
 Full matching evidence remains server-side and is available only through authenticated
 admin and export paths. `GET /api/leads` and `GET /api/leads/export` require configured
 admin authentication, and export requires an explicit non-empty `ids` selection. Keep
 those boundaries intact when changing persistence or reporting.
+
+Raw submission provenance is persisted once through the intake-field allowlist. The JSON
+lead store remains mode `0600`; updates are queued only within one process, so never point
+multiple writer processes at the same file. Preserve same-origin/configured-origin CORS,
+JSON-only POST handling, no-store admin responses, bounded bodies, and generic public 500
+messages when changing the server.
 
 Use synthetic profiles in tests and local verification. Never commit credentials,
 `server/data/leads.json`, browser captures, or real customer information.
