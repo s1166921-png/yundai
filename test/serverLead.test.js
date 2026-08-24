@@ -788,6 +788,16 @@ test("authenticated lead filters cover customer, product, institution, currency,
   await postLead(url, completeAmazonScPayload({ companyName: "Filter SC", requestedAmount: 1000000 }));
   await postLead(url, completeAmazonVcPayload({ companyName: "Filter VC", requestedAmount: 2000000 }));
   await postLead(url, completeLogisticsPayload({ companyName: "Filter Logistics", requestedAmount: 3000000 }));
+  await postLead(url, completeAmazonScPayload({
+    companyName: "Filter Ineligible",
+    registeredProvince: "浙江省",
+    applicantRole: "法人",
+    legalRepresentativeAge: 66,
+    entityType: "other",
+    hasMaterialCreditOrJudicialNegative: true,
+    acceptsAccountControl: false,
+    hasCompatibleCollectionAccount: false,
+  }));
 
   const query = async (parameters) => {
     const response = await fetch(`${url}/api/leads?${new URLSearchParams(parameters)}`, {
@@ -802,11 +812,12 @@ test("authenticated lead filters cover customer, product, institution, currency,
   assert.deepEqual(await query({ institution: "平安银行" }), ["Filter Logistics"]);
   assert.deepEqual((await query({ currency: "USD" })).sort(), ["Filter SC", "Filter VC"]);
   assert.deepEqual((await query({ status: "eligible" })).sort(), ["Filter Logistics", "Filter SC", "Filter VC"]);
+  assert.deepEqual(await query({ status: "ineligible" }), ["Filter Ineligible"]);
   assert.deepEqual(await query({ amountMin: "2500000" }), ["Filter Logistics"]);
   assert.deepEqual(await query({ amountMax: "1500000" }), ["Filter SC"]);
   assert.deepEqual(await query({ dateTo: "2000-01-01" }), []);
   const today = new Date().toISOString().slice(0, 10);
-  assert.equal((await query({ dateFrom: today })).length, 3);
+  assert.equal((await query({ dateFrom: today })).length, 4);
 });
 
 test("admin page exposes useful filters while preserving explicit selection-only export", async (t) => {

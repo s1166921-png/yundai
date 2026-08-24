@@ -151,14 +151,20 @@ const cloneSelected = (profile, fields) => Object.fromEntries(fields
   .filter((field) => profile?.[field] !== undefined)
   .map((field) => [field, structuredClone(profile[field])]));
 
+const hasUsableMoney = (profile, field, currency) => (
+  profile?.[field]?.currency === currency
+  && Number.isFinite(profile[field].amount)
+  && profile[field].amount >= 0
+);
+
 const estimatorInputSnapshot = (productId, profile) => {
   switch (productId) {
     case "pingan-foreign-trade-logistics-loan":
       return cloneSelected(profile, ["annualRevenue", "industry", "taxInvoiceAmount"]);
     case "webank-cross-border-data-loan":
-      return cloneSelected(profile, profile?.collectionsLast12Months == null
-        ? ["allStoreRepayments"]
-        : ["collectionsLast12Months"]);
+      return cloneSelected(profile, hasUsableMoney(profile, "collectionsLast12Months", "RMB")
+        ? ["collectionsLast12Months"]
+        : ["allStoreRepayments"]);
     case "linklogis-amazon-sc":
       return cloneSelected(profile, ["qualifiedStoreCount"]);
     case "linklogis-amazon-vc":

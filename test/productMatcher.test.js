@@ -196,6 +196,18 @@ test("amount provenance snapshots contain estimator inputs only", () => {
   assert.ok(matches.every((match) => !Object.hasOwn(match.inputSnapshot, "companyName")));
 });
 
+test("WeBank provenance records the repayment fallback actually used by its estimator", () => {
+  const match = matchProducts({
+    collectionsLast12Months: { amount: null, currency: "RMB" },
+    allStoreRepayments: { amount: 12000000, currency: "RMB" },
+  }).find(({ productId }) => productId === "webank-cross-border-data-loan");
+
+  assert.equal(match.estimatedAmount.kind, "range");
+  assert.deepEqual(match.inputSnapshot, {
+    allStoreRepayments: { amount: 12000000, currency: "RMB" },
+  });
+});
+
 test("golden profiles name at least 20 explicit outcomes and cover every product", () => {
   assert.ok(GOLDEN_PROFILES.length >= 20);
   assert.ok(isDeeplyFrozen(GOLDEN_PROFILES), "golden fixtures must be recursively frozen");

@@ -464,6 +464,16 @@ function getPrimaryMatch(lead) {
   return lead.productMatches?.find((match) => match.rank === 1) ?? null;
 }
 
+function getOverallMatchStatus(lead) {
+  const primaryMatch = getPrimaryMatch(lead);
+  if (primaryMatch) return primaryMatch.status;
+
+  const matches = Array.isArray(lead.productMatches) ? lead.productMatches : [];
+  return matches.length > 0 && matches.every((match) => match.status === "ineligible")
+    ? "ineligible"
+    : null;
+}
+
 function getProductName(productId) {
   return getProductById(productId)?.name ?? productId ?? "";
 }
@@ -493,7 +503,7 @@ function formatMatchingValue(lead, key) {
     case "matching.alternatives":
       return lead.matchReport?.alternatives?.map((product) => product.name).filter(Boolean).join("；") ?? "";
     case "matching.status":
-      return primaryMatch == null ? "无推荐" : formatMatchStatus(primaryMatch.status);
+      return formatMatchStatus(getOverallMatchStatus(lead)) || "无推荐";
     case "matching.fitScore":
       return Number.isFinite(primaryMatch?.fitScore) ? `${primaryMatch.fitScore} 分` : "";
     case "matching.confidence":
@@ -600,7 +610,7 @@ function filterLeads(url, leads) {
     if (productId && primary?.productId !== productId) return false;
     if (institution && product?.institution !== institution) return false;
     if (currency && product?.currency !== currency) return false;
-    if (status && primary?.status !== status) return false;
+    if (status && getOverallMatchStatus(lead) !== status) return false;
     if (hasAmountMin && (!Number.isFinite(submittedAmount) || submittedAmount < amountMin)) return false;
     if (hasAmountMax && (!Number.isFinite(submittedAmount) || submittedAmount > amountMax)) return false;
     if (Number.isFinite(fromTime) && (!Number.isFinite(createdTime) || createdTime < fromTime)) return false;
@@ -746,6 +756,12 @@ function buildAdminPage() {
     };
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     const primaryMatchFor = (lead) => (lead.productMatches || []).find((match) => match.rank === 1) || null;
+    const overallMatchStatusFor = (lead) => {
+      const primary = primaryMatchFor(lead);
+      if (primary) return primary.status;
+      const matches = lead.productMatches || [];
+      return matches.length && matches.every((match) => match.status === "ineligible") ? "ineligible" : "";
+    };
     const productNameFor = (lead, productId) => {
       const products = [lead.matchReport && lead.matchReport.primary].concat((lead.matchReport && lead.matchReport.alternatives) || []).filter(Boolean);
       const product = products.find((item) => item.productId === productId);
@@ -763,7 +779,7 @@ function buildAdminPage() {
       const primaryMatch = primaryMatchFor(lead);
       if (key === "matching.primaryProduct") return (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.name) || productNameFor(lead, primaryMatch && primaryMatch.productId);
       if (key === "matching.alternatives") return (((lead.matchReport && lead.matchReport.alternatives) || []).map((product) => product.name).filter(Boolean).join("；"));
-      if (key === "matching.status") return primaryMatch ? formatMatchStatus(primaryMatch.status) : "无推荐";
+      if (key === "matching.status") return formatMatchStatus(overallMatchStatusFor(lead)) || "无推荐";
       if (key === "matching.fitScore") return primaryMatch && Number.isFinite(primaryMatch.fitScore) ? primaryMatch.fitScore + " 分" : "";
       if (key === "matching.confidence") return primaryMatch && Number.isFinite(primaryMatch.confidence) ? primaryMatch.confidence + "%" : "";
       if (key === "matching.ruleVersion") return lead.ruleVersion || (primaryMatch && primaryMatch.ruleVersion) || "";
