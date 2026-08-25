@@ -405,6 +405,57 @@ test("POST /api/leads enforces the raw progressive version and mode envelope", a
   }
 });
 
+test("POST /api/leads rejects every supplied invalid version regardless of legacy mode", async (t) => {
+  const { url } = await startTestServer(t);
+
+  for (const { label, payload } of [
+    { label: "simple", payload: completeSimplePayload() },
+    { label: "complex", payload: completeAmazonScPayload() },
+  ]) {
+    const response = await postLead(url, payload);
+    assert.equal(response.status, 201, `legacy ${label} without intakeVersion remains valid`);
+  }
+
+  for (const { versionLabel, intakeVersion } of [
+    { versionLabel: "future", intakeVersion: "progressive-v2" },
+    { versionLabel: "case-variant", intakeVersion: "Progressive-v1" },
+    { versionLabel: "whitespace-padded", intakeVersion: " progressive-v1 " },
+    { versionLabel: "non-string", intakeVersion: 1 },
+  ]) {
+    for (const { mode, payload } of [
+      { mode: "simple", payload: completeSimplePayload({ intakeVersion }) },
+      { mode: "complex", payload: completeAmazonScPayload({ intakeVersion }) },
+    ]) {
+      const response = await postLead(url, payload);
+      const body = await response.json();
+
+      assert.equal(response.status, 400, `${versionLabel} intakeVersion with legacy ${mode}`);
+      assert.ok(body.errors.some((error) => error.field === "intakeVersion"), `${versionLabel} intakeVersion with legacy ${mode}`);
+    }
+  }
+});
+
+test("POST /api/leads rejects non-string modes for the exact progressive version", async (t) => {
+  const { url } = await startTestServer(t);
+
+  for (const { label, estimationMode } of [
+    { label: "null", estimationMode: null },
+    { label: "number", estimationMode: 1 },
+    { label: "object", estimationMode: {} },
+    { label: "array", estimationMode: [] },
+    { label: "boolean", estimationMode: false },
+  ]) {
+    const response = await postLead(url, {
+      ...completeProgressiveAmazonScPayload(),
+      estimationMode,
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 400, label);
+    assert.ok(body.errors.some((error) => error.field === "estimationMode"), label);
+  }
+});
+
 test("progressive leads persist only visible customer input and skip legacy scores", async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
   const response = await postLead(url, completeProgressiveAmazonScPayload({
