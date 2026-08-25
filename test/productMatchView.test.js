@@ -192,6 +192,32 @@ test("exact and range amounts render numeric conclusions before notes while manu
   assert.equal(view.alternatives[0].amountNote, null);
 });
 
+test("customer amount presentation hides unknown zero floors and uses consistent 万 units", () => {
+  const view = buildProductMatchView({
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      estimatedAmount: { kind: "range", currency: "USD", min: 0, max: 3000000 },
+    },
+    alternatives: [
+      {
+        ...customerReport.alternatives[0],
+        productId: "webank-cross-border-data-loan",
+        estimatedAmount: { kind: "range", currency: "RMB", min: 750000, max: 2625000 },
+      },
+      {
+        ...customerReport.alternatives[1],
+        productId: "pingan-orange-tax-loan",
+        estimatedAmount: { kind: "range", currency: "RMB", min: 50001, max: 3000000 },
+      },
+    ],
+  }, PUBLIC_PRODUCTS);
+
+  assert.equal(view.primary.amount, "最高300万美元");
+  assert.equal(view.alternatives[0].amount, "75万-262.5万元");
+  assert.equal(view.alternatives[1].amount, "5万-300万元");
+});
+
 test("suppressed reports retain safe presentation labels without catalog amount fallback", () => {
   const view = buildProductMatchView({
     ...customerReport,

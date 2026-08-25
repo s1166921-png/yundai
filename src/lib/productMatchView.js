@@ -4,7 +4,10 @@ const currencyUnit = (currency) => ({ RMB: "元", USD: "美元" }[currency] ?? c
 
 const formatAmountValue = (value) => {
   if (!Number.isFinite(value)) return null;
-  if (value >= 10000 && value % 10000 === 0) return `${value / 10000}万`;
+  if (value >= 10000) {
+    const wan = Math.round((value / 10000) * 10) / 10;
+    return `${wan}万`;
+  }
   return String(value);
 };
 
@@ -49,9 +52,14 @@ const formatEstimatedAmount = (estimatedAmount) => {
   if (estimatedAmount.kind === "manual") {
     return { amount: note ?? "待资金方进一步核定", amountNote: null };
   }
-  const minimum = formatAmountValue(estimatedAmount?.min);
-  const maximum = formatAmountValue(estimatedAmount?.max);
+  const rawMinimum = estimatedAmount?.min;
+  const rawMaximum = estimatedAmount?.max;
+  const minimum = formatAmountValue(rawMinimum);
+  const maximum = formatAmountValue(rawMaximum);
   const unit = currencyUnit(estimatedAmount?.currency);
+  if (Number.isFinite(rawMaximum) && (!Number.isFinite(rawMinimum) || rawMinimum <= 0)) {
+    return { amount: `最高${maximum}${unit}`, amountNote: note };
+  }
   if (minimum != null && maximum != null) {
     return {
       amount: minimum === maximum ? `${minimum}${unit}` : `${minimum}-${maximum}${unit}`,

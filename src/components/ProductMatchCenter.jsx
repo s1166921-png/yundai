@@ -199,7 +199,7 @@ export function ProductMatchCenter({ report, products }) {
   const catalogIsUnavailable = view.state === "catalog" && !catalogIsLoading && view.groups.length === 0;
 
   return (
-    <section id="product-match-center" className="product-match-center" aria-labelledby="product-match-title" data-reveal>
+    <section id="product-match-center" className="product-match-center" aria-labelledby="product-match-title" tabIndex="-1" data-reveal>
       <header className="product-match-heading">
         <div>
           <p className="eyebrow">AI product matching</p>

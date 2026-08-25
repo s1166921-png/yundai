@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  INTAKE_VERSION,
   INTAKE_STEPS,
   getVisibleIntakeFields,
   validateIntakeStep,
@@ -8,10 +9,28 @@ import { invalidateIntakeResult } from "../lib/matching/intakeLifecycle.js";
 import { postJson } from "../lib/http/jsonRequest.js";
 
 const initialProfile = {
-  businessModels: [],
-  platformSites: [],
+  intakeVersion: INTAKE_VERSION,
   consentToDataUse: false,
 };
+
+const isEmpty = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
+
+export function clearInactiveIntakeValues(profile, primaryBusinessModel) {
+  const nextProfile = { ...profile, primaryBusinessModel };
+  const visibleKeys = new Set(getVisibleIntakeFields(nextProfile).map(({ key }) => key));
+
+  return Object.fromEntries(Object.entries(nextProfile).filter(([key]) => (
+    key === "intakeVersion" || visibleKeys.has(key)
+  )));
+}
+
+export function buildProgressiveSubmission(profile) {
+  return getVisibleIntakeFields(profile).reduce((payload, field) => {
+    const value = profile[field.key];
+    if (!isEmpty(value)) payload[field.key] = value;
+    return payload;
+  }, { intakeVersion: INTAKE_VERSION, estimationMode: "progressive" });
+}
 
 const errorMapFrom = (errors) => errors.reduce((result, error) => {
   result[error.key] = error.message;
@@ -102,6 +121,35 @@ function BooleanField({ field, value, error, onChange, inputRef }) {
   );
 }
 
+function WebankToggle({ field, value, error, onChange, inputRef }) {
+  const inputId = `intake-${field.key}`;
+  const describedBy = describedByFor(field, error);
+
+  return (
+    <section className={`intake-field webank-toggle ${error ? "has-error" : ""}`} aria-labelledby={`${inputId}-label`}>
+      <div>
+        <span id={`${inputId}-label`}>{field.label}</span>
+        <small>补充跨境店铺数据后，同时评估微众银行数据贷方向。</small>
+      </div>
+      <label className="toggle-control" htmlFor={inputId}>
+        <input
+          id={inputId}
+          ref={inputRef}
+          type="checkbox"
+          name={field.key}
+          checked={value === true}
+          onChange={(event) => onChange(field.key, event.target.checked, "toggle")}
+          aria-describedby={describedBy}
+          role="switch"
+        />
+        <span aria-hidden="true" />
+        <b>{value === true ? "已开启" : "未开启"}</b>
+      </label>
+      <FieldSupport field={field} error={error} />
+    </section>
+  );
+}
+
 function StandardField({ field, value, error, onChange, inputRef }) {
   const inputId = `intake-${field.key}`;
   const describedBy = describedByFor(field, error);
@@ -188,6 +236,9 @@ function ConsentField({ field, value, error, onChange, inputRef }) {
 }
 
 function IntakeField({ field, value, error, onChange, inputRef }) {
+  if (field.key === "includeWebankAssessment") {
+    return <WebankToggle field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
+  }
   if (field.type === "checkboxes") {
     return <ChoiceField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
   }
@@ -202,7 +253,6 @@ function IntakeField({ field, value, error, onChange, inputRef }) {
 
 export function FinancingIntake({ onComplete, onInvalidate }) {
   const [profile, setProfile] = useState(initialProfile);
-  const [mode, setMode] = useState("simple");
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState({ type: "idle", message: "" });
@@ -211,7 +261,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
   const requestVersion = useRef(0);
   const requestController = useRef(null);
 
-  const visibleFields = useMemo(() => getVisibleIntakeFields(profile, mode), [profile, mode]);
+  const visibleFields = useMemo(() => getVisibleIntakeFields(profile), [profile]);
   const stepFields = useMemo(
     () => visibleFields.filter((field) => field.step === currentStep),
     [currentStep, visibleFields],
@@ -247,6 +297,10 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     cancelPendingSubmission();
     invalidateIntakeResult(onInvalidate, "field_change");
     setProfile((current) => {
+      if (key === "primaryBusinessModel") return clearInactiveIntakeValues(current, value);
+      if (key === "includeWebankAssessment") {
+        return clearInactiveIntakeValues({ ...current, [key]: value }, current.primaryBusinessModel);
+      }
       if (type !== "checkboxes") return { ...current, [key]: value };
       const selected = Array.isArray(current[key]) ? current[key] : [];
       return {
@@ -273,18 +327,8 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     return true;
   };
 
-  const changeMode = (nextMode) => {
-    if (nextMode === mode) return;
-    cancelPendingSubmission();
-    invalidateIntakeResult(onInvalidate, "mode_change");
-    setMode(nextMode);
-    setCurrentStep(1);
-    setErrors({});
-    setStatus({ type: "idle", message: "" });
-  };
-
   const goForward = () => {
-    const nextErrors = validateIntakeStep(profile, mode, currentStep);
+    const nextErrors = validateIntakeStep(profile, currentStep);
     if (focusErrors(nextErrors)) return;
     setErrors({});
     setCurrentStep((step) => Math.min(step + 1, INTAKE_STEPS.length));
@@ -304,7 +348,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     }
 
     const submissionErrors = INTAKE_STEPS.reduce((result, step) => (
-      result.concat(validateIntakeStep(profile, mode, step.id))
+      result.concat(validateIntakeStep(profile, step.id))
     ), []);
     if (submissionErrors.length > 0) {
       const firstInvalidField = visibleFields.find((field) => field.key === submissionErrors[0].key);
@@ -313,13 +357,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       return;
     }
 
-    const payload = visibleFields.reduce((result, field) => {
-      const value = profile[field.key];
-      if (value !== "" && value != null && (!Array.isArray(value) || value.length > 0)) {
-        result[field.key] = value;
-      }
-      return result;
-    }, { estimationMode: mode });
+    const payload = buildProgressiveSubmission(profile);
 
     setErrors({});
     invalidateIntakeResult(onInvalidate, "submit_start");
@@ -336,7 +374,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       const leadResponse = responsePayload.lead;
       setStatus({
         type: "success",
-        message: mode === "simple" ? "信息已提交，初步匹配已生成。" : "信息已提交，融资匹配结果已生成。",
+        message: "信息已提交，产品匹配报告已生成。",
       });
       if (typeof onComplete === "function") onComplete(leadResponse);
     } catch (error) {
@@ -359,17 +397,6 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
 
   return (
     <form className="lead-form financing-intake" onSubmit={submitIntake} noValidate data-reveal>
-      <div className="estimate-mode-switch" role="group" aria-label="选择测算版本">
-        <button type="button" className={mode === "simple" ? "active" : ""} aria-pressed={mode === "simple"} onClick={() => changeMode("simple")}>
-          <strong>简易版</strong>
-          <span>基础信息，输出初步匹配</span>
-        </button>
-        <button type="button" className={mode === "complex" ? "active" : ""} aria-pressed={mode === "complex"} onClick={() => changeMode("complex")}>
-          <strong>复杂版</strong>
-          <span>按业务展开专项资料</span>
-        </button>
-      </div>
-
       <ol className="wizard-progress" aria-label="融资信息填写进度">
         {INTAKE_STEPS.map((step) => (
           <li
@@ -386,7 +413,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       <div className="wizard-step-heading">
         <span>第 {currentStep} 步，共 {INTAKE_STEPS.length} 步</span>
         <h3>{stepDefinition.title}</h3>
-        <p>{mode === "simple" ? "填写基础资料即可获得初步产品匹配。" : "当前字段会根据已选择的业务模式动态调整。"}</p>
+        <p>系统会根据主要融资场景，只追问影响产品判断的关键信息。</p>
       </div>
 
       <div className="form-grid intake-fields">
@@ -411,9 +438,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
             ? "正在提交..."
             : currentStep < INTAKE_STEPS.length
               ? "下一步"
-              : mode === "complex"
-                ? "生成融资匹配结果"
-                : "生成初步匹配"}
+              : "生成产品匹配报告"}
         </button>
       </div>
       <div className="form-status-slot" aria-live="polite" aria-atomic="true">

@@ -460,7 +460,9 @@ export function App() {
   const completeIntake = (lead) => {
     setLeadResult(lead);
     const scrollToResults = () => {
-      scrollProductMatchCenterIntoView(document.getElementById("product-match-center"), window);
+      const matchCenter = document.getElementById("product-match-center");
+      scrollProductMatchCenterIntoView(matchCenter, window);
+      matchCenter?.focus?.({ preventScroll: true });
     };
     if (typeof window.requestAnimationFrame === "function") {
       window.requestAnimationFrame(scrollToResults);
@@ -533,9 +535,9 @@ export function App() {
       <section id="contact" className="lead-section cloud-cta">
         <div className="lead-copy" data-reveal>
           <p className="eyebrow">financing intake</p>
-          <h2>选择匹配版本，提交企业经营信息</h2>
+          <h2>提交关键经营信息，获取产品方向</h2>
           <p className="section-copy">
-            简易版快速生成初步匹配；复杂版会按业务模式补充专项资料，形成更完整的融资准备结果。
+            系统会根据主要融资场景，只追问影响产品判断的关键信息。
           </p>
         </div>
         <FinancingIntake onComplete={completeIntake} onInvalidate={() => setLeadResult(null)} />
