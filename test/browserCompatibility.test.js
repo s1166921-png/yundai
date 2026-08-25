@@ -8,7 +8,7 @@ const viteConfigPath = new URL("../vite.config.mjs", import.meta.url);
 test("progressive intake keeps legacy-safe Flexbox fallbacks before Grid", async () => {
   const styles = await readFile(stylesPath, "utf8");
 
-  for (const selector of [".wizard-progress", ".intake-fields", ".checkbox-options", ".segmented-control", ".webank-toggle"]) {
+  for (const selector of [".wizard-progress", ".intake-fields", ".intake-group-tabs", ".checkbox-options", ".segmented-control", ".webank-toggle"]) {
     const start = styles.indexOf(`${selector} {`);
     const end = styles.indexOf("}", start);
     const rule = styles.slice(start, end);

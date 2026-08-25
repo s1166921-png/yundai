@@ -26,14 +26,14 @@ const AMAZON_SC_STEP_GROUPS = Object.freeze([
     title: "经营规模",
     keys: Object.freeze([
       "companyAgeMonths", "legalRepresentativeAge", "platformHistoryMonths", "platformSites",
-      "storeCount", "singleStoreGmvUsd", "qualifiedStoreCount", "participatingStoreOperatingDays",
+      "storeCount", "qualifiedStoreCount", "participatingStoreOperatingDays",
     ]),
   }),
   Object.freeze({
     id: "amazon-data",
     title: "Amazon 经营数据",
     keys: Object.freeze([
-      "allStoreSalesRmb", "platformRepaymentsLast12MonthsRmb", "refundRatePercent",
+      "singleStoreGmvUsd", "allStoreSalesRmb", "platformRepaymentsLast12MonthsRmb", "refundRatePercent",
       "amazonAhrScore", "amazonAccountStatus", "fbaInventoryTurnoverCount",
     ]),
   }),
@@ -41,28 +41,50 @@ const AMAZON_SC_STEP_GROUPS = Object.freeze([
     id: "account-risk",
     title: "账户与风险控制",
     keys: Object.freeze([
-      "hasCompatibleCollectionAccount", "includeWebankAssessment",
-      "borrowerMatchesCollectionEntity", "acceptsAccountControl",
+      "hasCompatibleCollectionAccount", "borrowerMatchesCollectionEntity", "acceptsAccountControl",
     ]),
   }),
 ]);
 
 export function groupIntakeStepFields(stepFields, profile) {
-  if (profile.primaryBusinessModel !== "amazon_sc" || profile.includeWebankAssessment !== true) {
+  const isAmazonScOperatingStep = profile.primaryBusinessModel === "amazon_sc"
+    && stepFields.some((field) => field.key === "includeWebankAssessment");
+  if (!isAmazonScOperatingStep) {
     return [{ id: "all-fields", title: null, fields: stepFields }];
   }
 
-  const fieldsByKey = new Map(stepFields.map((field) => [field.key, field]));
+  const accordionFields = stepFields.filter((field) => field.key !== "includeWebankAssessment");
+  const fieldsByKey = new Map(accordionFields.map((field) => [field.key, field]));
   const groups = AMAZON_SC_STEP_GROUPS.map((group) => ({
     id: group.id,
     title: group.title,
     fields: group.keys.map((key) => fieldsByKey.get(key)).filter(Boolean),
   }));
   const groupedKeys = new Set(AMAZON_SC_STEP_GROUPS.flatMap((group) => group.keys));
-  const remainingFields = stepFields.filter((field) => !groupedKeys.has(field.key));
+  const remainingFields = accordionFields.filter((field) => !groupedKeys.has(field.key));
   if (remainingFields.length > 0) groups[groups.length - 1].fields.push(...remainingFields);
   return groups.filter((group) => group.fields.length > 0);
 }
+
+export function findIntakeGroupForField(groups, fieldKey) {
+  return groups.find((group) => group.fields.some((field) => field.key === fieldKey))?.id ?? null;
+}
+
+export function nextIntakeGroupIndex(currentIndex, groupCount, key) {
+  if (key === "Home") return 0;
+  if (key === "End") return groupCount - 1;
+  if (key === "ArrowRight" || key === "ArrowDown") return (currentIndex + 1) % groupCount;
+  if (key === "ArrowLeft" || key === "ArrowUp") return (currentIndex - 1 + groupCount) % groupCount;
+  return null;
+}
+
+const groupCompletion = (group, profile, errors) => {
+  if (group.fields.some((field) => errors[field.key])) return "需检查";
+  const completed = group.fields.filter((field) => !isEmpty(profile[field.key])).length;
+  if (completed === 0) return "未填写";
+  if (completed === group.fields.length) return "已完成";
+  return `已填写 ${completed}/${group.fields.length}`;
+};
 
 export function focusWizardStepHeading(element, windowObject = globalThis.window) {
   if (element == null) return false;
@@ -327,11 +349,104 @@ function IntakeField({ field, value, error, onChange, inputRef }) {
   return <StandardField field={field} value={value} error={error} onChange={onChange} inputRef={inputRef} />;
 }
 
+export function AmazonScStepFields({
+  groups,
+  stepFields,
+  profile,
+  errors,
+  openGroupId,
+  onOpenGroup,
+  onChange,
+  registerField,
+}) {
+  const toggleField = stepFields.find((field) => field.key === "includeWebankAssessment");
+  const openGroup = groups.find((group) => group.id === openGroupId) ?? groups[0];
+  const handleGroupKeyDown = (event, currentIndex) => {
+    const targetIndex = nextIntakeGroupIndex(currentIndex, groups.length, event.key);
+    if (targetIndex == null) return;
+    event.preventDefault();
+    onOpenGroup(groups[targetIndex].id);
+    const tabs = event.currentTarget.parentElement?.querySelectorAll('[role="tab"]');
+    tabs?.[targetIndex]?.focus();
+  };
+
+  return (
+    <div className="amazon-sc-step-fields">
+      {toggleField && (
+        <div className="webank-assessment-control">
+          <IntakeField
+            field={toggleField}
+            value={profile[toggleField.key]}
+            error={errors[toggleField.key]}
+            onChange={onChange}
+            inputRef={registerField(toggleField.key)}
+          />
+        </div>
+      )}
+
+      <div className="intake-field-groups">
+        <div className="intake-group-tabs" role="tablist" aria-label="Amazon SC 经营信息分组">
+          {groups.map((group, index) => {
+            const isOpen = group.id === openGroup?.id;
+            const hasError = group.fields.some((field) => errors[field.key]);
+            return (
+              <button
+                className={`intake-group-tab ${isOpen ? "current" : ""} ${hasError ? "has-error" : ""}`}
+                id={`intake-group-${group.id}-tab`}
+                key={group.id}
+                type="button"
+                role="tab"
+                aria-selected={isOpen ? "true" : "false"}
+                aria-expanded={isOpen ? "true" : "false"}
+                aria-controls={`intake-group-${group.id}-panel`}
+                tabIndex={isOpen ? 0 : -1}
+                onClick={() => onOpenGroup(group.id)}
+                onKeyDown={(event) => handleGroupKeyDown(event, index)}
+              >
+                <span>{String(index + 1).padStart(2, "0")} · {group.title}</span>
+                <small>{groupCompletion(group, profile, errors)}</small>
+              </button>
+            );
+          })}
+        </div>
+
+        {groups.map((group) => {
+          const isOpen = group.id === openGroup?.id;
+          return (
+            <section
+              className="intake-group-panel"
+              id={`intake-group-${group.id}-panel`}
+              key={group.id}
+              role="tabpanel"
+              aria-labelledby={`intake-group-${group.id}-tab`}
+              hidden={!isOpen}
+            >
+              <div className="form-grid intake-fields">
+                {group.fields.map((field) => (
+                  <IntakeField
+                    key={field.key}
+                    field={field}
+                    value={profile[field.key]}
+                    error={errors[field.key]}
+                    onChange={onChange}
+                    inputRef={registerField(field.key)}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function FinancingIntake({ onComplete, onInvalidate }) {
   const [profile, setProfile] = useState(initialProfile);
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState({ type: "idle", message: "" });
+  const [openGroupId, setOpenGroupId] = useState("financing-needs");
   const fieldRefs = useRef({});
   const stepHeadingRef = useRef(null);
   const pendingFocusKey = useRef(null);
@@ -364,7 +479,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       control.focus();
       pendingFocusKey.current = null;
     }
-  }, [currentStep, errors]);
+  }, [currentStep, errors, openGroupId]);
 
   useEffect(() => () => {
     requestVersion.current += 1;
@@ -384,6 +499,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
   const updateField = (key, value, type) => {
     cancelPendingSubmission();
     invalidateIntakeResult(onInvalidate, "field_change");
+    if (key === "primaryBusinessModel" && value === "amazon_sc") setOpenGroupId("financing-needs");
     setProfile((current) => {
       if (key === "primaryBusinessModel") return clearInactiveIntakeValues(current, value);
       if (key === "includeWebankAssessment") {
@@ -410,6 +526,10 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
   const focusErrors = (nextErrors, step = currentStep) => {
     if (nextErrors.length === 0) return false;
     pendingFocusKey.current = nextErrors[0].key;
+    const targetFields = visibleFields.filter((field) => field.step === step);
+    const targetGroups = groupIntakeStepFields(targetFields, profile);
+    const targetGroupId = findIntakeGroupForField(targetGroups, nextErrors[0].key);
+    if (targetGroupId) setOpenGroupId(targetGroupId);
     setErrors(errorMapFrom(nextErrors));
     if (step !== currentStep) setCurrentStep(step);
     return true;
@@ -506,7 +626,18 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
         <p>系统会根据主要融资场景，只追问影响产品判断的关键信息。</p>
       </div>
 
-      {fieldGroups.length === 1 && fieldGroups[0].title == null ? (
+      {currentStep === 2 && profile.primaryBusinessModel === "amazon_sc" ? (
+        <AmazonScStepFields
+          groups={fieldGroups}
+          stepFields={stepFields}
+          profile={profile}
+          errors={errors}
+          openGroupId={openGroupId}
+          onOpenGroup={setOpenGroupId}
+          onChange={updateField}
+          registerField={registerField}
+        />
+      ) : fieldGroups.length === 1 && fieldGroups[0].title == null ? (
         <div className="form-grid intake-fields">
           {fieldGroups[0].fields.map((field) => (
             <IntakeField
@@ -519,27 +650,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
             />
           ))}
         </div>
-      ) : (
-        <div className="intake-field-groups">
-          {fieldGroups.map((group) => (
-            <section className="intake-field-group" key={group.id} aria-labelledby={`intake-group-${group.id}`}>
-              <h4 id={`intake-group-${group.id}`}>{group.title}</h4>
-              <div className="form-grid intake-fields">
-                {group.fields.map((field) => (
-                  <IntakeField
-                    key={field.key}
-                    field={field}
-                    value={profile[field.key]}
-                    error={errors[field.key]}
-                    onChange={updateField}
-                    inputRef={registerField(field.key)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+      ) : null}
 
       <div className="form-actions wizard-actions">
         <button className="wizard-back" type="button" onClick={goBack} disabled={currentStep === 1 || status.type === "loading"}>
