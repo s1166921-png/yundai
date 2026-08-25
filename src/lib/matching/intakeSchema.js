@@ -19,7 +19,7 @@ const YES_NO_OPTIONS = Object.freeze([
 ]);
 const primaryIs = (...models) => (profile) => models.includes(profile.primaryBusinessModel);
 const hasPrimary = (profile) => PRIMARY_BUSINESS_MODELS.includes(profile.primaryBusinessModel);
-const inMainland = (profile) => hasPrimary(profile) && profile.entityRegion === "mainland";
+const taxInMainland = (profile) => primaryIs("tax_operations")(profile) && profile.entityRegion === "mainland";
 const webankExpanded = (profile) => primaryIs("amazon_sc")(profile) && profile.includeWebankAssessment === true;
 
 const field = (definition) => Object.freeze({
@@ -66,12 +66,15 @@ const INTAKE_FIELDS = Object.freeze([
     { value: "limited_company", label: "有限公司" }, { value: "individual_business", label: "个体工商户" },
     { value: "other", label: "其他" },
   ], { visibleWhen: hasPrimary }),
-  textField("registeredProvince", 1, "注册省份", { visibleWhen: inMainland }),
-  numberField("companyAgeMonths", 1, "企业成立时间", "个月", {
-    visibleWhen: primaryIs("tax_operations", "processing_manufacturing", "wholesale_retail", "other"),
+  textField("registeredProvince", 1, "注册省份", { visibleWhen: taxInMainland }),
+  numberField("companyAgeMonths", 2, "企业成立时间", "个月", {
+    visibleWhen: (profile) => primaryIs(
+      "tax_operations", "general_import_export", "processing_manufacturing", "wholesale_retail", "platform_ecommerce", "other",
+    )(profile) || webankExpanded(profile),
   }),
-  numberField("legalRepresentativeAge", 1, "法人年龄", "岁", {
-    min: 18, max: 100, visibleWhen: primaryIs("tax_operations"),
+  numberField("legalRepresentativeAge", 2, "法人年龄", "岁", {
+    min: 18, max: 100,
+    visibleWhen: (profile) => primaryIs("tax_operations", "platform_ecommerce")(profile) || webankExpanded(profile),
   }),
 
   selectField("preferredCurrency", 2, "意向币种", [
@@ -90,7 +93,9 @@ const INTAKE_FIELDS = Object.freeze([
     visibleWhen: primaryIs("tax_operations", "other"),
   }),
   numberField("assetLiabilityRatioPercent", 2, "资产负债率", "%", {
-    min: 0, max: 100, visibleWhen: primaryIs("tax_operations"),
+    min: 0, max: 100, visibleWhen: primaryIs(
+      "tax_operations", "general_import_export", "processing_manufacturing", "wholesale_retail",
+    ),
   }),
   numberField("creditBankCount", 2, "现有授信银行数量", "家", { visibleWhen: primaryIs("tax_operations") }),
   numberField("settlementAccountOpenedMonths", 2, "结算账户开户时长", "个月", { visibleWhen: primaryIs("tax_operations") }),
@@ -120,10 +125,14 @@ const INTAKE_FIELDS = Object.freeze([
   numberField("storeCount", 2, "经营店铺数量", "家", { visibleWhen: primaryIs("amazon_sc", "platform_ecommerce") }),
   numberField("singleStoreGmvUsd", 2, "单店近 12 个月 GMV", "美元", { visibleWhen: primaryIs("amazon_sc") }),
   numberField("amazonAnnualGmvUsd", 2, "Amazon 近 12 个月 GMV", "美元", { visibleWhen: primaryIs("amazon_vc") }),
-  numberField("allStoreSalesRmb", 2, "所有店铺近 12 个月销售额", "人民币元", { visibleWhen: primaryIs("platform_ecommerce") }),
-  numberField("platformRepaymentsLast12MonthsRmb", 2, "平台近 12 个月回款额", "人民币元", { visibleWhen: primaryIs("platform_ecommerce") }),
+  numberField("allStoreSalesRmb", 2, "所有店铺近 12 个月销售额", "人民币元", {
+    visibleWhen: (profile) => primaryIs("platform_ecommerce")(profile) || webankExpanded(profile),
+  }),
+  numberField("platformRepaymentsLast12MonthsRmb", 2, "平台近 12 个月回款额", "人民币元", {
+    visibleWhen: (profile) => primaryIs("platform_ecommerce")(profile) || webankExpanded(profile),
+  }),
   numberField("refundRatePercent", 2, "近 3 个月退款率", "%", {
-    min: 0, max: 100, visibleWhen: primaryIs("platform_ecommerce"),
+    min: 0, max: 100, visibleWhen: (profile) => primaryIs("platform_ecommerce")(profile) || webankExpanded(profile),
   }),
   numberField("qualifiedStoreCount", 2, "符合核额条件的店铺数", "家", { visibleWhen: primaryIs("amazon_sc", "platform_ecommerce") }),
   numberField("importExportAmountLast12MonthsUsd", 2, "近 12 个月进出口额", "美元", {
@@ -150,22 +159,21 @@ const INTAKE_FIELDS = Object.freeze([
   numberField("annualB2bTradeUsd", 2, "年交易额", "美元", { visibleWhen: primaryIs("b2b_supermarket") }),
   numberField("accountsReceivableBalanceUsd", 2, "当前应收账款余额", "美元", { visibleWhen: primaryIs("amazon_vc", "b2b_supermarket") }),
 
-  booleanField("hasCurrentOverdue", 3, "当前是否存在逾期", required),
-  booleanField("hasMaterialCreditOrJudicialNegative", 3, "是否存在重大征信或司法负面记录", required),
-  booleanField("hasCompatibleCollectionAccount", 3, "已有兼容收款账户", { visibleWhen: primaryIs("amazon_sc", "platform_ecommerce") }),
-  booleanField("acceptsAccountControl", 3, "接受回款账户控制", {
-    visibleWhen: primaryIs("amazon_sc", "amazon_vc", "platform_ecommerce", "b2b_supermarket"),
-  }),
-  booleanField("includeWebankAssessment", 3, "进行微众银行评估", { visibleWhen: primaryIs("amazon_sc") }),
-  numberField("amazonAhrScore", 3, "Amazon AHR 分数", "分", { visibleWhen: webankExpanded }),
-  selectField("amazonAccountStatus", 3, "Amazon 账户状态", [
+  booleanField("hasCompatibleCollectionAccount", 2, "已有兼容收款账户", { visibleWhen: primaryIs("amazon_sc", "platform_ecommerce") }),
+  booleanField("includeWebankAssessment", 2, "进行微众银行评估", { visibleWhen: primaryIs("amazon_sc") }),
+  numberField("amazonAhrScore", 2, "Amazon AHR 分数", "分", { visibleWhen: webankExpanded }),
+  selectField("amazonAccountStatus", 2, "Amazon 账户状态", [
     { value: "normal", label: "正常" }, { value: "abnormal", label: "异常" },
   ], { visibleWhen: webankExpanded }),
-  numberField("fbaInventoryTurnoverCount", 3, "FBA 库存周转次数", "次/年", { visibleWhen: webankExpanded }),
-  booleanField("borrowerMatchesCollectionEntity", 3, "借款主体与收款主体一致", {
-    visibleWhen: (profile) => primaryIs("amazon_sc")(profile) && profile.includeWebankAssessment === true,
+  numberField("fbaInventoryTurnoverCount", 2, "FBA 库存周转次数", "次/年", { visibleWhen: webankExpanded }),
+  booleanField("borrowerMatchesCollectionEntity", 2, "借款主体与收款主体一致", { visibleWhen: webankExpanded }),
+  numberField("participatingStoreOperatingDays", 2, "参与核额店铺经营时长", "天", { visibleWhen: webankExpanded }),
+  booleanField("acceptsAccountControl", 2, "接受回款账户控制", {
+    visibleWhen: primaryIs("amazon_sc", "amazon_vc", "platform_ecommerce", "b2b_supermarket"),
   }),
-  numberField("participatingStoreOperatingDays", 3, "参与核额店铺经营时长", "天", { visibleWhen: webankExpanded }),
+
+  booleanField("hasCurrentOverdue", 3, "当前是否存在逾期", required),
+  booleanField("hasMaterialCreditOrJudicialNegative", 3, "是否存在重大征信或司法负面记录", required),
   booleanField("acceptsReceivablesArrangement", 3, "接受应收账款安排", { visibleWhen: primaryIs("amazon_vc", "b2b_supermarket") }),
   textField("contactName", 3, "联系人", required),
   textField("phone", 3, "联系电话", { ...required, inputMode: "tel" }),

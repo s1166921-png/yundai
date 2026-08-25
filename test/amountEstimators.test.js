@@ -87,6 +87,20 @@ test("Linklogis SC scales its USD range by qualified stores", () => {
   });
 });
 
+test("Linklogis SC requires a positive qualified-store count before showing a USD range", () => {
+  for (const qualifiedStoreCount of [null, 0]) {
+    const estimate = estimateAmount({ amountEstimator: "linklogis_sc" }, { qualifiedStoreCount });
+    assert.equal(estimate.kind, "manual");
+    assert.equal(estimate.min, null);
+    assert.equal(estimate.max, null);
+  }
+
+  assert.deepEqual(estimateAmount({ amountEstimator: "linklogis_sc" }, { qualifiedStoreCount: 1 }), {
+    kind: "range", currency: "USD", min: 0, max: 3000000,
+    formulaKey: "linklogis_sc_v1", note: "单店最高300万美元，最终额度以机构评估为准。",
+  });
+});
+
 test("Linklogis VC and B2B remain manual without fixed USD caps", () => {
   assert.deepEqual(estimateAmount({ amountEstimator: "linklogis_vc" }, {
     accountsReceivableBalance: { amount: 900000, currency: "USD" },

@@ -44,6 +44,11 @@ const nonNegativeNumber = (profile, field) => {
   return Number.isFinite(value) && value >= 0 ? value : null;
 };
 
+const positiveNumber = (profile, field) => {
+  const value = profile?.[field];
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
 const pinganLogistics = (profile) => {
   const industry = INDUSTRY_COEFFICIENTS[profile?.industry];
   const annualRevenue = moneyAmount(profile, "annualRevenue", "RMB");
@@ -77,7 +82,7 @@ const webankCollections = (profile) => {
 };
 
 const linklogisSc = (profile) => {
-  const qualifiedStoreCount = nonNegativeNumber(profile, "qualifiedStoreCount");
+  const qualifiedStoreCount = positiveNumber(profile, "qualifiedStoreCount");
 
   if (qualifiedStoreCount == null) {
     return manual("USD", "linklogis_sc_v1", "需补充符合条件的店铺数量，最终额度以机构评估为准。");

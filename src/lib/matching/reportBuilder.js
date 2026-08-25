@@ -138,7 +138,7 @@ const hasUsableEstimatorInputs = (match, profile) => {
       return hasUsableMoney(profile.collectionsLast12Months, "RMB")
         || hasUsableMoney(profile.allStoreRepayments, "RMB");
     case "linklogis-amazon-sc":
-      return Number.isFinite(profile.qualifiedStoreCount) && profile.qualifiedStoreCount >= 0;
+      return Number.isFinite(profile.qualifiedStoreCount) && profile.qualifiedStoreCount > 0;
     default:
       return true;
   }

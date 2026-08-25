@@ -30,6 +30,33 @@ test("Amazon SC WeBank expansion is explicit and isolated", () => {
   assert.equal(expanded.some(({ key }) => key === "amazonAhrScore"), true);
 });
 
+test("WeBank expansion collects every customer-stage fact in step two without leaking into base SC", () => {
+  const base = getVisibleIntakeFields({ primaryBusinessModel: "amazon_sc", entityRegion: "mainland", includeWebankAssessment: false });
+  const expanded = getVisibleIntakeFields({ primaryBusinessModel: "amazon_sc", entityRegion: "mainland", includeWebankAssessment: true });
+  const requiredExpansionKeys = [
+    "companyAgeMonths", "legalRepresentativeAge", "allStoreSalesRmb", "platformRepaymentsLast12MonthsRmb",
+    "refundRatePercent", "amazonAhrScore", "amazonAccountStatus", "fbaInventoryTurnoverCount",
+    "borrowerMatchesCollectionEntity", "participatingStoreOperatingDays",
+  ];
+
+  assert.equal(base.find(({ key }) => key === "includeWebankAssessment")?.step, 2);
+  assert.equal(base.some(({ key }) => requiredExpansionKeys.includes(key)), false);
+  assert.deepEqual(expanded.filter(({ key }) => requiredExpansionKeys.includes(key)).map(({ key }) => key), requiredExpansionKeys);
+  assert.ok(expanded.filter(({ key }) => requiredExpansionKeys.includes(key)).every(({ step }) => step === 2));
+  assert.equal(expanded.find(({ key }) => key === "acceptsAccountControl")?.step, 2);
+});
+
+test("foreign-trade scenarios collect company age but never show CMB-only province", () => {
+  for (const primaryBusinessModel of ["general_import_export", "processing_manufacturing", "wholesale_retail"]) {
+    const keys = fieldKeys({ primaryBusinessModel, entityRegion: "mainland" });
+    assert.ok(keys.includes("companyAgeMonths"), `${primaryBusinessModel} needs company age for customer-stage matching`);
+    assert.ok(keys.includes("assetLiabilityRatioPercent"), `${primaryBusinessModel} needs asset-liability ratio for customer-stage matching`);
+    assert.equal(keys.includes("registeredProvince"), false);
+    assert.ok(keys.length <= 23, `${primaryBusinessModel} exceeds field budget`);
+  }
+  assert.ok(fieldKeys({ primaryBusinessModel: "tax_operations", entityRegion: "mainland" }).includes("registeredProvince"));
+});
+
 test("progressive fields only expose the approved raw field contract", () => {
   const allowed = new Set([
     "companyName", "primaryBusinessModel", "preferredCurrency", "requestedAmount", "fundUse",
