@@ -5,6 +5,89 @@ import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js
 import { ruleDependencyFields } from "../src/lib/matching/ruleEvaluator.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 
+const EXPECTED_RULE_COLLECTION_STAGES = Object.freeze({
+  "cmb-guangdong-business-loan:registered-in-guangdong": "customer_core",
+  "cmb-guangdong-business-loan:settlement-account-opened-one-year": "customer_core",
+  "cmb-guangdong-business-loan:settlement-account-flow-normal": "customer_core",
+  "cmb-guangdong-business-loan:company-age-minimum": "customer_core",
+  "cmb-guangdong-business-loan:company-age-and-rating": "advisor_verification",
+  "cmb-guangdong-business-loan:annual-revenue-minimum": "customer_core",
+  "cmb-guangdong-business-loan:asset-liability-ratio-below-80": "customer_core",
+  "cmb-guangdong-business-loan:internal-rating-minimum": "advisor_verification",
+  "cmb-guangdong-business-loan:credit-bank-count-maximum": "customer_core",
+  "cmb-guangdong-business-loan:credit-exposure-within-net-assets": "advisor_verification",
+  "cmb-guangdong-business-loan:no-risk-warning": "advisor_verification",
+  "cmb-guangdong-business-loan:no-aml-blacklist": "advisor_verification",
+  "cmb-guangdong-business-loan:no-overdue-principal-or-interest": "customer_core",
+  "cmb-guangdong-business-loan:no-adverse-credit-status": "advisor_verification",
+  "cmb-guangdong-business-loan:no-dishonesty-record": "advisor_verification",
+  "cmb-guangdong-business-loan:continuous-financial-statements": "advisor_verification",
+  "cmb-guangdong-business-loan:controller-status-normal": "advisor_verification",
+  "cmb-guangdong-business-loan:non-sensitive-industry": "advisor_verification",
+  "pingan-orange-tax-loan:eligible-applicant-role": "customer_core",
+  "pingan-orange-tax-loan:company-registration-two-years": "customer_core",
+  "pingan-orange-tax-loan:applicant-age-minimum": "customer_core",
+  "pingan-orange-tax-loan:applicant-age-maximum": "customer_core",
+  "pingan-orange-tax-loan:additional-authorizations-over-500k": "customer_conditional",
+  "pingan-foreign-trade-logistics-loan:domestic-sme-legal-entity": "customer_core",
+  "pingan-foreign-trade-logistics-loan:limited-company-entity": "customer_core",
+  "pingan-foreign-trade-logistics-loan:eligible-industry": "customer_core",
+  "pingan-foreign-trade-logistics-loan:company-operating-two-years": "customer_core",
+  "pingan-foreign-trade-logistics-loan:controller-industry-experience": "customer_core",
+  "pingan-foreign-trade-logistics-loan:self-operated-import-export": "customer_core",
+  "pingan-foreign-trade-logistics-loan:import-export-license": "customer_core",
+  "pingan-foreign-trade-logistics-loan:foreign-exchange-class-a": "customer_core",
+  "pingan-foreign-trade-logistics-loan:customs-credit-not-dishonest": "advisor_verification",
+  "pingan-foreign-trade-logistics-loan:import-export-volume-last-12-months": "customer_core",
+  "pingan-foreign-trade-logistics-loan:import-export-volume-13-to-24-months": "customer_core",
+  "pingan-foreign-trade-logistics-loan:recent-import-export-record": "customer_core",
+  "pingan-foreign-trade-logistics-loan:import-export-frequency": "customer_core",
+  "pingan-foreign-trade-logistics-loan:import-export-revenue-share": "customer_core",
+  "pingan-foreign-trade-logistics-loan:commodity-share": "advisor_verification",
+  "pingan-foreign-trade-logistics-loan:sales-decline-review": "advisor_verification",
+  "pingan-foreign-trade-logistics-loan:asset-liability-ratio-industry-maximum": "customer_core",
+  "pingan-foreign-trade-logistics-loan:debt-ratio-by-industry-and-tax-basis": "advisor_verification",
+  "pingan-foreign-trade-logistics-loan:additional-conditions-over-3m": "advisor_verification",
+  "pingan-foreign-trade-logistics-loan:core-asset-liability-over-3m": "advisor_verification",
+  "webank-cross-border-data-loan:amazon-collection-entity": "customer_core",
+  "webank-cross-border-data-loan:domestic-registration": "customer_core",
+  "webank-cross-border-data-loan:currently-operating-six-months": "customer_core",
+  "webank-cross-border-data-loan:legal-representative-age-minimum": "customer_core",
+  "webank-cross-border-data-loan:legal-representative-age-maximum": "customer_core",
+  "webank-cross-border-data-loan:no-current-overdue": "customer_core",
+  "webank-cross-border-data-loan:no-material-credit-or-judicial-issues": "customer_core",
+  "webank-cross-border-data-loan:one-store-operating-one-year": "customer_core",
+  "webank-cross-border-data-loan:single-store-first-order-two-years": "customer_core",
+  "webank-cross-border-data-loan:sales-last-12-months": "customer_core",
+  "webank-cross-border-data-loan:repayments-last-12-months": "customer_core",
+  "webank-cross-border-data-loan:refund-rate-last-three-months": "customer_core",
+  "webank-cross-border-data-loan:participating-store-operating-days": "customer_core",
+  "webank-cross-border-data-loan:participating-store-normal": "customer_core",
+  "webank-cross-border-data-loan:participating-store-ahr": "customer_core",
+  "webank-cross-border-data-loan:amazon-us-only": "customer_core",
+  "webank-cross-border-data-loan:fba-inventory-turnover": "customer_core",
+  "webank-cross-border-data-loan:borrower-matches-collection-entity": "customer_core",
+  "webank-cross-border-data-loan:participating-store-locked": "customer_core",
+  "linklogis-amazon-sc:eligible-company-location": "customer_core",
+  "linklogis-amazon-sc:limited-company-entity": "customer_core",
+  "linklogis-amazon-sc:amazon-store": "customer_core",
+  "linklogis-amazon-sc:single-store-annual-gmv": "customer_core",
+  "linklogis-amazon-sc:amazon-trading-history": "customer_core",
+  "linklogis-amazon-sc:collection-account-arrangement": "customer_core",
+  "linklogis-amazon-vc:eligible-company-location": "customer_core",
+  "linklogis-amazon-vc:amazon-vc-entity": "customer_core",
+  "linklogis-amazon-vc:amazon-vc-us-site": "customer_core",
+  "linklogis-amazon-vc:amazon-annual-gmv": "customer_core",
+  "linklogis-amazon-vc:amazon-trading-history": "customer_core",
+  "linklogis-amazon-vc:noa-and-collection-account-switch": "customer_core",
+  "linklogis-b2b-factoring:eligible-company-location": "customer_core",
+  "linklogis-b2b-factoring:limited-company-entity": "customer_core",
+  "linklogis-b2b-factoring:buyer-trading-history": "customer_core",
+  "linklogis-b2b-factoring:annual-trading-volume": "customer_core",
+  "linklogis-b2b-factoring:eligible-buyer": "customer_conditional",
+  "linklogis-b2b-factoring:collection-account-switch": "customer_core",
+});
+
 function configuredProfilePaths(rule) {
   const paths = [rule.field];
   for (const [key, value] of Object.entries(rule.value ?? {})) {
@@ -71,6 +154,14 @@ test("every product rule declares a valid collection stage", () => {
       assert.ok(RULE_COLLECTION_STAGES.includes(rule.collectionStage), `${product.id}/${rule.id}`);
     }
   }
+});
+
+test("catalog collection stages exactly match the 80-rule product and rule ID contract", () => {
+  const actualCollectionStages = Object.fromEntries(PRODUCT_CATALOG.flatMap((product) => (
+    product.ruleSet.map((rule) => [`${product.id}:${rule.id}`, rule.collectionStage])
+  )));
+
+  assert.deepEqual(actualCollectionStages, EXPECTED_RULE_COLLECTION_STAGES);
 });
 
 test("representative customer, advisor, and conditional rules use their required collection stages", () => {
