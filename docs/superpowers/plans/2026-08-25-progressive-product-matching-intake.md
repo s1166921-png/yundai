@@ -175,8 +175,10 @@ git commit -m "feat: define progressive financing intake"
 **Files:**
 - Create: `src/lib/matching/buyerAdmission.js`
 - Create: `test/buyerAdmission.test.js`
+- Modify: `src/lib/matching/customerProfile.js`
 - Modify: `src/lib/matching/productCatalog.js`
 - Modify: `src/lib/matching/ruleEvaluator.js`
+- Modify: `test/customerProfile.test.js`
 - Modify: `test/productCatalog.test.js`
 - Modify: `test/ruleEvaluator.test.js`
 
@@ -240,6 +242,8 @@ Customer rules are the exact fields listed in Spec section 5. Bank ratings, risk
 
 Change the B2B buyer rule to consume derived `buyerPlatformType` and `buyerCountryEligibility`; do not ask the customer to choose either value.
 
+Import `deriveBuyerAdmission` in `customerProfile.js` and set canonical `buyerPlatformType` and `buyerCountryEligibility` from `buyerName` and `buyerCountry` for progressive input. Legacy explicit canonical values remain accepted only for non-progressive payload compatibility.
+
 - [ ] **Step 5: Add stage filtering to the evaluator**
 
 ```js
@@ -258,7 +262,7 @@ Export `ruleDependencyFields(rule)` from `ruleEvaluator.js` by reusing the evalu
 
 - [ ] **Step 6: Run focused tests**
 
-Run: `node --test test/buyerAdmission.test.js test/productCatalog.test.js test/ruleEvaluator.test.js`
+Run: `node --test test/buyerAdmission.test.js test/customerProfile.test.js test/productCatalog.test.js test/ruleEvaluator.test.js`
 
 Expected: PASS.
 
@@ -269,7 +273,7 @@ Use the B2B form at desktop/mobile widths. Verify that selecting buyer name and 
 - [ ] **Step 8: Commit Task 2**
 
 ```bash
-git add src/lib/matching/buyerAdmission.js src/lib/matching/productCatalog.js src/lib/matching/ruleEvaluator.js test/buyerAdmission.test.js test/productCatalog.test.js test/ruleEvaluator.test.js
+git add src/lib/matching/buyerAdmission.js src/lib/matching/customerProfile.js src/lib/matching/productCatalog.js src/lib/matching/ruleEvaluator.js test/buyerAdmission.test.js test/customerProfile.test.js test/productCatalog.test.js test/ruleEvaluator.test.js
 git commit -m "feat: classify customer and advisor matching rules"
 ```
 
