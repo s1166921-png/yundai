@@ -8,6 +8,42 @@ export const PRODUCT_IDS = Object.freeze([
   "linklogis-b2b-factoring",
 ]);
 
+export const RULE_COLLECTION_STAGES = Object.freeze([
+  "customer_core",
+  "customer_conditional",
+  "advisor_verification",
+  "amount_only",
+]);
+
+const ADVISOR_VERIFICATION_RULE_IDS = new Set([
+  "internal-rating-minimum",
+  "credit-exposure-within-net-assets",
+  "no-risk-warning",
+  "no-aml-blacklist",
+  "no-adverse-credit-status",
+  "no-dishonesty-record",
+  "continuous-financial-statements",
+  "controller-status-normal",
+  "non-sensitive-industry",
+  "customs-credit-not-dishonest",
+  "commodity-share",
+  "sales-decline-review",
+  "debt-ratio-by-industry-and-tax-basis",
+  "additional-conditions-over-3m",
+  "core-asset-liability-over-3m",
+]);
+
+const CUSTOMER_CONDITIONAL_RULE_IDS = new Set([
+  "additional-authorizations-over-500k",
+  "eligible-buyer",
+]);
+
+const collectionStageFor = (rule) => {
+  if (ADVISOR_VERIFICATION_RULE_IDS.has(rule.id)) return "advisor_verification";
+  if (CUSTOMER_CONDITIONAL_RULE_IDS.has(rule.id)) return "customer_conditional";
+  return "customer_core";
+};
+
 const deepFreeze = (value) => {
   if (value === null || typeof value !== "object") return value;
   for (const nestedValue of Object.values(value)) deepFreeze(nestedValue);
@@ -39,6 +75,7 @@ const product = (definition) => Object.freeze({
   missingDataPolicy: "review",
   fitProfile: deepFreeze({ ...EMPTY_FIT_PROFILE, ...definition.fitProfile }),
   ruleSet: Object.freeze(definition.ruleSet.map((rule) => Object.freeze({
+    collectionStage: collectionStageFor(rule),
     ...rule,
     value: deepFreeze(rule.value),
   }))),

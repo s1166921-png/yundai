@@ -1,3 +1,5 @@
+import { deriveBuyerAdmission } from "./buyerAdmission.js";
+
 const ENUM_VALUES = Object.freeze({
   primaryBusinessModel: Object.freeze([
     "tax_operations",
@@ -316,6 +318,11 @@ export function normalizeCustomerProfile(input = {}) {
   const collectionsLast12Months = Object.hasOwn(source, "platformRepaymentsLast12MonthsRmb")
     ? asMoney(source.platformRepaymentsLast12MonthsRmb, "RMB")
     : asInputMoney(source, "collectionsLast12MonthsRmb", "collectionsLast12Months", "RMB");
+  const buyerName = asText(source.buyerName);
+  const buyerCountry = asText(source.buyerCountry);
+  const buyerAdmission = hasProgressivePrimaryBusinessModel
+    ? deriveBuyerAdmission({ buyerName, buyerCountry })
+    : null;
 
   return {
     intakeVersion: source.intakeVersion === "progressive-v1" ? "progressive-v1" : null,
@@ -335,7 +342,7 @@ export function normalizeCustomerProfile(input = {}) {
     primaryBusinessModel,
     businessModels,
     primaryPlatformOrBuyerName: hasProgressivePrimaryBusinessModel
-      ? isAmazon ? "Amazon" : asText(source.buyerName)
+      ? isAmazon ? "Amazon" : buyerName
       : asText(source.primaryPlatformOrBuyerName),
     platformSites: asEnumList(source.platformSites, ENUM_VALUES.platformSites),
     platformHistoryMonths: asNumber(source.platformHistoryMonths),
@@ -367,10 +374,12 @@ export function normalizeCustomerProfile(input = {}) {
     foreignExchangeClassification: asEnum(source.foreignExchangeClassification, ENUM_VALUES.foreignExchangeClassification),
     customsCreditClassification: asText(source.customsCreditClassification),
 
-    buyerName: asText(source.buyerName),
-    buyerCountry: asText(source.buyerCountry),
-    buyerPlatformType: asEnum(source.buyerPlatformType, ENUM_VALUES.buyerPlatformType),
-    buyerCountryEligibility: asEnum(source.buyerCountryEligibility, ENUM_VALUES.buyerCountryEligibility),
+    buyerName,
+    buyerCountry,
+    buyerPlatformType: buyerAdmission?.buyerPlatformType
+      ?? asEnum(source.buyerPlatformType, ENUM_VALUES.buyerPlatformType),
+    buyerCountryEligibility: buyerAdmission?.buyerCountryEligibility
+      ?? asEnum(source.buyerCountryEligibility, ENUM_VALUES.buyerCountryEligibility),
     buyerTradingHistoryMonths: asNumber(source.buyerTradingHistoryMonths),
     annualB2bTrade: asMoney(source.annualB2bTradeUsd, "USD"),
     accountsReceivableBalance: asMoney(source.accountsReceivableBalanceUsd, "USD"),

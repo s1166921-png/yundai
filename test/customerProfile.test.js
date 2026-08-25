@@ -52,6 +52,36 @@ test("progressive non-Amazon profiles derive their primary buyer name from buyer
   assert.equal(profile.primaryPlatformOrBuyerName, "Progressive Buyer");
 });
 
+test("progressive buyer admission is derived and ignores caller-supplied admission enums", () => {
+  const progressiveProfile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "b2b_supermarket",
+    buyerName: "Costco",
+    buyerCountry: "美国",
+    buyerPlatformType: "other",
+    buyerCountryEligibility: "confirmed_not_admitted",
+  });
+  const unknownProfile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "b2b_supermarket",
+    buyerName: "Unknown Buyer",
+    buyerCountry: "未知地区",
+    buyerPlatformType: "admitted_1p_retailer",
+    buyerCountryEligibility: "confirmed_admitted",
+  });
+  const legacyProfile = normalizeCustomerProfile({
+    buyerPlatformType: "admitted_1p_retailer",
+    buyerCountryEligibility: "confirmed_admitted",
+  });
+
+  assert.equal(progressiveProfile.buyerPlatformType, "admitted_1p_retailer");
+  assert.equal(progressiveProfile.buyerCountryEligibility, "confirmed_admitted");
+  assert.equal(unknownProfile.buyerPlatformType, "other");
+  assert.equal(unknownProfile.buyerCountryEligibility, "needs_review");
+  assert.equal(legacyProfile.buyerPlatformType, "admitted_1p_retailer");
+  assert.equal(legacyProfile.buyerCountryEligibility, "confirmed_admitted");
+});
+
 test("normalizes enums, booleans, months, percentages, and money without converting currency", () => {
   const profile = normalizeCustomerProfile({
     entityRegion: "MAINLAND",

@@ -1,5 +1,19 @@
 const readPath = (value, path) => path.split(".").reduce((current, key) => current?.[key], value);
 
+export function ruleDependencyFields(rule = {}) {
+  const fields = [rule.field];
+  const value = rule.value ?? {};
+
+  for (const [key, dependency] of Object.entries(value)) {
+    if (key.endsWith("Field") && typeof dependency === "string") fields.push(dependency);
+    if (["fields", "requiresAllTruthy"].includes(key) && Array.isArray(dependency)) {
+      for (const item of dependency) fields.push(typeof item === "string" ? item : item?.field);
+    }
+  }
+
+  return [...new Set(fields.filter(Boolean))];
+}
+
 const isUnknown = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
 const missing = (...fields) => ({
   status: "unknown",
@@ -254,8 +268,12 @@ export function evaluateRule(rule, profile = {}) {
   };
 }
 
-export function evaluateEligibility(product, profile) {
-  const results = product.ruleSet.map((rule) => evaluateRule(rule, profile));
+export function evaluateEligibility(product, profile = {}, options = {}) {
+  const stages = options.stages == null ? null : new Set(options.stages);
+  const rules = stages == null
+    ? product.ruleSet
+    : product.ruleSet.filter((rule) => stages.has(rule.collectionStage));
+  const results = rules.map((rule) => evaluateRule(rule, profile));
   const hardFailure = results.some((result) => result.severity === "hard" && result.status === "failed");
   const missingFields = [...new Set(results
     .filter((result) => result.status === "unknown")

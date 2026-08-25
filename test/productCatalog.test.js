@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PRODUCT_CATALOG, PRODUCT_IDS, getProductById } from "../src/lib/matching/productCatalog.js";
+import { PRODUCT_CATALOG, PRODUCT_IDS, RULE_COLLECTION_STAGES, getProductById } from "../src/lib/matching/productCatalog.js";
 import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
+import { ruleDependencyFields } from "../src/lib/matching/ruleEvaluator.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 
 function configuredProfilePaths(rule) {
@@ -62,6 +63,24 @@ test("catalog models sourced VC GMV, WeBank negatives, SC exemption, and canonic
   assert.equal(vc.ruleSet.find((rule) => rule.id === "amazon-annual-gmv").field, "amazonAnnualGmv.amount");
   assert.equal(b2b.ruleSet.find((rule) => rule.id === "eligible-buyer").value.evaluator, "buyerEligibility");
   assert.doesNotMatch(JSON.stringify(b2b.ruleSet), /准入 1P 商超|已列明准入国家/);
+});
+
+test("every product rule declares a valid collection stage", () => {
+  for (const product of PRODUCT_CATALOG) {
+    for (const rule of product.ruleSet) {
+      assert.ok(RULE_COLLECTION_STAGES.includes(rule.collectionStage), `${product.id}/${rule.id}`);
+    }
+  }
+});
+
+test("catalog custom-rule dependencies are complete and unique", () => {
+  for (const product of PRODUCT_CATALOG) {
+    for (const rule of product.ruleSet.filter(({ operator }) => operator === "custom")) {
+      const fields = ruleDependencyFields(rule);
+      assert.equal(new Set(fields).size, fields.length, `${product.id}/${rule.id}`);
+      assert.ok(fields.includes(rule.field), `${product.id}/${rule.id}`);
+    }
+  }
 });
 
 test("every catalog and custom-evaluator input uses a canonical customer profile field", () => {

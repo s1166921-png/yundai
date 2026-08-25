@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateRule, evaluateEligibility } from "../src/lib/matching/ruleEvaluator.js";
+import { evaluateRule, evaluateEligibility, ruleDependencyFields } from "../src/lib/matching/ruleEvaluator.js";
+import { getProductById } from "../src/lib/matching/productCatalog.js";
 
 const minRule = {
   id: "gmv",
@@ -172,4 +173,43 @@ test("non-applicable currency conditions are neutral instead of pretending data 
   }, { requestedAmount: { amount: null, currency: "USD" } });
   assert.equal(unansweredAmount.status, "passed");
   assert.equal(unansweredAmount.missingFields, undefined);
+});
+
+test("rule dependency fields include named custom evaluator dependencies once", () => {
+  assert.deepEqual(ruleDependencyFields({
+    field: "requestedAmount.amount",
+    operator: "custom",
+    value: {
+      evaluator: "conditionalAllTruthy",
+      currencyField: "requestedAmount.currency",
+      requiresAllTruthy: ["authorization", "authorization"],
+      historyField: "historyMonths",
+      ratioField: "debtRatio",
+      fields: ["authorization", { field: "buyerCountry" }],
+    },
+  }), [
+    "requestedAmount.amount",
+    "requestedAmount.currency",
+    "authorization",
+    "historyMonths",
+    "debtRatio",
+    "buyerCountry",
+  ]);
+});
+
+test("customer-stage eligibility excludes advisor verification rules", () => {
+  const cmbProduct = getProductById("cmb-guangdong-business-loan");
+  const result = evaluateEligibility(cmbProduct, {
+    registeredProvince: "广东省",
+    settlementAccountOpenedMonths: 12,
+    settlementAccountFlowNormal: true,
+    companyAgeMonths: 60,
+    annualRevenue: { amount: 10000000, currency: "RMB" },
+    assetLiabilityRatioPercent: 50,
+    creditBankCount: 1,
+    hasCurrentOverdue: false,
+  }, { stages: ["customer_core", "customer_conditional"] });
+
+  assert.equal(result.missingFields.includes("internalBankRating"), false);
+  assert.equal(result.unknownRules.some(({ field }) => field === "internalBankRating"), false);
 });
