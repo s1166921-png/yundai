@@ -73,6 +73,19 @@ test("every product rule declares a valid collection stage", () => {
   }
 });
 
+test("representative customer, advisor, and conditional rules use their required collection stages", () => {
+  const cmb = getProductById("cmb-guangdong-business-loan");
+  const orange = getProductById("pingan-orange-tax-loan");
+  const logistics = getProductById("pingan-foreign-trade-logistics-loan");
+  const stageFor = (product, id) => product.ruleSet.find((rule) => rule.id === id)?.collectionStage;
+
+  assert.equal(stageFor(cmb, "company-age-minimum"), "customer_core");
+  assert.equal(stageFor(cmb, "company-age-and-rating"), "advisor_verification");
+  assert.equal(stageFor(orange, "additional-authorizations-over-500k"), "customer_conditional");
+  assert.equal(stageFor(logistics, "asset-liability-ratio-conservative-maximum"), "customer_core");
+  assert.equal(stageFor(logistics, "debt-ratio-by-industry-and-tax-basis"), "advisor_verification");
+});
+
 test("catalog custom-rule dependencies are complete and unique", () => {
   for (const product of PRODUCT_CATALOG) {
     for (const rule of product.ruleSet.filter(({ operator }) => operator === "custom")) {
@@ -81,6 +94,53 @@ test("catalog custom-rule dependencies are complete and unique", () => {
       assert.ok(fields.includes(rule.field), `${product.id}/${rule.id}`);
     }
   }
+});
+
+test("catalog enumerates every custom evaluator and its evaluator-specific dependencies", () => {
+  const evaluators = new Set(PRODUCT_CATALOG.flatMap((product) => product.ruleSet)
+    .filter(({ operator }) => operator === "custom")
+    .map(({ value }) => value.evaluator));
+  const logisticsDebtRule = getProductById("pingan-foreign-trade-logistics-loan").ruleSet
+    .find(({ id }) => id === "debt-ratio-by-industry-and-tax-basis");
+
+  assert.deepEqual([...evaluators].sort(), [
+    "abovePercentage", "allTruthy", "anyTruthy", "arrayIncludes", "belowPercentage", "buyerEligibility",
+    "companyAgeOrRating", "conditionalAuthorization", "coreAssetLiability",
+    "logisticsAdditionalConditions", "logisticsDebtRatio", "notDisallowed", "ratingAtLeast", "singleStoreHistory",
+  ]);
+  assert.deepEqual(ruleDependencyFields(logisticsDebtRule), [
+    "assetLiabilityRatioPercent",
+    "industry",
+    "taxRecordAndInvoiceCustomerTier",
+  ]);
+});
+
+test("every catalog custom evaluator exposes all of its profile dependencies", () => {
+  const expectedDependencies = {
+    "cmb-guangdong-business-loan/company-age-and-rating": ["companyAgeMonths", "companyCreditRating"],
+    "cmb-guangdong-business-loan/asset-liability-ratio-below-80": ["assetLiabilityRatioPercent"],
+    "cmb-guangdong-business-loan/internal-rating-minimum": ["internalBankRating"],
+    "cmb-guangdong-business-loan/non-sensitive-industry": ["industry"],
+    "pingan-orange-tax-loan/additional-authorizations-over-500k": ["requestedAmount.amount", "requestedAmount.currency", "supportsHighAmountAuthorization", "spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"],
+    "pingan-foreign-trade-logistics-loan/customs-credit-not-dishonest": ["customsCreditClassification"],
+    "pingan-foreign-trade-logistics-loan/sales-decline-review": ["twoYearSalesDeclinePercent"],
+    "pingan-foreign-trade-logistics-loan/debt-ratio-by-industry-and-tax-basis": ["assetLiabilityRatioPercent", "industry", "taxRecordAndInvoiceCustomerTier"],
+    "pingan-foreign-trade-logistics-loan/additional-conditions-over-3m": ["requestedAmount.amount", "requestedAmount.currency", "taxRecordAndInvoiceCustomerTier", "importExportRevenueSharePercent", "companyAgeMonths"],
+    "pingan-foreign-trade-logistics-loan/core-asset-liability-over-3m": ["requestedAmount.amount", "requestedAmount.currency", "taxRecordAndInvoiceCustomerTier", "coreAssetLiabilityRatioPercent"],
+    "webank-cross-border-data-loan/single-store-first-order-two-years": ["storeCount", "firstOrderMonthsAgo"],
+    "webank-cross-border-data-loan/amazon-us-only": ["platformSites"],
+    "linklogis-amazon-sc/collection-account-arrangement": ["acceptsAccountControl", "hasCompatibleCollectionAccount"],
+    "linklogis-amazon-vc/amazon-vc-entity": ["businessModels"],
+    "linklogis-amazon-vc/amazon-vc-us-site": ["platformSites"],
+    "linklogis-amazon-vc/noa-and-collection-account-switch": ["acceptsNoa", "acceptsAccountControl"],
+    "linklogis-b2b-factoring/eligible-buyer": ["buyerCountryEligibility", "buyerPlatformType"],
+  };
+
+  const actualDependencies = Object.fromEntries(PRODUCT_CATALOG.flatMap((product) => product.ruleSet
+    .filter(({ operator }) => operator === "custom")
+    .map((rule) => [`${product.id}/${rule.id}`, ruleDependencyFields(rule)])));
+
+  assert.deepEqual(actualDependencies, expectedDependencies);
 });
 
 test("every catalog and custom-evaluator input uses a canonical customer profile field", () => {
@@ -102,10 +162,9 @@ test("tax-loan supplementary authorizations apply as hard requirements from 500,
 
   assert.equal(authorizationRule.severity, "hard");
   assert.equal(authorizationRule.value.whenAtLeast, 500000);
-  assert.deepEqual(authorizationRule.value.requiresAllTruthy, [
-    "spouseCreditAuthorization",
-    "controllerCreditAuthorization",
-    "applicableGuarantee",
+  assert.deepEqual(authorizationRule.value.requiresAllTruthy, ["supportsHighAmountAuthorization"]);
+  assert.deepEqual(authorizationRule.value.legacyAuthorizationFields, [
+    "spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee",
   ]);
 });
 

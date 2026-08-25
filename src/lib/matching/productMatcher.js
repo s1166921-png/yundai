@@ -1,7 +1,6 @@
 import { estimateAmount } from "./amountEstimators.js";
-import { isProgressiveCustomerProfileField } from "./customerProfile.js";
 import { PRODUCT_CATALOG } from "./productCatalog.js";
-import { evaluateEligibility } from "./ruleEvaluator.js";
+import { evaluateEligibility, ruleDependencyFields } from "./ruleEvaluator.js";
 
 const FIT_DIMENSIONS = Object.freeze([
   "businessModel",
@@ -12,6 +11,7 @@ const FIT_DIMENSIONS = Object.freeze([
   "documentation",
 ]);
 const NEUTRAL_SCORE = 50;
+const CUSTOMER_COLLECTION_STAGES = Object.freeze(["customer_core", "customer_conditional"]);
 
 const STATUS_ORDER = Object.freeze({
   eligible: 0,
@@ -25,40 +25,6 @@ const average = (scores) => scores.length === 0
   ? NEUTRAL_SCORE
   : scores.reduce((total, score) => total + score, 0) / scores.length;
 const bounded = (score) => Math.max(0, Math.min(100, Math.round(score)));
-
-const profileFieldsIn = (value, key = "") => {
-  if (Array.isArray(value)) return value.flatMap((item) => profileFieldsIn(item, key));
-  if (value == null || typeof value !== "object") {
-    return typeof value === "string" && (key === "field" || key.endsWith("Field")) ? [value] : [];
-  }
-  return Object.entries(value).flatMap(([nestedKey, nestedValue]) => profileFieldsIn(nestedValue, nestedKey));
-};
-
-const customerRuleIdsFor = (product) => new Set(product.ruleSet
-  .filter((rule) => [rule.field, ...profileFieldsIn(rule.value)].some(isProgressiveCustomerProfileField))
-  .map((rule) => rule.id));
-
-const progressiveEligibility = (product, eligibility) => {
-  const customerRuleIds = customerRuleIdsFor(product);
-  const passedRules = eligibility.passedRules.filter((rule) => customerRuleIds.has(rule.id));
-  const failedRules = eligibility.failedRules.filter((rule) => customerRuleIds.has(rule.id));
-  const unknownRules = eligibility.unknownRules.filter((rule) => (
-    (rule.missingFields ?? [rule.field]).some(isProgressiveCustomerProfileField)
-  ));
-  const missingFields = [...new Set(unknownRules.flatMap((rule) => (
-    (rule.missingFields ?? [rule.field]).filter(isProgressiveCustomerProfileField)
-  )))];
-  const hardFailure = failedRules.some((rule) => rule.severity === "hard");
-
-  return {
-    status: hardFailure ? "ineligible" : missingFields.length > 0 ? "needs_information" : "eligible",
-    passedRules,
-    failedRules,
-    unknownRules,
-    missingFields,
-    ruleCount: passedRules.length + failedRules.length + unknownRules.length,
-  };
-};
 
 const confidenceFor = (product, eligibility) => {
   const ruleCount = eligibility.ruleCount ?? product.ruleSet.length;
@@ -216,10 +182,12 @@ export function matchProducts(profile = {}) {
     .map((product, catalogOrder) => ({ product, catalogOrder }))
     .filter(({ product }) => product.enabled)
     .map(({ product, catalogOrder }) => {
-      const eligibility = evaluateEligibility(product, profile);
-      const customerEligibility = profile.intakeVersion === "progressive-v1"
-        ? progressiveEligibility(product, eligibility)
-        : eligibility;
+      const customerEligibility = evaluateEligibility(product, profile, profile.intakeVersion === "progressive-v1"
+        ? { stages: CUSTOMER_COLLECTION_STAGES }
+        : undefined);
+      const advisorVerificationFields = [...new Set(product.ruleSet
+        .filter(({ collectionStage }) => collectionStage === "advisor_verification")
+        .flatMap(ruleDependencyFields))];
       const confidence = confidenceFor(product, customerEligibility);
       const fitDimensions = fitDimensionsFor(product, profile, customerEligibility, confidence);
 
@@ -233,6 +201,7 @@ export function matchProducts(profile = {}) {
         passedRules: customerEligibility.passedRules,
         failedRules: customerEligibility.failedRules,
         missingFields: customerEligibility.missingFields,
+        advisorVerificationFields,
         estimatedAmount: estimateAmount(product, profile),
         inputSnapshot: estimatorInputSnapshot(product.id, profile),
         ruleVersion: product.version,

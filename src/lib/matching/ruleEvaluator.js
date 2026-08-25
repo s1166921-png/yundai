@@ -1,15 +1,20 @@
 const readPath = (value, path) => path.split(".").reduce((current, key) => current?.[key], value);
 
+const EVALUATOR_DEPENDENCY_FIELDS = Object.freeze({
+  logisticsDebtRatio: Object.freeze(["industry", "taxRecordAndInvoiceCustomerTier"]),
+});
+
 export function ruleDependencyFields(rule = {}) {
   const fields = [rule.field];
   const value = rule.value ?? {};
 
   for (const [key, dependency] of Object.entries(value)) {
     if (key.endsWith("Field") && typeof dependency === "string") fields.push(dependency);
-    if (["fields", "requiresAllTruthy"].includes(key) && Array.isArray(dependency)) {
+    if ((["fields", "requiresAllTruthy"].includes(key) || key.endsWith("Fields")) && Array.isArray(dependency)) {
       for (const item of dependency) fields.push(typeof item === "string" ? item : item?.field);
     }
   }
+  fields.push(...(EVALUATOR_DEPENDENCY_FIELDS[value.evaluator] ?? []));
 
   return [...new Set(fields.filter(Boolean))];
 }
@@ -128,6 +133,22 @@ const conditionalAllTruthy = (rule, profile, actual) => {
   return missingFields.length > 0 ? missing(missingFields) : "passed";
 };
 
+const conditionalAuthorization = (rule, profile, actual) => {
+  const applicability = currencyApplicability(rule, profile);
+  if (applicability.applies == null) return missing(applicability.missingFields);
+  if (!applicability.applies) return "passed";
+  if (isUnknown(actual)) return missing(rule.field);
+  if (actual < rule.value.whenAtLeast) return "passed";
+
+  const fields = profile.intakeVersion === "progressive-v1"
+    ? rule.value.requiresAllTruthy
+    : rule.value.legacyAuthorizationFields ?? rule.value.requiresAllTruthy;
+  const values = fields.map((field) => readPath(profile, field));
+  if (values.some((value) => value === false)) return "failed";
+  const missingFields = fields.filter((field, index) => isUnknown(values[index]));
+  return missingFields.length > 0 ? missing(missingFields) : "passed";
+};
+
 const logisticsAdditionalConditions = (rule, profile, actual) => {
   const applicability = currencyApplicability(rule, profile);
   if (applicability.applies == null) return missing(applicability.missingFields);
@@ -215,6 +236,7 @@ const CUSTOM_EVALUATORS = Object.freeze({
   belowPercentage,
   buyerEligibility,
   companyAgeOrRating,
+  conditionalAuthorization,
   conditionalAllTruthy,
   coreAssetLiability,
   logisticsAdditionalConditions,
@@ -281,6 +303,7 @@ export function evaluateEligibility(product, profile = {}, options = {}) {
 
   return {
     status: hardFailure ? "ineligible" : missingFields.length > 0 ? "needs_information" : "eligible",
+    ruleCount: results.length,
     passedRules: results.filter((result) => result.status === "passed"),
     failedRules: results.filter((result) => result.status === "failed"),
     unknownRules: results.filter((result) => result.status === "unknown"),

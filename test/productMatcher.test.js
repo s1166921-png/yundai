@@ -58,7 +58,6 @@ test("progressive matching excludes advisor-only unknowns from customer confiden
     creditBankCount: 2,
     settlementAccountOpenedMonths: 24,
     settlementAccountFlowNormal: true,
-    industry: "批发零售",
     hasCurrentOverdue: false,
   });
   const cmb = matchProducts(profile).find(({ productId }) => productId === "cmb-guangdong-business-loan");
@@ -66,6 +65,24 @@ test("progressive matching excludes advisor-only unknowns from customer confiden
   assert.equal(cmb.confidence, 100);
   assert.equal(cmb.status, "eligible");
   assert.deepEqual(cmb.missingFields, []);
+  assert.ok(cmb.advisorVerificationFields.includes("companyCreditRating"));
+  assert.ok(cmb.advisorVerificationFields.includes("industry"));
+});
+
+test("optional amount inputs stay outside progressive direction eligibility", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "amazon_sc",
+    entityRegion: "mainland",
+    entityType: "limited_company",
+    singleStoreGmvUsd: 6000000,
+    platformHistoryMonths: 13,
+    acceptsAccountControl: true,
+  });
+  const sc = matchProducts(profile).find(({ productId }) => productId === "linklogis-amazon-sc");
+
+  assert.equal(profile.qualifiedStoreCount, null);
+  assert.equal(sc.status, "eligible");
 });
 
 test("all products remain available while only the first three non-failures receive ranks", () => {

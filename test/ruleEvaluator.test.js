@@ -213,3 +213,63 @@ test("customer-stage eligibility excludes advisor verification rules", () => {
   assert.equal(result.missingFields.includes("internalBankRating"), false);
   assert.equal(result.unknownRules.some(({ field }) => field === "internalBankRating"), false);
 });
+
+test("CMB customer-stage age boundary never reads advisor company ratings", () => {
+  const cmbProduct = getProductById("cmb-guangdong-business-loan");
+  const profile = (companyAgeMonths) => ({
+    registeredProvince: "广东省",
+    settlementAccountOpenedMonths: 12,
+    settlementAccountFlowNormal: true,
+    companyAgeMonths,
+    annualRevenue: { amount: 10000000, currency: "RMB" },
+    assetLiabilityRatioPercent: 50,
+    creditBankCount: 1,
+    hasCurrentOverdue: false,
+  });
+
+  for (const companyAgeMonths of [40, 60]) {
+    const result = evaluateEligibility(cmbProduct, profile(companyAgeMonths), {
+      stages: ["customer_core", "customer_conditional"],
+    });
+    assert.equal(result.status, "eligible", `${companyAgeMonths} months`);
+    assert.equal(result.missingFields.includes("companyCreditRating"), false);
+  }
+});
+
+test("progressive Ping An authorization uses the combined customer answer at 500,000 RMB", () => {
+  const authorizationRule = getProductById("pingan-orange-tax-loan").ruleSet
+    .find(({ id }) => id === "additional-authorizations-over-500k");
+
+  assert.equal(evaluateRule(authorizationRule, {
+    intakeVersion: "progressive-v1",
+    requestedAmount: { amount: 500000, currency: "RMB" },
+    supportsHighAmountAuthorization: false,
+  }).status, "failed");
+  assert.equal(evaluateRule(authorizationRule, {
+    intakeVersion: "progressive-v1",
+    requestedAmount: { amount: 500000, currency: "RMB" },
+    supportsHighAmountAuthorization: true,
+  }).status, "passed");
+});
+
+test("foreign-trade customer-stage ratio guard rejects 99 percent before advisor refinement", () => {
+  const product = getProductById("pingan-foreign-trade-logistics-loan");
+  const result = evaluateEligibility(product, {
+    entityRegion: "mainland",
+    entityType: "limited_company",
+    industry: "加工制造",
+    companyAgeMonths: 24,
+    controllerIndustryExperienceYears: 5,
+    selfOperatedImportExport: true,
+    hasImportExportLicense: true,
+    foreignExchangeClassification: "a",
+    importExportAmountLast12Months: { amount: 500000, currency: "USD" },
+    importExportAmountMonths13To24: { amount: 500000, currency: "USD" },
+    daysSinceLatestImportExport: 90,
+    importExportCountLast12Months: 2,
+    importExportRevenueSharePercent: 50,
+    assetLiabilityRatioPercent: 99,
+  }, { stages: ["customer_core", "customer_conditional"] });
+
+  assert.equal(result.status, "ineligible");
+});

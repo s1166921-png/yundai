@@ -16,6 +16,7 @@ export const RULE_COLLECTION_STAGES = Object.freeze([
 ]);
 
 const ADVISOR_VERIFICATION_RULE_IDS = new Set([
+  "company-age-and-rating",
   "internal-rating-minimum",
   "credit-exposure-within-net-assets",
   "no-risk-warning",
@@ -115,12 +116,13 @@ export const PRODUCT_CATALOG = Object.freeze([
     fitProfile: {
       cashFlowFields: ["annualRevenue.amount", "assetLiabilityRatioPercent", "creditBankCount"],
       purposes: ["tax_business_operations"],
-      scaleRuleIds: ["company-age-and-rating", "annual-revenue-minimum"],
+      scaleRuleIds: ["company-age-minimum", "annual-revenue-minimum"],
     },
     ruleSet: [
       { id: "registered-in-guangdong", field: "registeredProvince", operator: "equals", value: "广东省", severity: "hard", message: "企业注册地需在广东省内。" },
       { id: "settlement-account-opened-one-year", field: "settlementAccountOpenedMonths", operator: "minInclusive", value: 12, severity: "hard", message: "结算账户开户需满 1 年。" },
       { id: "settlement-account-flow-normal", field: "settlementAccountFlowNormal", operator: "truthy", value: true, severity: "hard", message: "结算账户流水需无异常。" },
+      { id: "company-age-minimum", field: "companyAgeMonths", operator: "minInclusive", value: 36, severity: "hard", message: "企业成立需满 3 年。" },
       { id: "company-age-and-rating", field: "companyAgeMonths", operator: "custom", value: { evaluator: "companyAgeOrRating", minimumMonths: 60, minimumMonthsWithRating: 36, ratingField: "companyCreditRating", minimumRating: "5C+" }, severity: "hard", message: "企业成立需满 5 年，或成立满 3 年且评级达到 5C+。" },
       { id: "annual-revenue-minimum", field: "annualRevenue.amount", operator: "minInclusive", value: 10000000, severity: "hard", message: "年营收需不低于 1000 万元。" },
       { id: "asset-liability-ratio-below-80", field: "assetLiabilityRatioPercent", operator: "custom", value: { evaluator: "belowPercentage", threshold: 80 }, severity: "hard", message: "资产负债率需低于 80%。" },
@@ -168,7 +170,7 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "company-registration-two-years", field: "companyAgeMonths", operator: "minInclusive", value: 24, severity: "hard", message: "企业注册需满 24 个月。" },
       { id: "applicant-age-minimum", field: "legalRepresentativeAge", operator: "minInclusive", value: 25, severity: "hard", message: "申请人年龄需满 25 岁。" },
       { id: "applicant-age-maximum", field: "legalRepresentativeAge", operator: "maxInclusive", value: 65, severity: "hard", message: "申请人年龄不超过 65 岁。" },
-      { id: "additional-authorizations-over-500k", field: "requestedAmount.amount", operator: "custom", value: { evaluator: "conditionalAllTruthy", whenAtLeast: 500000, currencyField: "requestedAmount.currency", requiredCurrency: "RMB", requiresAllTruthy: ["spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"] }, severity: "hard", message: "申请 50 万元及以上时，请补充相关授权及担保资料。" },
+      { id: "additional-authorizations-over-500k", field: "requestedAmount.amount", operator: "custom", value: { evaluator: "conditionalAuthorization", whenAtLeast: 500000, currencyField: "requestedAmount.currency", requiredCurrency: "RMB", requiresAllTruthy: ["supportsHighAmountAuthorization"], legacyAuthorizationFields: ["spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"] }, severity: "hard", message: "申请 50 万元及以上时，请补充相关授权及担保资料。" },
     ],
   }),
   product({
@@ -220,6 +222,7 @@ export const PRODUCT_CATALOG = Object.freeze([
       { id: "import-export-revenue-share", field: "importExportRevenueSharePercent", operator: "minInclusive", value: 50, severity: "hard", message: "进出口业务占营收需不低于 50%。" },
       { id: "commodity-share", field: "commodityRevenueSharePercent", operator: "maxInclusive", value: 20, severity: "review", message: "大宗商品占比原则上不超过 20%。" },
       { id: "sales-decline-review", field: "twoYearSalesDeclinePercent", operator: "custom", value: { evaluator: "abovePercentage", threshold: 30 }, severity: "review", message: "请提供两个年度的销售收入，以便人工复核。", internalReason: "两个年度销售收入下滑超过 30%" },
+      { id: "asset-liability-ratio-conservative-maximum", field: "assetLiabilityRatioPercent", operator: "maxInclusive", value: 70, severity: "hard", message: "资产负债率需处于产品允许的客户预审范围内。" },
       { id: "debt-ratio-by-industry-and-tax-basis", field: "assetLiabilityRatioPercent", operator: "custom", value: { evaluator: "logisticsDebtRatio", nonTaxInvoice: { 加工制造: 65, 批发零售: 50 }, taxInvoice: { 加工制造: 70, 批发零售: 55 } }, severity: "hard", message: "负债比需符合所属行业及税票口径要求。" },
       { id: "additional-conditions-over-3m", field: "requestedAmount.amount", operator: "custom", value: { evaluator: "logisticsAdditionalConditions", whenAbove: 3000000, currencyField: "requestedAmount.currency", requiredCurrency: "RMB", taxInvoiceQualityField: "taxRecordAndInvoiceCustomerTier", qualifyingTaxInvoiceTier: "tax_invoice", revenueShareField: "importExportRevenueSharePercent", minimumRevenueShare: 50, companyAgeField: "companyAgeMonths", minimumCompanyAgeMonths: 60 }, severity: "hard", message: "额度超过 300 万元时，需满足税票质量或进出口占比条件，并连续经营满 5 年。" },
       { id: "core-asset-liability-over-3m", field: "requestedAmount.amount", operator: "custom", value: { evaluator: "coreAssetLiability", whenAbove: 3000000, currencyField: "requestedAmount.currency", requiredCurrency: "RMB", nonTaxInvoiceField: "taxRecordAndInvoiceCustomerTier", nonTaxInvoiceValue: "non_tax_invoice", ratioField: "coreAssetLiabilityRatioPercent", maximumRatio: 80 }, severity: "review", message: "非税票或额度超过 300 万元时，核心资产负债率原则上不超过 80%。" },

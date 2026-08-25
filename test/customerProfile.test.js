@@ -44,12 +44,38 @@ test("progressive validation is accepted and still rejects invalid canonical dat
 
 test("progressive non-Amazon profiles derive their primary buyer name from buyerName", () => {
   const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
     primaryBusinessModel: "b2b_supermarket",
     buyerName: "Progressive Buyer",
     primaryPlatformOrBuyerName: "Legacy Buyer",
   });
 
   assert.equal(profile.primaryPlatformOrBuyerName, "Progressive Buyer");
+});
+
+test("progressive admission derivation keys only from intakeVersion and resists malformed spoofing", () => {
+  const malformedProgressive = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    buyerName: "Unknown Buyer",
+    buyerCountry: "未知地区",
+    buyerPlatformType: "admitted_1p_retailer",
+    buyerCountryEligibility: "confirmed_admitted",
+  });
+  const legacyWithPrimaryField = normalizeCustomerProfile({
+    primaryBusinessModel: "b2b_supermarket",
+    primaryPlatformOrBuyerName: "Legacy Buyer",
+    buyerPlatformType: "admitted_1p_retailer",
+    buyerCountryEligibility: "confirmed_admitted",
+  });
+
+  assert.equal(malformedProgressive.primaryBusinessModel, null);
+  assert.deepEqual(malformedProgressive.businessModels, []);
+  assert.equal(malformedProgressive.buyerPlatformType, "other");
+  assert.equal(malformedProgressive.buyerCountryEligibility, "needs_review");
+  assert.equal(legacyWithPrimaryField.primaryBusinessModel, null);
+  assert.equal(legacyWithPrimaryField.primaryPlatformOrBuyerName, "Legacy Buyer");
+  assert.equal(legacyWithPrimaryField.buyerPlatformType, "admitted_1p_retailer");
+  assert.equal(legacyWithPrimaryField.buyerCountryEligibility, "confirmed_admitted");
 });
 
 test("progressive buyer admission is derived and ignores caller-supplied admission enums", () => {

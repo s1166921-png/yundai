@@ -134,6 +134,7 @@ const BOOLEAN_FIELDS = Object.freeze([
   "spouseCreditAuthorization",
   "controllerCreditAuthorization",
   "applicableGuarantee",
+  "supportsHighAmountAuthorization",
   "consentToDataUse",
 ]);
 
@@ -189,6 +190,7 @@ export const PROGRESSIVE_CUSTOMER_PROFILE_FIELDS = Object.freeze([
   "hasCurrentOverdue",
   "hasMaterialCreditOrJudicialNegative",
   "requestedAmount",
+  "supportsHighAmountAuthorization",
   "fundUse",
   "consentToDataUse",
 ]);
@@ -296,12 +298,12 @@ export function normalizeCustomerProfile(input = {}) {
   const preferredCurrency = asEnum(source.preferredCurrency, ENUM_VALUES.preferredCurrency);
   const requestedAmountCurrency = preferredCurrency === "usd" ? "USD" : "RMB";
   const legacyBusinessModels = asEnumList(source.businessModels, ENUM_VALUES.businessModels);
-  const hasProgressivePrimaryBusinessModel = Object.hasOwn(source, "primaryBusinessModel");
-  const primaryBusinessModel = hasProgressivePrimaryBusinessModel
+  const isProgressiveInput = source.intakeVersion === "progressive-v1";
+  const primaryBusinessModel = isProgressiveInput
     ? asEnum(source.primaryBusinessModel, ENUM_VALUES.primaryBusinessModel)
     : null;
-  const businessModels = hasProgressivePrimaryBusinessModel
-    ? primaryBusinessModel === "tax_operations" || primaryBusinessModel === "other"
+  const businessModels = isProgressiveInput
+    ? primaryBusinessModel == null || primaryBusinessModel === "tax_operations" || primaryBusinessModel === "other"
       ? []
       : [primaryBusinessModel]
     : legacyBusinessModels;
@@ -320,12 +322,12 @@ export function normalizeCustomerProfile(input = {}) {
     : asInputMoney(source, "collectionsLast12MonthsRmb", "collectionsLast12Months", "RMB");
   const buyerName = asText(source.buyerName);
   const buyerCountry = asText(source.buyerCountry);
-  const buyerAdmission = hasProgressivePrimaryBusinessModel
+  const buyerAdmission = isProgressiveInput
     ? deriveBuyerAdmission({ buyerName, buyerCountry })
     : null;
 
   return {
-    intakeVersion: source.intakeVersion === "progressive-v1" ? "progressive-v1" : null,
+    intakeVersion: isProgressiveInput ? "progressive-v1" : null,
     companyName: asText(source.companyName),
     contactName: asText(source.contactName),
     phone: asText(source.phone),
@@ -341,7 +343,7 @@ export function normalizeCustomerProfile(input = {}) {
 
     primaryBusinessModel,
     businessModels,
-    primaryPlatformOrBuyerName: hasProgressivePrimaryBusinessModel
+    primaryPlatformOrBuyerName: isProgressiveInput
       ? isAmazon ? "Amazon" : buyerName
       : asText(source.primaryPlatformOrBuyerName),
     platformSites: asEnumList(source.platformSites, ENUM_VALUES.platformSites),
@@ -349,7 +351,7 @@ export function normalizeCustomerProfile(input = {}) {
     storeCount: asNumber(source.storeCount),
     qualifiedStoreCount: asNumber(source.qualifiedStoreCount),
     selfOperatedImportExport: hasTradeQualification,
-    hasImportExportLicense: hasProgressivePrimaryBusinessModel
+    hasImportExportLicense: isProgressiveInput
       ? hasTradeQualification
       : asBoolean(source.hasImportExportLicense),
 
@@ -429,6 +431,7 @@ export function normalizeCustomerProfile(input = {}) {
     spouseCreditAuthorization: asBoolean(source.spouseCreditAuthorization),
     controllerCreditAuthorization: asBoolean(source.controllerCreditAuthorization),
     applicableGuarantee: asBoolean(source.applicableGuarantee),
+    supportsHighAmountAuthorization: asBoolean(source.supportsHighAmountAuthorization),
     firstOrderMonthsAgo: asNumber(source.firstOrderMonthsAgo),
     participatingStoreOperatingDays: asNumber(source.participatingStoreOperatingDays),
     consentToDataUse: asBoolean(source.consentToDataUse),
