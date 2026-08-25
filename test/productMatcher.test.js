@@ -65,6 +65,7 @@ test("progressive matching excludes advisor-only unknowns from customer confiden
   assert.equal(cmb.confidence, 100);
   assert.equal(cmb.status, "eligible");
   assert.deepEqual(cmb.missingFields, []);
+  assert.ok(cmb.authenticatedEvidence.missingFields.includes("internalBankRating"));
   assert.deepEqual(cmb.advisorVerificationFields, [
     "companyCreditRating",
     "internalBankRating",

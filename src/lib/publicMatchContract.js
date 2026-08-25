@@ -1,1 +1,1 @@
-export const MATCH_DISCLAIMER = "本结果基于您提交的信息和当前产品规则进行初步匹配，仅供融资准备参考，不构成授信、放款、利率或期限承诺，最终结果以资金方审核为准。";
+export const MATCH_DISCLAIMER = "仍需资金方及融资顾问核验完整资料，本结果不构成授信或放款承诺。";

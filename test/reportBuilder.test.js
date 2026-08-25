@@ -69,6 +69,39 @@ test("progressive reports omit advisor-only missing documents", () => {
   assert.deepEqual(report.missingDocuments, ["平台交易历史证明"]);
 });
 
+test("progressive reports use product-direction labels and the verification disclaimer", () => {
+  const report = buildCustomerMatchReport({ intakeVersion: "progressive-v1" }, [{
+    ...matchFixture[0],
+    status: "eligible",
+    rank: 1,
+    confidence: 100,
+  }, {
+    ...matchFixture[0],
+    productId: "linklogis-amazon-vc",
+    status: "needs_information",
+    rank: 2,
+    confidence: 50,
+  }, {
+    ...matchFixture[1],
+    presentationLabel: "internal",
+  }]);
+
+  assert.equal(report.primary.presentationLabel, "优先产品方向");
+  assert.equal(report.alternatives[0].presentationLabel, "待补关键信息");
+  assert.equal(report.nonMatches[0].presentationLabel, "暂不匹配");
+  assert.equal(report.disclaimer, "仍需资金方及融资顾问核验完整资料，本结果不构成授信或放款承诺。");
+});
+
+test("progressive report suppresses estimator output until its required inputs are usable", () => {
+  const report = buildCustomerMatchReport({ intakeVersion: "progressive-v1" }, [{
+    ...matchFixture[0],
+    inputSnapshot: {},
+    estimatedAmount: { kind: "manual", currency: "USD", min: null, max: null, note: "需补充符合条件的店铺数量。" },
+  }]);
+
+  assert.equal(report.primary.estimatedAmount, null);
+});
+
 test("missing documents use the fixed field map, deduplicate, and stop at five", () => {
   const report = buildCustomerMatchReport(profileFixture, [{
     ...matchFixture[0],
@@ -126,7 +159,7 @@ test("report copies customer product facts from the versioned catalog", () => {
     },
     whyMatched: ["需为 Amazon 店铺。"],
   });
-  assert.equal(report.disclaimer, "本结果基于您提交的信息和当前产品规则进行初步匹配，仅供融资准备参考，不构成授信、放款、利率或期限承诺，最终结果以资金方审核为准。");
+  assert.equal(report.disclaimer, "仍需资金方及融资顾问核验完整资料，本结果不构成授信或放款承诺。");
   assert.equal(report.ruleVersion, undefined);
   assert.deepEqual(buildProductReport(profileFixture, matchFixture), report);
 });

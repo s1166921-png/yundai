@@ -120,6 +120,7 @@ test("submitted view keeps one dominant result, two alternatives, and customer-s
     institution: "平安银行",
     name: "平安银行外贸物流贷",
     reason: "当前资料暂未满足该产品的部分基础准入要求。",
+    presentationLabel: "暂不匹配",
   }]);
   assert.equal(view.disclaimer, MATCH_DISCLAIMER);
   assert.doesNotMatch(serialized, /fitScore|confidence|failedRules|priority|unsafe replacement/);
@@ -205,4 +206,25 @@ test("suppressed reports retain safe presentation labels without catalog amount 
   assert.equal(view.primary.presentationLabel, "待补信息");
   assert.equal(view.primary.amount, "待补信息后测算");
   assert.doesNotMatch(view.primary.amount, /300万/);
+});
+
+test("view retains only progressive customer-direction labels and never restores suppressed amounts", () => {
+  const view = buildProductMatchView({
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      presentationLabel: "优先产品方向",
+      estimatedAmount: null,
+    },
+    alternatives: [{
+      ...customerReport.alternatives[0],
+      presentationLabel: "待补关键信息",
+      estimatedAmount: { kind: "range", currency: "USD", min: 1, max: 2 },
+    }],
+  }, PUBLIC_PRODUCTS);
+
+  assert.equal(view.primary.presentationLabel, "优先产品方向");
+  assert.equal(view.primary.amount, "待补信息后测算");
+  assert.equal(view.alternatives[0].presentationLabel, "待补关键信息");
+  assert.equal(view.alternatives[0].amount, "待补信息后测算");
 });

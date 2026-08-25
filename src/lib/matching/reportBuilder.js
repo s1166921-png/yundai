@@ -124,7 +124,37 @@ const customerAmount = (estimate) => {
   };
 };
 
-const presentationFor = (match, role) => {
+const hasUsableMoney = (value, currency) => (
+  value?.currency === currency && Number.isFinite(value.amount) && value.amount >= 0
+);
+
+const hasUsableEstimatorInputs = (match, profile) => {
+  switch (match.productId) {
+    case "pingan-foreign-trade-logistics-loan":
+      return hasUsableMoney(profile.annualRevenue, "RMB")
+        && hasUsableMoney(profile.taxInvoiceAmount, "RMB")
+        && typeof profile.industry === "string";
+    case "webank-cross-border-data-loan":
+      return hasUsableMoney(profile.collectionsLast12Months, "RMB")
+        || hasUsableMoney(profile.allStoreRepayments, "RMB");
+    case "linklogis-amazon-sc":
+      return Number.isFinite(profile.qualifiedStoreCount) && profile.qualifiedStoreCount >= 0;
+    default:
+      return true;
+  }
+};
+
+const presentationFor = (profile, match, role) => {
+  if (profile.intakeVersion === "progressive-v1") {
+    if (match.status === "eligible") {
+      return {
+        label: role === "primary" ? "优先产品方向" : "备选产品方向",
+        showAmount: true,
+      };
+    }
+    return { label: "待补关键信息", showAmount: false };
+  }
+
   const sufficientlyEvidenced = match.status === "eligible" && match.confidence >= 80;
   if (sufficientlyEvidenced) {
     return {
@@ -145,10 +175,10 @@ const safeWhyMatched = (product, passedRules = []) => {
     .slice(0, 3);
 };
 
-const reportProduct = (match, role) => {
+const reportProduct = (profile, match, role) => {
   const product = getProductById(match.productId);
   if (product == null) return null;
-  const presentation = presentationFor(match, role);
+  const presentation = presentationFor(profile, match, role);
 
   return {
     institution: product.institution,
@@ -158,7 +188,10 @@ const reportProduct = (match, role) => {
     term: formatTerm(product.term),
     limit: formatLimit(product.limit),
     presentationLabel: presentation.label,
-    estimatedAmount: presentation.showAmount ? customerAmount(match.estimatedAmount) : null,
+    estimatedAmount: presentation.showAmount
+      && (profile.intakeVersion !== "progressive-v1" || hasUsableEstimatorInputs(match, profile))
+      ? customerAmount(match.estimatedAmount)
+      : null,
     whyMatched: safeWhyMatched(product, match.passedRules),
   };
 };
@@ -183,14 +216,19 @@ const missingDocumentsFor = (profile, matches) => {
 export function buildCustomerMatchReport(profile = {}, matches = []) {
   const primaryMatch = rankedMatch(matches, 1);
   const alternativeMatches = [2, 3].map((rank) => rankedMatch(matches, rank)).filter(Boolean);
-  const primary = primaryMatch == null ? null : reportProduct(primaryMatch, "primary");
-  const alternatives = alternativeMatches.map((match) => reportProduct(match, "alternative")).filter(Boolean);
+  const primary = primaryMatch == null ? null : reportProduct(profile, primaryMatch, "primary");
+  const alternatives = alternativeMatches.map((match) => reportProduct(profile, match, "alternative")).filter(Boolean);
   const recommendedMatches = [primaryMatch, ...alternativeMatches].filter(Boolean);
   const nonMatches = matches
     .filter((match) => match?.status === "ineligible")
     .map((match) => getProductById(match.productId))
     .filter(Boolean)
-    .map((product) => ({ institution: product.institution, name: product.name, reason: NON_MATCH_REASON }));
+    .map((product) => ({
+      institution: product.institution,
+      name: product.name,
+      reason: NON_MATCH_REASON,
+      ...(profile.intakeVersion === "progressive-v1" ? { presentationLabel: "暂不匹配" } : {}),
+    }));
 
   return {
     primary,
@@ -199,11 +237,11 @@ export function buildCustomerMatchReport(profile = {}, matches = []) {
     missingDocuments: missingDocumentsFor(profile, recommendedMatches),
     summary: primary == null
       ? "当前资料中暂无可展示的推荐产品，请补充相关资料后再评估。"
-      : primary.presentationLabel === "优先匹配"
+      : primary.presentationLabel === "优先匹配" || primary.presentationLabel === "优先产品方向"
         ? `已为您整理 1 款优先产品及 ${alternatives.length} 款备选产品。`
         : primary.presentationLabel === "可能方向"
           ? "已根据现有资料整理可能方向；补充关键信息后可进一步判断匹配与额度。"
-          : "已整理待补信息的产品方向；完善资料后可进一步判断匹配与额度。",
+          : "已整理待补关键信息的产品方向；完善资料后可进一步判断匹配与额度。",
     disclaimer: MATCH_DISCLAIMER,
   };
 }

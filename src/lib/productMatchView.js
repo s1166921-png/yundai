@@ -30,7 +30,16 @@ const catalogProductFor = (reportProduct, products) => products.find((product) =
   || (product.name === reportProduct?.name && product.institution === reportProduct?.institution)
 ));
 
-const SAFE_PRESENTATION_LABELS = new Set(["优先匹配", "备选方向", "可能方向", "待补信息"]);
+const SAFE_PRESENTATION_LABELS = new Set([
+  "优先匹配",
+  "备选方向",
+  "可能方向",
+  "待补信息",
+  "优先产品方向",
+  "备选产品方向",
+  "待补关键信息",
+  "暂不匹配",
+]);
 
 const formatEstimatedAmount = (estimatedAmount) => {
   if (estimatedAmount == null) return { amount: "待补信息后测算", amountNote: null };
@@ -59,8 +68,11 @@ const safeReportProduct = (reportProduct, products) => {
   const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
   const presentationLabel = SAFE_PRESENTATION_LABELS.has(reportProduct.presentationLabel)
     ? reportProduct.presentationLabel
-    : "可能方向";
-  const canShowAmount = presentationLabel === "优先匹配" || presentationLabel === "备选方向";
+    : "待补关键信息";
+  const canShowAmount = presentationLabel === "优先匹配"
+    || presentationLabel === "备选方向"
+    || presentationLabel === "优先产品方向"
+    || presentationLabel === "备选产品方向";
   const amountPresentation = formatEstimatedAmount(canShowAmount ? reportProduct.estimatedAmount : null);
 
   return {
@@ -138,6 +150,7 @@ const buildReportView = (report, products) => {
       institution: typeof item.institution === "string" ? item.institution : "",
       name: typeof item.name === "string" ? item.name : "",
       reason: typeof item.reason === "string" ? item.reason : "",
+      presentationLabel: "暂不匹配",
     }));
 
   return {

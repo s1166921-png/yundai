@@ -20,6 +20,14 @@ const STATUS_ORDER = Object.freeze({
   ineligible: 2,
 });
 
+const primaryBusinessModelFit = (product, primaryBusinessModel) => {
+  if (primaryBusinessModel == null) return 0;
+  if (primaryBusinessModel === "tax_operations") {
+    return product.customerScenario?.id === "tax-operations" ? 1 : 0;
+  }
+  return product.fitProfile.businessModels.includes(primaryBusinessModel) ? 1 : 0;
+};
+
 const readPath = (value, path) => path.split(".").reduce((current, key) => current?.[key], value);
 const isAnswered = (value) => value != null && value !== "" && (!Array.isArray(value) || value.length > 0);
 const average = (scores) => scores.length === 0
@@ -178,14 +186,19 @@ const estimatorInputSnapshot = (productId, profile) => {
   }
 };
 
-export function matchProducts(profile = {}) {
+export function matchProducts(profile = {}, options = {}) {
+  const isProgressive = options.intakeVersion === "progressive-v1"
+    || profile.intakeVersion === "progressive-v1";
   const matches = PRODUCT_CATALOG
     .map((product, catalogOrder) => ({ product, catalogOrder }))
     .filter(({ product }) => product.enabled)
     .map(({ product, catalogOrder }) => {
-      const customerEligibility = evaluateEligibility(product, profile, profile.intakeVersion === "progressive-v1"
+      const customerEligibility = evaluateEligibility(product, profile, isProgressive
         ? { stages: CUSTOMER_COLLECTION_STAGES }
         : undefined);
+      const authenticatedEvidence = isProgressive
+        ? evaluateEligibility(product, profile)
+        : customerEligibility;
       const advisorVerificationFields = [...new Set(product.ruleSet
         .filter(({ collectionStage }) => collectionStage === "advisor_verification")
         .flatMap(ruleDependencyFields)
@@ -204,14 +217,19 @@ export function matchProducts(profile = {}) {
         failedRules: customerEligibility.failedRules,
         missingFields: customerEligibility.missingFields,
         advisorVerificationFields,
+        authenticatedEvidence,
         estimatedAmount: estimateAmount(product, profile),
         inputSnapshot: estimatorInputSnapshot(product.id, profile),
         ruleVersion: product.version,
+        primaryBusinessModelFit: isProgressive
+          ? primaryBusinessModelFit(product, profile.primaryBusinessModel)
+          : 0,
         catalogOrder,
       };
     })
     .sort((left, right) => (
       STATUS_ORDER[left.status] - STATUS_ORDER[right.status]
+      || right.primaryBusinessModelFit - left.primaryBusinessModelFit
       || right.fitScore - left.fitScore
       || right.confidence - left.confidence
       || left.catalogOrder - right.catalogOrder
@@ -223,6 +241,7 @@ export function matchProducts(profile = {}) {
       match.rank = rank;
       rank += 1;
     }
+    delete match.primaryBusinessModelFit;
     delete match.catalogOrder;
   }
 
