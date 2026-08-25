@@ -35,6 +35,15 @@ Cross-origin browser access is denied by default except for the request's own or
 Set comma-separated `MEIOU_ALLOWED_ORIGINS` values only for explicitly approved
 frontends. Lead submissions must use `Content-Type: application/json`.
 
+For a local frontend on a different port, use an exact origin:
+
+```bash
+MEIOU_ADMIN_USER=<local-user> \
+MEIOU_ADMIN_PASSWORD=<local-password> \
+MEIOU_ALLOWED_ORIGINS=http://127.0.0.1:5174 \
+PORT=8787 pnpm dev:api
+```
+
 ## Test and build
 
 Run the complete Node suite:
@@ -74,9 +83,10 @@ changes are outside this repository workflow.
 
 ## Runtime architecture
 
-- `src/components/FinancingIntake.jsx` renders the five-step conditional form using `src/lib/matching/intakeSchema.js`.
+- `src/components/FinancingIntake.jsx` renders one three-stage progressive form using `src/lib/matching/intakeSchema.js`.
+- Progressive submissions use `intakeVersion: "progressive-v1"` and `estimationMode: "progressive"`; only visible non-empty fields are sent. The Amazon SC WeBank assessment is an explicit optional accordion and its collapsed values are removed when disabled.
 - `src/lib/matching/customerProfile.js` normalizes and validates the canonical profile without converting currency.
-- `src/lib/matching/productCatalog.js` owns the seven versioned product definitions, sourced facts, rules, estimator metadata, six-dimension fit profiles, and ranking weights.
+- `src/lib/matching/productCatalog.js` owns the seven versioned product definitions, sourced facts, rules, estimator metadata, six-dimension fit profiles, ranking weights, and customer/advisor collection stages.
 - `src/lib/matching/ruleEvaluator.js`, `amountEstimators.js`, and `productMatcher.js` produce deterministic eligibility, traceable amount estimates, and at most three ranks.
 - `src/lib/matching/reportBuilder.js` creates constrained customer-safe report copy; `src/components/ProductMatchCenter.jsx` renders it.
 - `src/lib/matching/publicProductProjection.js` and the public serializers in `server/index.mjs` keep internal catalog and match evidence out of the customer browser.
@@ -87,6 +97,9 @@ writer process per lead store; this queue is not a cross-process or distributed 
 
 See `docs/product-rule-maintenance.md` before changing a product fact, rule, threshold,
 formula, or rule version.
+
+See `docs/progressive-intake-qa.md` for the seven repeatable customer journeys,
+responsive acceptance matrix, selected-only export check, and residual device limits.
 
 ## Privacy and admin boundaries
 

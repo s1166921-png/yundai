@@ -854,7 +854,7 @@ function buildAdminPage() {
       if (key.startsWith("matching.")) return formatMatchingValue(lead, key);
       const value = key.split(".").reduce((current, part) => current && current[part], lead);
       if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
-      if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : "";
+      if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : value === "progressive" ? "产品匹配" : "";
       if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
       if (key === "estimate.score") return value === undefined || value === null ? "-" : value + " 分";
       return value || (key.startsWith("estimate.") ? "-" : "");

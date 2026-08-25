@@ -1057,6 +1057,7 @@ test("admin page exposes useful filters while preserving explicit selection-only
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(html, /id="export"[^>]*disabled/);
+  assert.match(html, /value === "progressive" \? "产品匹配"/);
   assert.match(html, /ids\.forEach\(\(id\) => params\.append\("ids", id\)\)/);
   assert.doesNotMatch(html, /href="\/api\/leads\/export"/);
 });

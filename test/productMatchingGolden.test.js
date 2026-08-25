@@ -265,3 +265,36 @@ test("visible foreign-trade payload reaches its direction without amount-only es
   assert.equal(matches.find(({ productId }) => productId === "pingan-foreign-trade-logistics-loan")?.status, "eligible");
   assert.equal(report.primary?.estimatedAmount, null);
 });
+
+test("unknown customer data remains a possible direction instead of a false hard rejection", () => {
+  const profile = amazonScProfile();
+  profile.singleStoreGmv = null;
+  const match = matchProducts(profile).find(({ productId }) => productId === "linklogis-amazon-sc");
+  const report = buildCustomerMatchReport(profile, matchProducts(profile));
+  const serialized = JSON.stringify(buildProductMatchView(report, getPublicProducts()));
+
+  assert.equal(match?.status, "needs_information");
+  assert.notEqual(match?.rank, null);
+  assert.doesNotMatch(serialized, /failedRules|internalReason|fitScore|confidence/);
+});
+
+test("an explicit customer hard failure removes the affected product direction", () => {
+  const profile = amazonScProfile();
+  profile.acceptsAccountControl = false;
+  profile.hasCompatibleCollectionAccount = false;
+  const match = matchProducts(profile).find(({ productId }) => productId === "linklogis-amazon-sc");
+
+  assert.equal(match?.status, "ineligible");
+  assert.equal(match?.rank, null);
+});
+
+test("advisor-only missing evidence never demotes a complete customer-stage direction", () => {
+  const match = matchProducts(guangdongTaxProfile())
+    .find(({ productId }) => productId === "cmb-guangdong-business-loan");
+
+  assert.equal(match?.status, "eligible");
+  assert.equal(match?.rank, 1);
+  assert.ok(match?.advisorVerificationFields.includes("internalBankRating"));
+  assert.ok(match?.advisorVerificationFields.includes("isOnAmlBlacklist"));
+  assert.deepEqual(match?.missingFields, []);
+});
