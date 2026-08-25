@@ -23,6 +23,7 @@
 - Existing admin authentication, selected-customer export, file mode `0600`, and same-origin/CORS protections remain intact.
 - Vite legacy targets remain `iOS >= 10` and `Safari >= 10`.
 - Every task ends with user-path QA at 1440px and 390px; browser findings are fixed before the task is accepted.
+- UI polish is a release requirement: aligned form grids, consistent field widths and spacing, clear hierarchy, stable controls, no nested cards, no layout shifts, no overlap or horizontal overflow, and professional wrapping at 1440×900, 390×844, and 375×667.
 - No production deployment, DNS change, push, or merge is part of this plan.
 
 ---
