@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { GOLDEN_PROFILES } from "./fixtures/customerProfiles.js";
 import { PRODUCT_IDS } from "../src/lib/matching/productCatalog.js";
 import { matchProducts } from "../src/lib/matching/productMatcher.js";
+import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
 
 const isDeeplyFrozen = (value) => (
   value === null
@@ -44,6 +45,27 @@ test("missing data lowers confidence without changing to ineligible", () => {
   assert.equal(match.status, "needs_information");
   assert.ok(match.confidence < 80);
   assert.ok(match.confidence >= 0);
+});
+
+test("progressive matching excludes advisor-only unknowns from customer confidence", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "tax_operations",
+    registeredProvince: "广东省",
+    companyAgeMonths: 60,
+    annualRevenueRmb: 12000000,
+    assetLiabilityRatioPercent: 50,
+    creditBankCount: 2,
+    settlementAccountOpenedMonths: 24,
+    settlementAccountFlowNormal: true,
+    industry: "批发零售",
+    hasCurrentOverdue: false,
+  });
+  const cmb = matchProducts(profile).find(({ productId }) => productId === "cmb-guangdong-business-loan");
+
+  assert.equal(cmb.confidence, 100);
+  assert.equal(cmb.status, "eligible");
+  assert.deepEqual(cmb.missingFields, []);
 });
 
 test("all products remain available while only the first three non-failures receive ranks", () => {

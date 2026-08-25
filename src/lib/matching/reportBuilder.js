@@ -1,4 +1,5 @@
 import { getProductById } from "./productCatalog.js";
+import { isProgressiveCustomerProfileField } from "./customerProfile.js";
 import { MATCH_DISCLAIMER } from "../publicMatchContract.js";
 
 export { MATCH_DISCLAIMER };
@@ -166,10 +167,11 @@ const rankedMatch = (matches, rank) => matches.find((match) => (
   match?.rank === rank && match.status !== "ineligible"
 ));
 
-const missingDocumentsFor = (matches) => {
+const missingDocumentsFor = (profile, matches) => {
   const documents = [];
   for (const match of matches) {
     for (const field of match?.missingFields ?? []) {
+      if (profile.intakeVersion === "progressive-v1" && !isProgressiveCustomerProfileField(field)) continue;
       const document = DOCUMENT_BY_FIELD[field] ?? DOCUMENT_BY_FIELD[field.split(".")[0]];
       if (document != null && !documents.includes(document)) documents.push(document);
       if (documents.length === 5) return documents;
@@ -178,7 +180,7 @@ const missingDocumentsFor = (matches) => {
   return documents;
 };
 
-export function buildCustomerMatchReport(_profile = {}, matches = []) {
+export function buildCustomerMatchReport(profile = {}, matches = []) {
   const primaryMatch = rankedMatch(matches, 1);
   const alternativeMatches = [2, 3].map((rank) => rankedMatch(matches, rank)).filter(Boolean);
   const primary = primaryMatch == null ? null : reportProduct(primaryMatch, "primary");
@@ -194,7 +196,7 @@ export function buildCustomerMatchReport(_profile = {}, matches = []) {
     primary,
     alternatives,
     nonMatches,
-    missingDocuments: missingDocumentsFor(recommendedMatches),
+    missingDocuments: missingDocumentsFor(profile, recommendedMatches),
     summary: primary == null
       ? "当前资料中暂无可展示的推荐产品，请补充相关资料后再评估。"
       : primary.presentationLabel === "优先匹配"

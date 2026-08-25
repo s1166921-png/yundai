@@ -265,6 +265,7 @@ export function evaluateEligibility(product, profile) {
     status: hardFailure ? "ineligible" : missingFields.length > 0 ? "needs_information" : "eligible",
     passedRules: results.filter((result) => result.status === "passed"),
     failedRules: results.filter((result) => result.status === "failed"),
+    unknownRules: results.filter((result) => result.status === "unknown"),
     missingFields,
   };
 }

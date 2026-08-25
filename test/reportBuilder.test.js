@@ -54,6 +54,21 @@ test("customer report excludes internal scores and hard-failure labels", () => {
   }]);
 });
 
+test("progressive reports omit advisor-only missing documents", () => {
+  const report = buildCustomerMatchReport({ intakeVersion: "progressive-v1" }, [{
+    productId: "cmb-guangdong-business-loan",
+    status: "needs_information",
+    rank: 1,
+    confidence: 50,
+    passedRules: [],
+    failedRules: [],
+    missingFields: ["companyCreditRating", "platformHistoryMonths"],
+    estimatedAmount: null,
+  }]);
+
+  assert.deepEqual(report.missingDocuments, ["平台交易历史证明"]);
+});
+
 test("missing documents use the fixed field map, deduplicate, and stop at five", () => {
   const report = buildCustomerMatchReport(profileFixture, [{
     ...matchFixture[0],
