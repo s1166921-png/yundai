@@ -12,7 +12,7 @@ import { matchProducts } from "../src/lib/matching/productMatcher.js";
 import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
-import { INTAKE_FIELD_KEYS } from "../src/lib/matching/intakeSchema.js";
+import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -65,13 +65,15 @@ const persistedRawInputFields = Object.freeze([...new Set([
 
 const leadColumns = [
   ["createdAt", "提交时间"],
+  ["intakeVersion", "数据版本"],
   ["estimationMode", "测算版本"],
   ["companyName", "企业名称"],
   ["contactName", "联系人"],
   ["phone", "联系电话"],
   ["platform", "主营平台"],
   ["productInterest", "意向产品"],
-  ["matching.primaryProduct", "第一推荐产品"],
+  ["matching.primaryScenario", "主融资场景"],
+  ["matching.primaryProduct", "第一产品方向"],
   ["matching.alternatives", "备选产品"],
   ["matching.status", "匹配状态"],
   ["matching.fitScore", "产品适配度"],
@@ -82,6 +84,7 @@ const leadColumns = [
   ["matching.missingFields", "缺失字段"],
   ["matching.failedRules", "未通过条件"],
   ["matching.advisorNextStep", "融资顾问跟进建议"],
+  ["matching.advisorFollowUp", "待顾问核验项"],
   ["annualRevenue", "年营业收入"],
   ["annualProfit", "年净利润"],
   ["revenueGrowth", "预计营收增速"],
@@ -347,6 +350,21 @@ function allowlistedRawInput(input) {
     .map((key) => [key, structuredClone(input[key])]));
 }
 
+function progressiveRawInput(input) {
+  const visibleFields = new Set(getVisibleIntakeFields(input).map(({ key }) => key));
+  return Object.fromEntries([
+    ["intakeVersion", INTAKE_VERSION],
+    ["estimationMode", "progressive"],
+    ...[...visibleFields]
+      .filter((key) => Object.hasOwn(input, key))
+      .map((key) => [key, structuredClone(input[key])]),
+  ]);
+}
+
+function collectAdvisorVerificationFields(productMatches) {
+  return [...new Set(productMatches.flatMap((match) => match.advisorVerificationFields ?? []))];
+}
+
 function normalizeLead(input) {
   const requestedMode = input.estimationMode ?? input.mode;
   const estimationMode = requestedMode == null
@@ -354,7 +372,10 @@ function normalizeLead(input) {
     : typeof requestedMode === "string"
       ? requestedMode.trim().toLowerCase()
       : requestedMode;
-  const profile = normalizeCustomerProfile(input);
+  const hasProgressiveVersion = input.intakeVersion === INTAKE_VERSION;
+  const isProgressive = estimationMode === "progressive" && hasProgressiveVersion;
+  const rawInput = hasProgressiveVersion ? progressiveRawInput(input) : allowlistedRawInput(input);
+  const profile = normalizeCustomerProfile(hasProgressiveVersion ? rawInput : input);
   const validation = validateCustomerProfile(profile, estimationMode);
   const consentHasTypeError = validation.errors.some((error) => error.field === "consentToDataUse");
   const errors = [
@@ -364,6 +385,12 @@ function normalizeLead(input) {
     ...validation.errors.map((error) => (
       error.field === "mode" ? { ...error, field: "estimationMode" } : error
     )),
+    ...(estimationMode === "progressive" && !hasProgressiveVersion
+      ? [{ field: "intakeVersion", message: `must be ${INTAKE_VERSION} when estimationMode is progressive` }]
+      : []),
+    ...(hasProgressiveVersion && estimationMode !== "progressive"
+      ? [{ field: "estimationMode", message: "must be progressive when intakeVersion is progressive-v1" }]
+      : []),
     ...(profile.consentToDataUse === true || consentHasTypeError
       ? []
       : [{ field: "consentToDataUse", message: "must be accepted" }]),
@@ -380,24 +407,43 @@ function normalizeLead(input) {
     lead[key] = String(input[key] ?? "").trim();
   }
 
-  const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : calculateSimpleEstimate(lead);
-  const aiInsight = createAiInsight(lead, estimate, estimationMode);
-  const productMatches = matchProducts(profile);
+  const productMatches = matchProducts(profile, { intakeVersion: profile.intakeVersion });
   const matchReport = addProductIdsToReport(buildCustomerMatchReport(profile, productMatches), productMatches);
-
-  return {
+  const base = {
+    profile,
+    rawInput,
+    productMatches,
+    matchReport,
+    intakeVersion: profile.intakeVersion,
+    ruleVersion: productMatches.find((match) => typeof match.ruleVersion === "string")?.ruleVersion ?? null,
+    consentToDataUse: profile.consentToDataUse,
+  };
+  const identity = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     estimationMode,
+    companyName: profile.companyName,
+    contactName: profile.contactName,
+    phone: profile.phone,
+  };
+
+  if (isProgressive) {
+    return {
+      ...identity,
+      ...base,
+      advisorVerificationFields: collectAdvisorVerificationFields(productMatches),
+    };
+  }
+
+  const estimate = estimationMode === "complex" ? calculateCreditEstimate(lead) : calculateSimpleEstimate(lead);
+  const aiInsight = createAiInsight(lead, estimate, estimationMode);
+
+  return {
+    ...identity,
     ...lead,
     estimate,
     aiInsight,
-    profile,
-    rawInput: allowlistedRawInput(input),
-    productMatches,
-    matchReport,
-    ruleVersion: productMatches.find((match) => typeof match.ruleVersion === "string")?.ruleVersion ?? null,
-    consentToDataUse: profile.consentToDataUse,
+    ...base,
   };
 }
 
@@ -500,20 +546,24 @@ function formatMatchingValue(lead, key) {
   switch (key) {
     case "matching.primaryProduct":
       return lead.matchReport?.primary?.name ?? getProductName(primaryMatch?.productId);
+    case "matching.primaryScenario":
+      return lead.profile?.primaryBusinessModel ?? "";
     case "matching.alternatives":
       return lead.matchReport?.alternatives?.map((product) => product.name).filter(Boolean).join("；") ?? "";
     case "matching.status":
       return formatMatchStatus(getOverallMatchStatus(lead)) || "无推荐";
     case "matching.fitScore":
+      if (lead.intakeVersion === INTAKE_VERSION) return "";
       return Number.isFinite(primaryMatch?.fitScore) ? `${primaryMatch.fitScore} 分` : "";
     case "matching.confidence":
+      if (lead.intakeVersion === INTAKE_VERSION) return "";
       return Number.isFinite(primaryMatch?.confidence) ? `${primaryMatch.confidence}%` : "";
     case "matching.ruleVersion":
       return lead.ruleVersion ?? primaryMatch?.ruleVersion ?? "";
     case "matching.amountRange":
-      return formatAmountRange(primaryMatch?.estimatedAmount);
+      return formatAmountRange(lead.matchReport?.primary?.estimatedAmount);
     case "matching.currency":
-      return primaryMatch?.estimatedAmount?.currency ?? lead.matchReport?.primary?.currency ?? "";
+      return lead.matchReport?.primary?.estimatedAmount?.currency ?? lead.matchReport?.primary?.currency ?? "";
     case "matching.missingFields":
       return primaryMatch?.missingFields?.join("；") ?? "";
     case "matching.failedRules":
@@ -524,6 +574,8 @@ function formatMatchingValue(lead, key) {
       )).join("；");
     case "matching.advisorNextStep":
       return lead.aiInsight?.nextStep ?? "";
+    case "matching.advisorFollowUp":
+      return lead.advisorVerificationFields?.join("；") ?? "";
     default:
       return "";
   }
@@ -534,7 +586,8 @@ function formatLeadValue(lead, key) {
   const value = getLeadValue(lead, key);
   if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
   if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
-  if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : "";
+  if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : value === "progressive" ? "渐进式匹配" : "";
+  if (lead.intakeVersion === INTAKE_VERSION && (key.startsWith("estimate.") || key.startsWith("aiInsight."))) return "";
   if (key === "estimate.score") return value === "" ? "-" : `${value} 分`;
   return value || (key.startsWith("estimate.") ? "-" : "");
 }

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMeiouServer } from "../server/index.mjs";
+import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 
 const serverEntryPath = fileURLToPath(new URL("../server/index.mjs", import.meta.url));
 
@@ -150,6 +151,55 @@ const completeSimplePayload = (overrides = {}) => ({
   preferredCurrency: "usd",
   requestedAmount: 1000000,
   fundUse: "inventory_procurement",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const visibleProgressivePayload = (profile) => ({
+  intakeVersion: "progressive-v1",
+  estimationMode: "progressive",
+  ...Object.fromEntries(getVisibleIntakeFields(profile)
+    .filter(({ key }) => profile[key] != null && profile[key] !== "")
+    .map(({ key }) => [key, profile[key]])),
+});
+
+const completeProgressiveAmazonScPayload = (overrides = {}) => visibleProgressivePayload({
+  companyName: "Progressive Amazon SC Co.",
+  primaryBusinessModel: "amazon_sc",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  platformHistoryMonths: 13,
+  singleStoreGmvUsd: 6000000,
+  qualifiedStoreCount: 1,
+  acceptsAccountControl: true,
+  preferredCurrency: "usd",
+  requestedAmount: 2000000,
+  fundUse: "inventory_procurement",
+  hasCurrentOverdue: false,
+  hasMaterialCreditOrJudicialNegative: false,
+  contactName: "Progressive SC Contact",
+  phone: "13800138100",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const completeProgressiveAmazonVcPayload = (overrides = {}) => visibleProgressivePayload({
+  companyName: "Progressive Amazon VC Co.",
+  primaryBusinessModel: "amazon_vc",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  platformSites: ["united_states"],
+  amazonAnnualGmvUsd: 3000000,
+  platformHistoryMonths: 12,
+  acceptsReceivablesArrangement: true,
+  acceptsAccountControl: true,
+  preferredCurrency: "usd",
+  requestedAmount: 1000000,
+  fundUse: "receivables_turnover",
+  hasCurrentOverdue: false,
+  hasMaterialCreditOrJudicialNegative: false,
+  contactName: "Progressive VC Contact",
+  phone: "13800138101",
   consentToDataUse: true,
   ...overrides,
 });
@@ -313,6 +363,83 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.match(persistedLeads[0].ruleVersion, /^2026-/);
   assert.equal(persistedLeads[0].matchReport.ruleVersion, undefined);
   assert.ok(persistedLeads[0].productMatches.every((match) => /^2026-/.test(match.ruleVersion)));
+});
+
+test("POST /api/leads accepts only the exact progressive mode and version pair", async (t) => {
+  const { url } = await startTestServer(t);
+  const missingVersion = await postLead(url, {
+    ...completeProgressiveAmazonScPayload(),
+    intakeVersion: undefined,
+  });
+  const legacyMode = await postLead(url, {
+    ...completeProgressiveAmazonScPayload(),
+    estimationMode: "complex",
+  });
+
+  assert.equal(missingVersion.status, 400);
+  assert.ok((await missingVersion.json()).errors.some((error) => error.field === "intakeVersion"));
+  assert.equal(legacyMode.status, 400);
+  assert.ok((await legacyMode.json()).errors.some((error) => error.field === "estimationMode"));
+});
+
+test("progressive leads persist only visible customer input and skip legacy scores", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const response = await postLead(url, completeProgressiveAmazonScPayload({
+    internalBankRating: "6AAA",
+    annualNetProfitRmb: 10000000,
+    businessModels: ["amazon_vc"],
+  }));
+  const payload = await response.json();
+  const [stored] = JSON.parse(await readFile(leadsFilePath, "utf8"));
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.lead.estimationMode, "progressive");
+  assert.equal(payload.lead.intakeVersion, undefined);
+  assert.equal(payload.lead.estimate, undefined);
+  assert.equal(payload.lead.aiInsight, undefined);
+  assert.equal(stored.intakeVersion, "progressive-v1");
+  assert.equal(stored.profile.primaryBusinessModel, "amazon_sc");
+  assert.equal(stored.matchReport.primary.productId, "linklogis-amazon-sc");
+  assert.equal(Object.hasOwn(stored, "estimate"), false);
+  assert.equal(Object.hasOwn(stored, "aiInsight"), false);
+  assert.equal(Object.hasOwn(stored.rawInput, "internalBankRating"), false);
+  assert.equal(Object.hasOwn(stored.rawInput, "annualNetProfitRmb"), false);
+  assert.equal(Object.hasOwn(stored.rawInput, "businessModels"), false);
+  assert.ok(Array.isArray(stored.advisorVerificationFields));
+  assert.equal(new Set(stored.advisorVerificationFields).size, stored.advisorVerificationFields.length);
+  assert.doesNotMatch(JSON.stringify(payload), /internalBankRating|advisorVerificationFields|authenticatedEvidence/);
+});
+
+test("authenticated admin and selected export project progressive scenario and advisor follow-up only", async (t) => {
+  const { url } = await startTestServer(t);
+  const scResponse = await postLead(url, completeProgressiveAmazonScPayload());
+  const sc = (await scResponse.json()).lead;
+  await postLead(url, completeProgressiveAmazonVcPayload());
+
+  const leadsResponse = await fetch(`${url}/api/leads`, { headers: { Authorization: adminAuthorization } });
+  const leads = (await leadsResponse.json()).leads;
+  const storedSc = leads.find((lead) => lead.id === sc.id);
+  const exportResponse = await fetch(`${url}/api/leads/export?ids=${encodeURIComponent(sc.id)}`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const excel = await exportResponse.text();
+
+  assert.equal(leadsResponse.status, 200);
+  assert.equal(storedSc.intakeVersion, "progressive-v1");
+  assert.equal(storedSc.profile.primaryBusinessModel, "amazon_sc");
+  assert.equal(storedSc.matchReport.primary.productId, "linklogis-amazon-sc");
+  assert.ok(storedSc.advisorVerificationFields.length > 0);
+  assert.equal(Object.hasOwn(storedSc, "estimate"), false);
+  assert.equal(Object.hasOwn(storedSc, "aiInsight"), false);
+  assert.equal(exportResponse.status, 200);
+  assert.match(excel, /数据版本/);
+  assert.match(excel, /主融资场景/);
+  assert.match(excel, /待顾问核验项/);
+  assert.match(excel, /progressive-v1/);
+  assert.match(excel, /amazon_sc/);
+  assert.match(excel, /联易融 Amazon SC 卖家融资贷/);
+  assert.doesNotMatch(excel, /Progressive Amazon VC Co\./);
+  assert.doesNotMatch(excel, />[^<]* 分<\/td>/);
 });
 
 for (const [label, consentToDataUse] of [
