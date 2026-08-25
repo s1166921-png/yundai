@@ -1,4 +1,15 @@
 const ENUM_VALUES = Object.freeze({
+  primaryBusinessModel: Object.freeze([
+    "tax_operations",
+    "amazon_sc",
+    "amazon_vc",
+    "platform_ecommerce",
+    "b2b_supermarket",
+    "general_import_export",
+    "processing_manufacturing",
+    "wholesale_retail",
+    "other",
+  ]),
   entityRegion: Object.freeze(["mainland", "hong_kong", "united_states", "other_overseas"]),
   entityType: Object.freeze(["limited_company", "individual_business", "other"]),
   businessModels: Object.freeze([
@@ -221,8 +232,32 @@ export function normalizeCustomerProfile(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const preferredCurrency = asEnum(source.preferredCurrency, ENUM_VALUES.preferredCurrency);
   const requestedAmountCurrency = preferredCurrency === "usd" ? "USD" : "RMB";
+  const legacyBusinessModels = asEnumList(source.businessModels, ENUM_VALUES.businessModels);
+  const hasProgressivePrimaryBusinessModel = Object.hasOwn(source, "primaryBusinessModel");
+  const primaryBusinessModel = hasProgressivePrimaryBusinessModel
+    ? asEnum(source.primaryBusinessModel, ENUM_VALUES.primaryBusinessModel)
+    : null;
+  const businessModels = hasProgressivePrimaryBusinessModel
+    ? primaryBusinessModel === "tax_operations" || primaryBusinessModel === "other"
+      ? []
+      : [primaryBusinessModel]
+    : legacyBusinessModels;
+  const isAmazon = ["amazon_sc", "amazon_vc", "platform_ecommerce"].includes(primaryBusinessModel);
+  const hasTradeQualification = Object.hasOwn(source, "hasSelfOperatedImportExportQualification")
+    ? asBoolean(source.hasSelfOperatedImportExportQualification)
+    : asBoolean(source.selfOperatedImportExport);
+  const acceptsReceivables = Object.hasOwn(source, "acceptsReceivablesArrangement")
+    ? asBoolean(source.acceptsReceivablesArrangement)
+    : null;
+  const platformRepayments = Object.hasOwn(source, "platformRepaymentsLast12MonthsRmb")
+    ? asMoney(source.platformRepaymentsLast12MonthsRmb, "RMB")
+    : asMoney(source.allStoreRepaymentsRmb, "RMB");
+  const collectionsLast12Months = Object.hasOwn(source, "platformRepaymentsLast12MonthsRmb")
+    ? asMoney(source.platformRepaymentsLast12MonthsRmb, "RMB")
+    : asInputMoney(source, "collectionsLast12MonthsRmb", "collectionsLast12Months", "RMB");
 
   return {
+    intakeVersion: source.intakeVersion === "progressive-v1" ? "progressive-v1" : null,
     companyName: asText(source.companyName),
     contactName: asText(source.contactName),
     phone: asText(source.phone),
@@ -236,19 +271,24 @@ export function normalizeCustomerProfile(input = {}) {
     industry: asText(source.industry),
     hasFixedBusinessPremises: asBoolean(source.hasFixedBusinessPremises),
 
-    businessModels: asEnumList(source.businessModels, ENUM_VALUES.businessModels),
-    primaryPlatformOrBuyerName: asText(source.primaryPlatformOrBuyerName),
+    primaryBusinessModel,
+    businessModels,
+    primaryPlatformOrBuyerName: hasProgressivePrimaryBusinessModel
+      ? isAmazon ? "Amazon" : asText(source.buyerName)
+      : asText(source.primaryPlatformOrBuyerName),
     platformSites: asEnumList(source.platformSites, ENUM_VALUES.platformSites),
     platformHistoryMonths: asNumber(source.platformHistoryMonths),
     storeCount: asNumber(source.storeCount),
     qualifiedStoreCount: asNumber(source.qualifiedStoreCount),
-    selfOperatedImportExport: asBoolean(source.selfOperatedImportExport),
-    hasImportExportLicense: asBoolean(source.hasImportExportLicense),
+    selfOperatedImportExport: hasTradeQualification,
+    hasImportExportLicense: hasProgressivePrimaryBusinessModel
+      ? hasTradeQualification
+      : asBoolean(source.hasImportExportLicense),
 
     singleStoreGmv: asMoney(source.singleStoreGmvUsd, "USD"),
     amazonAnnualGmv: asMoney(source.amazonAnnualGmvUsd, "USD"),
     allStoreSales: asMoney(source.allStoreSalesRmb, "RMB"),
-    allStoreRepayments: asMoney(source.allStoreRepaymentsRmb, "RMB"),
+    allStoreRepayments: platformRepayments,
     revenueGrowthPercent: asNumber(source.revenueGrowthPercent),
     refundRatePercent: asNumber(source.refundRatePercent),
     amazonAhrScore: asNumber(source.amazonAhrScore),
@@ -274,17 +314,12 @@ export function normalizeCustomerProfile(input = {}) {
     annualB2bTrade: asMoney(source.annualB2bTradeUsd, "USD"),
     accountsReceivableBalance: asMoney(source.accountsReceivableBalanceUsd, "USD"),
     averagePaymentTermDays: asNumber(source.averagePaymentTermDays),
-    acceptsNoa: asBoolean(source.acceptsNoa),
+    acceptsNoa: acceptsReceivables ?? asBoolean(source.acceptsNoa),
 
     annualRevenue: asMoney(source.annualRevenueRmb, "RMB"),
     annualNetProfit: asMoney(source.annualNetProfitRmb, "RMB"),
     taxInvoiceAmount: asInputMoney(source, "taxInvoiceAmountRmb", "taxInvoiceAmount", "RMB"),
-    collectionsLast12Months: asInputMoney(
-      source,
-      "collectionsLast12MonthsRmb",
-      "collectionsLast12Months",
-      "RMB",
-    ),
+    collectionsLast12Months,
     taxRecordAndInvoiceCustomerTier: asEnum(
       source.taxRecordAndInvoiceCustomerTier,
       ENUM_VALUES.taxRecordAndInvoiceCustomerTier,
@@ -308,7 +343,7 @@ export function normalizeCustomerProfile(input = {}) {
     preferredRepaymentMethod: asEnum(source.preferredRepaymentMethod, ENUM_VALUES.preferredRepaymentMethod),
     acceptsAccountControl: asBoolean(source.acceptsAccountControl),
     hasCompatibleCollectionAccount: asBoolean(source.hasCompatibleCollectionAccount),
-    acceptsReceivablesAssignment: asBoolean(source.acceptsReceivablesAssignment),
+    acceptsReceivablesAssignment: acceptsReceivables ?? asBoolean(source.acceptsReceivablesAssignment),
 
     applicantRole: asEnum(source.applicantRole, ENUM_VALUES.applicantRole),
     settlementAccountOpenedMonths: asNumber(source.settlementAccountOpenedMonths),
@@ -333,8 +368,8 @@ export function normalizeCustomerProfile(input = {}) {
 export function validateCustomerProfile(profile, mode) {
   const errors = [];
 
-  if (mode !== "simple" && mode !== "complex") {
-    errors.push(validationError("mode", "must be simple or complex"));
+  if (mode !== "simple" && mode !== "complex" && mode !== "progressive") {
+    errors.push(validationError("mode", "must be simple, complex, or progressive"));
   }
 
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
@@ -349,6 +384,7 @@ export function validateCustomerProfile(profile, mode) {
   }
 
   for (const [field, allowedValues] of Object.entries({
+    primaryBusinessModel: ENUM_VALUES.primaryBusinessModel,
     entityRegion: ENUM_VALUES.entityRegion,
     entityType: ENUM_VALUES.entityType,
     foreignExchangeClassification: ENUM_VALUES.foreignExchangeClassification,

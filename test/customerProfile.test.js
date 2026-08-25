@@ -2,6 +2,56 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeCustomerProfile, validateCustomerProfile } from "../src/lib/matching/customerProfile.js";
 
+test("normalizes progressive fields into legacy-compatible canonical facts", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "amazon_sc",
+    businessModels: ["b2b_supermarket"],
+    primaryPlatformOrBuyerName: "Legacy platform",
+    hasSelfOperatedImportExportQualification: "yes",
+    selfOperatedImportExport: false,
+    hasImportExportLicense: false,
+    platformRepaymentsLast12MonthsRmb: "123456",
+    allStoreRepaymentsRmb: "1",
+    acceptsReceivablesArrangement: "true",
+    acceptsNoa: false,
+    acceptsReceivablesAssignment: false,
+  });
+
+  assert.equal(profile.intakeVersion, "progressive-v1");
+  assert.equal(profile.primaryBusinessModel, "amazon_sc");
+  assert.deepEqual(profile.businessModels, ["amazon_sc"]);
+  assert.equal(profile.primaryPlatformOrBuyerName, "Amazon");
+  assert.equal(profile.selfOperatedImportExport, true);
+  assert.equal(profile.hasImportExportLicense, true);
+  assert.deepEqual(profile.allStoreRepayments, { amount: 123456, currency: "RMB" });
+  assert.deepEqual(profile.collectionsLast12Months, { amount: 123456, currency: "RMB" });
+  assert.equal(profile.acceptsNoa, true);
+  assert.equal(profile.acceptsReceivablesAssignment, true);
+});
+
+test("progressive validation is accepted and still rejects invalid canonical data", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "tax_operations",
+    annualRevenueRmb: "-1",
+  });
+  const result = validateCustomerProfile(profile, "progressive");
+
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.errors.map(({ field }) => field), ["annualRevenue"]);
+});
+
+test("progressive non-Amazon profiles derive their primary buyer name from buyerName", () => {
+  const profile = normalizeCustomerProfile({
+    primaryBusinessModel: "b2b_supermarket",
+    buyerName: "Progressive Buyer",
+    primaryPlatformOrBuyerName: "Legacy Buyer",
+  });
+
+  assert.equal(profile.primaryPlatformOrBuyerName, "Progressive Buyer");
+});
+
 test("normalizes enums, booleans, months, percentages, and money without converting currency", () => {
   const profile = normalizeCustomerProfile({
     entityRegion: "MAINLAND",
