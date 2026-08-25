@@ -210,6 +210,21 @@ const logisticsDebtRatio = (rule, profile, actual) => {
   return threshold == null ? "failed" : actual <= threshold ? "passed" : "failed";
 };
 
+const logisticsCustomerDebtRatioMaximum = (rule, profile, actual) => {
+  const industryField = rule.value.industryField;
+  const industry = readPath(profile, industryField);
+  const missingFields = [
+    ...(isUnknown(actual) ? [rule.field] : []),
+    ...(isUnknown(industry) ? [industryField] : []),
+  ];
+
+  if (missingFields.length > 0) return missing(missingFields);
+
+  const maximum = rule.value.maximumByIndustry[industry];
+  if (maximum == null) return "failed";
+  return actual <= maximum ? "passed" : "failed";
+};
+
 const notDisallowed = (rule, _profile, actual) => (
   isUnknown(actual) ? missing(rule.field) : rule.value.disallowed.includes(actual) ? "failed" : "passed"
 );
@@ -240,6 +255,7 @@ const CUSTOM_EVALUATORS = Object.freeze({
   conditionalAllTruthy,
   coreAssetLiability,
   logisticsAdditionalConditions,
+  logisticsCustomerDebtRatioMaximum,
   logisticsDebtRatio,
   notDisallowed,
   ratingAtLeast,

@@ -82,7 +82,7 @@ test("representative customer, advisor, and conditional rules use their required
   assert.equal(stageFor(cmb, "company-age-minimum"), "customer_core");
   assert.equal(stageFor(cmb, "company-age-and-rating"), "advisor_verification");
   assert.equal(stageFor(orange, "additional-authorizations-over-500k"), "customer_conditional");
-  assert.equal(stageFor(logistics, "asset-liability-ratio-conservative-maximum"), "customer_core");
+  assert.equal(stageFor(logistics, "asset-liability-ratio-industry-maximum"), "customer_core");
   assert.equal(stageFor(logistics, "debt-ratio-by-industry-and-tax-basis"), "advisor_verification");
 });
 
@@ -106,7 +106,7 @@ test("catalog enumerates every custom evaluator and its evaluator-specific depen
   assert.deepEqual([...evaluators].sort(), [
     "abovePercentage", "allTruthy", "anyTruthy", "arrayIncludes", "belowPercentage", "buyerEligibility",
     "companyAgeOrRating", "conditionalAuthorization", "coreAssetLiability",
-    "logisticsAdditionalConditions", "logisticsDebtRatio", "notDisallowed", "ratingAtLeast", "singleStoreHistory",
+    "logisticsAdditionalConditions", "logisticsCustomerDebtRatioMaximum", "logisticsDebtRatio", "notDisallowed", "ratingAtLeast", "singleStoreHistory",
   ]);
   assert.deepEqual(ruleDependencyFields(logisticsDebtRule), [
     "assetLiabilityRatioPercent",
@@ -124,6 +124,7 @@ test("every catalog custom evaluator exposes all of its profile dependencies", (
     "pingan-orange-tax-loan/additional-authorizations-over-500k": ["requestedAmount.amount", "requestedAmount.currency", "supportsHighAmountAuthorization", "spouseCreditAuthorization", "controllerCreditAuthorization", "applicableGuarantee"],
     "pingan-foreign-trade-logistics-loan/customs-credit-not-dishonest": ["customsCreditClassification"],
     "pingan-foreign-trade-logistics-loan/sales-decline-review": ["twoYearSalesDeclinePercent"],
+    "pingan-foreign-trade-logistics-loan/asset-liability-ratio-industry-maximum": ["assetLiabilityRatioPercent", "industry"],
     "pingan-foreign-trade-logistics-loan/debt-ratio-by-industry-and-tax-basis": ["assetLiabilityRatioPercent", "industry", "taxRecordAndInvoiceCustomerTier"],
     "pingan-foreign-trade-logistics-loan/additional-conditions-over-3m": ["requestedAmount.amount", "requestedAmount.currency", "taxRecordAndInvoiceCustomerTier", "importExportRevenueSharePercent", "companyAgeMonths"],
     "pingan-foreign-trade-logistics-loan/core-asset-liability-over-3m": ["requestedAmount.amount", "requestedAmount.currency", "taxRecordAndInvoiceCustomerTier", "coreAssetLiabilityRatioPercent"],

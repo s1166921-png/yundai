@@ -65,8 +65,34 @@ test("progressive matching excludes advisor-only unknowns from customer confiden
   assert.equal(cmb.confidence, 100);
   assert.equal(cmb.status, "eligible");
   assert.deepEqual(cmb.missingFields, []);
-  assert.ok(cmb.advisorVerificationFields.includes("companyCreditRating"));
-  assert.ok(cmb.advisorVerificationFields.includes("industry"));
+  assert.deepEqual(cmb.advisorVerificationFields, [
+    "companyCreditRating",
+    "internalBankRating",
+    "creditExposureToNetAssets",
+    "hasRiskWarning",
+    "isOnAmlBlacklist",
+    "hasAdverseCreditStatus",
+    "hasDishonestyRecord",
+    "financialStatementsContinuous",
+    "controllerStatusNormal",
+  ]);
+});
+
+test("advisor verification fields omit progressive customer facts while retaining advisor facts", () => {
+  const logistics = matchProducts(normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "general_import_export",
+  })).find(({ productId }) => productId === "pingan-foreign-trade-logistics-loan");
+
+  assert.deepEqual(logistics.advisorVerificationFields, [
+    "customsCreditClassification",
+    "commodityRevenueSharePercent",
+    "twoYearSalesDeclinePercent",
+    "taxRecordAndInvoiceCustomerTier",
+    "coreAssetLiabilityRatioPercent",
+  ]);
+  assert.equal(logistics.advisorVerificationFields.includes("industry"), false);
+  assert.equal(logistics.advisorVerificationFields.includes("assetLiabilityRatioPercent"), false);
 });
 
 test("optional amount inputs stay outside progressive direction eligibility", () => {

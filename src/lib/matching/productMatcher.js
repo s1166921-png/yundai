@@ -1,4 +1,5 @@
 import { estimateAmount } from "./amountEstimators.js";
+import { isProgressiveCustomerProfileField } from "./customerProfile.js";
 import { PRODUCT_CATALOG } from "./productCatalog.js";
 import { evaluateEligibility, ruleDependencyFields } from "./ruleEvaluator.js";
 
@@ -187,7 +188,8 @@ export function matchProducts(profile = {}) {
         : undefined);
       const advisorVerificationFields = [...new Set(product.ruleSet
         .filter(({ collectionStage }) => collectionStage === "advisor_verification")
-        .flatMap(ruleDependencyFields))];
+        .flatMap(ruleDependencyFields)
+        .filter((field) => !isProgressiveCustomerProfileField(field)))];
       const confidence = confidenceFor(product, customerEligibility);
       const fitDimensions = fitDimensionsFor(product, profile, customerEligibility, confidence);
 

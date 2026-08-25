@@ -252,12 +252,11 @@ test("progressive Ping An authorization uses the combined customer answer at 500
   }).status, "passed");
 });
 
-test("foreign-trade customer-stage ratio guard rejects 99 percent before advisor refinement", () => {
+test("foreign-trade customer-stage ratio guard uses the most permissive threshold for each industry", () => {
   const product = getProductById("pingan-foreign-trade-logistics-loan");
-  const result = evaluateEligibility(product, {
+  const baseProfile = {
     entityRegion: "mainland",
     entityType: "limited_company",
-    industry: "加工制造",
     companyAgeMonths: 24,
     controllerIndustryExperienceYears: 5,
     selfOperatedImportExport: true,
@@ -268,8 +267,18 @@ test("foreign-trade customer-stage ratio guard rejects 99 percent before advisor
     daysSinceLatestImportExport: 90,
     importExportCountLast12Months: 2,
     importExportRevenueSharePercent: 50,
-    assetLiabilityRatioPercent: 99,
+  };
+  const resultFor = (industry, assetLiabilityRatioPercent) => evaluateEligibility(product, {
+    ...baseProfile,
+    industry,
+    assetLiabilityRatioPercent,
   }, { stages: ["customer_core", "customer_conditional"] });
 
-  assert.equal(result.status, "ineligible");
+  assert.equal(resultFor("批发零售", 55).status, "eligible");
+  assert.equal(resultFor("批发零售", 55.01).status, "ineligible");
+  assert.equal(resultFor("批发零售", 70).status, "ineligible");
+  assert.equal(resultFor("加工制造", 70).status, "eligible");
+  assert.equal(resultFor("加工制造", 70.01).status, "ineligible");
+  assert.equal(resultFor(null, 55).status, "needs_information");
+  assert.equal(resultFor("加工制造", null).status, "needs_information");
 });
