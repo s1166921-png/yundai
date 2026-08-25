@@ -362,18 +362,22 @@ function progressiveRawInput(input) {
 }
 
 function collectAdvisorVerificationFields(productMatches) {
-  return [...new Set(productMatches.flatMap((match) => match.advisorVerificationFields ?? []))];
+  return [...new Set(productMatches
+    .filter((match) => match.rank != null && match.status !== "ineligible")
+    .flatMap((match) => match.advisorVerificationFields ?? []))];
 }
 
 function normalizeLead(input) {
-  const requestedMode = input.estimationMode ?? input.mode;
+  const hasSuppliedIntakeVersion = Object.hasOwn(input, "intakeVersion");
+  const hasProgressiveVersion = input.intakeVersion === INTAKE_VERSION;
+  const rawEstimationMode = input.estimationMode;
+  const requestedMode = hasProgressiveVersion ? rawEstimationMode : input.estimationMode ?? input.mode;
   const estimationMode = requestedMode == null
     ? "complex"
     : typeof requestedMode === "string"
       ? requestedMode.trim().toLowerCase()
       : requestedMode;
-  const hasProgressiveVersion = input.intakeVersion === INTAKE_VERSION;
-  const isProgressive = estimationMode === "progressive" && hasProgressiveVersion;
+  const isProgressive = hasProgressiveVersion && rawEstimationMode === "progressive";
   const rawInput = hasProgressiveVersion ? progressiveRawInput(input) : allowlistedRawInput(input);
   const profile = normalizeCustomerProfile(hasProgressiveVersion ? rawInput : input);
   const validation = validateCustomerProfile(profile, estimationMode);
@@ -385,10 +389,13 @@ function normalizeLead(input) {
     ...validation.errors.map((error) => (
       error.field === "mode" ? { ...error, field: "estimationMode" } : error
     )),
-    ...(estimationMode === "progressive" && !hasProgressiveVersion
+    ...(hasSuppliedIntakeVersion && !hasProgressiveVersion
+      ? [{ field: "intakeVersion", message: `must be exactly ${INTAKE_VERSION}` }]
+      : []),
+    ...(!hasSuppliedIntakeVersion && estimationMode === "progressive"
       ? [{ field: "intakeVersion", message: `must be ${INTAKE_VERSION} when estimationMode is progressive` }]
       : []),
-    ...(hasProgressiveVersion && estimationMode !== "progressive"
+    ...(hasProgressiveVersion && rawEstimationMode !== "progressive"
       ? [{ field: "estimationMode", message: "must be progressive when intakeVersion is progressive-v1" }]
       : []),
     ...(profile.consentToDataUse === true || consentHasTypeError

@@ -365,21 +365,44 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.ok(persistedLeads[0].productMatches.every((match) => /^2026-/.test(match.ruleVersion)));
 });
 
-test("POST /api/leads accepts only the exact progressive mode and version pair", async (t) => {
+test("POST /api/leads enforces the raw progressive version and mode envelope", async (t) => {
   const { url } = await startTestServer(t);
-  const missingVersion = await postLead(url, {
+  const progressiveEnvelope = (overrides = {}) => ({
     ...completeProgressiveAmazonScPayload(),
-    intakeVersion: undefined,
+    ...overrides,
   });
-  const legacyMode = await postLead(url, {
-    ...completeProgressiveAmazonScPayload(),
-    estimationMode: "complex",
-  });
+  const withoutVersion = (overrides = {}) => {
+    const payload = progressiveEnvelope();
+    delete payload.intakeVersion;
+    return { ...payload, ...overrides };
+  };
+  const withoutMode = (overrides = {}) => {
+    const payload = progressiveEnvelope();
+    delete payload.estimationMode;
+    return { ...payload, ...overrides };
+  };
 
-  assert.equal(missingVersion.status, 400);
-  assert.ok((await missingVersion.json()).errors.some((error) => error.field === "intakeVersion"));
-  assert.equal(legacyMode.status, 400);
-  assert.ok((await legacyMode.json()).errors.some((error) => error.field === "estimationMode"));
+  for (const { label, payload, status, errorField } of [
+    { label: "the exact progressive pair", payload: progressiveEnvelope(), status: 201 },
+    { label: "a legacy complex submission without a version", payload: completeAmazonScPayload(), status: 201 },
+    { label: "progressive mode without a version", payload: withoutVersion(), status: 400, errorField: "intakeVersion" },
+    { label: "an unknown future version", payload: progressiveEnvelope({ intakeVersion: "progressive-v2" }), status: 400, errorField: "intakeVersion" },
+    { label: "a case-variant version", payload: progressiveEnvelope({ intakeVersion: "Progressive-v1" }), status: 400, errorField: "intakeVersion" },
+    { label: "a whitespace-padded version", payload: progressiveEnvelope({ intakeVersion: " progressive-v1 " }), status: 400, errorField: "intakeVersion" },
+    { label: "a non-string version", payload: progressiveEnvelope({ intakeVersion: 1 }), status: 400, errorField: "intakeVersion" },
+    { label: "a null version", payload: progressiveEnvelope({ intakeVersion: null }), status: 400, errorField: "intakeVersion" },
+    { label: "a missing progressive mode", payload: withoutMode(), status: 400, errorField: "estimationMode" },
+    { label: "a fallback progressive mode key", payload: withoutMode({ mode: "progressive" }), status: 400, errorField: "estimationMode" },
+    { label: "a wrong progressive mode", payload: progressiveEnvelope({ estimationMode: "complex" }), status: 400, errorField: "estimationMode" },
+    { label: "a case-variant progressive mode", payload: progressiveEnvelope({ estimationMode: "Progressive" }), status: 400, errorField: "estimationMode" },
+    { label: "a whitespace-padded progressive mode", payload: progressiveEnvelope({ estimationMode: " progressive " }), status: 400, errorField: "estimationMode" },
+  ]) {
+    const response = await postLead(url, payload);
+    const body = await response.json();
+
+    assert.equal(response.status, status, label);
+    if (errorField) assert.ok(body.errors.some((error) => error.field === errorField), label);
+  }
 });
 
 test("progressive leads persist only visible customer input and skip legacy scores", async (t) => {
@@ -407,6 +430,16 @@ test("progressive leads persist only visible customer input and skip legacy scor
   assert.equal(Object.hasOwn(stored.rawInput, "businessModels"), false);
   assert.ok(Array.isArray(stored.advisorVerificationFields));
   assert.equal(new Set(stored.advisorVerificationFields).size, stored.advisorVerificationFields.length);
+  const expectedAdvisorFields = [...new Set(stored.productMatches
+    .filter((match) => match.rank != null && match.status !== "ineligible")
+    .flatMap((match) => match.advisorVerificationFields))];
+  const unrankedAdvisorField = stored.productMatches
+    .filter((match) => match.rank == null || match.status === "ineligible")
+    .flatMap((match) => match.advisorVerificationFields)
+    .find((field) => !expectedAdvisorFields.includes(field));
+  assert.deepEqual(stored.advisorVerificationFields, expectedAdvisorFields);
+  assert.ok(unrankedAdvisorField, "SC fixture must expose an advisor field unique to an unranked product");
+  assert.equal(stored.advisorVerificationFields.includes(unrankedAdvisorField), false);
   assert.doesNotMatch(JSON.stringify(payload), /internalBankRating|advisorVerificationFields|authenticatedEvidence/);
 });
 
@@ -428,7 +461,12 @@ test("authenticated admin and selected export project progressive scenario and a
   assert.equal(storedSc.intakeVersion, "progressive-v1");
   assert.equal(storedSc.profile.primaryBusinessModel, "amazon_sc");
   assert.equal(storedSc.matchReport.primary.productId, "linklogis-amazon-sc");
-  assert.ok(storedSc.advisorVerificationFields.length > 0);
+  assert.deepEqual(
+    storedSc.advisorVerificationFields,
+    [...new Set(storedSc.productMatches
+      .filter((match) => match.rank != null && match.status !== "ineligible")
+      .flatMap((match) => match.advisorVerificationFields))],
+  );
   assert.equal(Object.hasOwn(storedSc, "estimate"), false);
   assert.equal(Object.hasOwn(storedSc, "aiInsight"), false);
   assert.equal(exportResponse.status, 200);
@@ -439,6 +477,7 @@ test("authenticated admin and selected export project progressive scenario and a
   assert.match(excel, /amazon_sc/);
   assert.match(excel, /联易融 Amazon SC 卖家融资贷/);
   assert.doesNotMatch(excel, /Progressive Amazon VC Co\./);
+  assert.doesNotMatch(excel, /companyCreditRating/);
   assert.doesNotMatch(excel, />[^<]* 分<\/td>/);
 });
 
