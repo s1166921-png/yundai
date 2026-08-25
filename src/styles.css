@@ -1828,6 +1828,12 @@ h2 {
   color: #10244a;
   font-size: 24px;
   line-height: 1.25;
+  scroll-margin-top: 104px;
+}
+
+.wizard-step-heading h3:focus {
+  outline: 2px solid rgba(92, 225, 230, 0.72);
+  outline-offset: 5px;
 }
 
 .wizard-step-heading p {
@@ -1843,6 +1849,30 @@ h2 {
   justify-content: space-between;
   display: grid;
   align-items: start;
+}
+
+.intake-field-groups {
+  display: flex;
+  flex-direction: column;
+}
+
+.intake-field-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.intake-field-group + .intake-field-group {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(140, 82, 255, 0.14);
+}
+
+.intake-field-group > h4 {
+  margin: 0 0 16px;
+  color: #263f64;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .intake-field {
@@ -2300,15 +2330,15 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   border-block: 1px solid rgba(92, 225, 230, 0.18);
   background: rgba(2, 12, 27, 0.28);
 }
 
 .primary-result-metrics > div {
-  flex: 1 1 25%;
-  width: 25%;
+  flex: 1 1 33.333%;
+  width: 33.333%;
   min-width: 0;
   min-height: 100px;
   padding: 22px 24px;

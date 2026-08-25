@@ -64,13 +64,6 @@ function PrimaryResult({ product }) {
 
       <dl className="primary-result-metrics">
         <div>
-          <dt>参考额度</dt>
-          <dd>
-            {product.amount}
-            {product.amountNote && <small className="amount-note">{product.amountNote}</small>}
-          </dd>
-        </div>
-        <div>
           <dt>币种</dt>
           <dd>{product.currency || "待核定"}</dd>
         </div>

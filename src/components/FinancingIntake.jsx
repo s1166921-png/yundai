@@ -15,6 +15,82 @@ const initialProfile = {
 
 const isEmpty = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
 
+const AMAZON_SC_STEP_GROUPS = Object.freeze([
+  Object.freeze({
+    id: "financing-needs",
+    title: "融资需求",
+    keys: Object.freeze(["preferredCurrency", "requestedAmount", "fundUse"]),
+  }),
+  Object.freeze({
+    id: "operating-scale",
+    title: "经营规模",
+    keys: Object.freeze([
+      "companyAgeMonths", "legalRepresentativeAge", "platformHistoryMonths", "platformSites",
+      "storeCount", "singleStoreGmvUsd", "qualifiedStoreCount", "participatingStoreOperatingDays",
+    ]),
+  }),
+  Object.freeze({
+    id: "amazon-data",
+    title: "Amazon 经营数据",
+    keys: Object.freeze([
+      "allStoreSalesRmb", "platformRepaymentsLast12MonthsRmb", "refundRatePercent",
+      "amazonAhrScore", "amazonAccountStatus", "fbaInventoryTurnoverCount",
+    ]),
+  }),
+  Object.freeze({
+    id: "account-risk",
+    title: "账户与风险控制",
+    keys: Object.freeze([
+      "hasCompatibleCollectionAccount", "includeWebankAssessment",
+      "borrowerMatchesCollectionEntity", "acceptsAccountControl",
+    ]),
+  }),
+]);
+
+export function groupIntakeStepFields(stepFields, profile) {
+  if (profile.primaryBusinessModel !== "amazon_sc" || profile.includeWebankAssessment !== true) {
+    return [{ id: "all-fields", title: null, fields: stepFields }];
+  }
+
+  const fieldsByKey = new Map(stepFields.map((field) => [field.key, field]));
+  const groups = AMAZON_SC_STEP_GROUPS.map((group) => ({
+    id: group.id,
+    title: group.title,
+    fields: group.keys.map((key) => fieldsByKey.get(key)).filter(Boolean),
+  }));
+  const groupedKeys = new Set(AMAZON_SC_STEP_GROUPS.flatMap((group) => group.keys));
+  const remainingFields = stepFields.filter((field) => !groupedKeys.has(field.key));
+  if (remainingFields.length > 0) groups[groups.length - 1].fields.push(...remainingFields);
+  return groups.filter((group) => group.fields.length > 0);
+}
+
+export function focusWizardStepHeading(element, windowObject = globalThis.window) {
+  if (element == null) return false;
+  let handled = false;
+
+  if (typeof element.focus === "function") {
+    try {
+      element.focus({ preventScroll: true });
+    } catch {
+      element.focus();
+    }
+    handled = true;
+  }
+
+  if (typeof element.scrollIntoView === "function") {
+    const reducedMotion = typeof windowObject?.matchMedia === "function"
+      && windowObject.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try {
+      element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+    } catch {
+      element.scrollIntoView(true);
+    }
+    handled = true;
+  }
+
+  return handled;
+}
+
 export function clearInactiveIntakeValues(profile, primaryBusinessModel) {
   const nextProfile = { ...profile, primaryBusinessModel };
   const visibleKeys = new Set(getVisibleIntakeFields(nextProfile).map(({ key }) => key));
@@ -257,7 +333,9 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const fieldRefs = useRef({});
+  const stepHeadingRef = useRef(null);
   const pendingFocusKey = useRef(null);
+  const pendingStepHeadingFocus = useRef(false);
   const requestVersion = useRef(0);
   const requestController = useRef(null);
 
@@ -267,6 +345,16 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     [currentStep, visibleFields],
   );
   const stepDefinition = INTAKE_STEPS[currentStep - 1];
+  const fieldGroups = useMemo(
+    () => groupIntakeStepFields(stepFields, profile),
+    [profile, stepFields],
+  );
+
+  useEffect(() => {
+    if (!pendingStepHeadingFocus.current) return;
+    pendingStepHeadingFocus.current = false;
+    focusWizardStepHeading(stepHeadingRef.current);
+  }, [currentStep]);
 
   useEffect(() => {
     const key = pendingFocusKey.current;
@@ -331,11 +419,13 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     const nextErrors = validateIntakeStep(profile, currentStep);
     if (focusErrors(nextErrors)) return;
     setErrors({});
+    pendingStepHeadingFocus.current = true;
     setCurrentStep((step) => Math.min(step + 1, INTAKE_STEPS.length));
   };
 
   const goBack = () => {
     setErrors({});
+    pendingStepHeadingFocus.current = true;
     setCurrentStep((step) => Math.max(step - 1, 1));
   };
 
@@ -412,22 +502,44 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
 
       <div className="wizard-step-heading">
         <span>第 {currentStep} 步，共 {INTAKE_STEPS.length} 步</span>
-        <h3>{stepDefinition.title}</h3>
+        <h3 id={`intake-step-${currentStep}-title`} ref={stepHeadingRef} tabIndex="-1">{stepDefinition.title}</h3>
         <p>系统会根据主要融资场景，只追问影响产品判断的关键信息。</p>
       </div>
 
-      <div className="form-grid intake-fields">
-        {stepFields.map((field) => (
-          <IntakeField
-            key={field.key}
-            field={field}
-            value={profile[field.key]}
-            error={errors[field.key]}
-            onChange={updateField}
-            inputRef={registerField(field.key)}
-          />
-        ))}
-      </div>
+      {fieldGroups.length === 1 && fieldGroups[0].title == null ? (
+        <div className="form-grid intake-fields">
+          {fieldGroups[0].fields.map((field) => (
+            <IntakeField
+              key={field.key}
+              field={field}
+              value={profile[field.key]}
+              error={errors[field.key]}
+              onChange={updateField}
+              inputRef={registerField(field.key)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="intake-field-groups">
+          {fieldGroups.map((group) => (
+            <section className="intake-field-group" key={group.id} aria-labelledby={`intake-group-${group.id}`}>
+              <h4 id={`intake-group-${group.id}`}>{group.title}</h4>
+              <div className="form-grid intake-fields">
+                {group.fields.map((field) => (
+                  <IntakeField
+                    key={field.key}
+                    field={field}
+                    value={profile[field.key]}
+                    error={errors[field.key]}
+                    onChange={updateField}
+                    inputRef={registerField(field.key)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       <div className="form-actions wizard-actions">
         <button className="wizard-back" type="button" onClick={goBack} disabled={currentStep === 1 || status.type === "loading"}>
