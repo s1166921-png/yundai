@@ -2073,6 +2073,13 @@ h2 {
   font-weight: 950;
 }
 
+.required-field-mark {
+  margin-left: 4px;
+  color: #d94672;
+  font-size: 1em;
+  font-weight: 950;
+}
+
 .field-unit {
   flex: 0 0 auto;
   color: #718198;

@@ -24,6 +24,20 @@ test("progressive intake renders one three-step flow without legacy modes", asyn
   assert.doesNotMatch(markup, /Amazon AHR 分数/);
 });
 
+test("required marker renders only for fields enforced by the intake schema", async (t) => {
+  const { RequiredFieldMark } = await loadComponent(t);
+  const requiredMarkup = renderToStaticMarkup(createElement(RequiredFieldMark, {
+    field: { requiredFor: ["progressive"] },
+  }));
+  const optionalMarkup = renderToStaticMarkup(createElement(RequiredFieldMark, {
+    field: { requiredFor: [] },
+  }));
+
+  assert.match(requiredMarkup, /class="required-field-mark"/);
+  assert.match(requiredMarkup, /aria-hidden="true">\*<\/span>/);
+  assert.equal(optionalMarkup, "");
+});
+
 test("progressive payload includes its version and visible non-empty fields only", async (t) => {
   const { buildProgressiveSubmission, clearInactiveIntakeValues } = await loadComponent(t);
   const amazonSc = {

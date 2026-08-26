@@ -151,6 +151,15 @@ function FieldSupport({ field, error }) {
   );
 }
 
+export function RequiredFieldMark({ field }) {
+  if (!Array.isArray(field?.requiredFor) || field.requiredFor.length === 0) return null;
+  return <span className="required-field-mark" aria-hidden="true">*</span>;
+}
+
+function FieldLabel({ field }) {
+  return <>{field.label}<RequiredFieldMark field={field} /></>;
+}
+
 function ChoiceField({ field, value, error, onChange, inputRef }) {
   const selectedValues = Array.isArray(value) ? value : [];
   const describedBy = describedByFor(field, error);
@@ -162,7 +171,7 @@ function ChoiceField({ field, value, error, onChange, inputRef }) {
       aria-invalid={error ? "true" : undefined}
       aria-required={field.requiredFor.length > 0 ? "true" : undefined}
     >
-      <legend>{field.label}</legend>
+      <legend><FieldLabel field={field} /></legend>
       <div className="checkbox-options">
         {field.options.map((option, index) => {
           const checked = selectedValues.includes(option.value);
@@ -197,7 +206,7 @@ function BooleanField({ field, value, error, onChange, inputRef }) {
       aria-invalid={error ? "true" : undefined}
       aria-required={field.requiredFor.length > 0 ? "true" : undefined}
     >
-      <legend>{field.label}</legend>
+      <legend><FieldLabel field={field} /></legend>
       <div className="segmented-control">
         {field.options.map((option, index) => (
           <label key={String(option.value)} className={value === option.value ? "intake-choice selected" : "intake-choice"}>
@@ -226,7 +235,7 @@ function WebankToggle({ field, value, error, onChange, inputRef }) {
   return (
     <section className={`intake-field webank-toggle ${error ? "has-error" : ""}`} aria-labelledby={`${inputId}-label`}>
       <div>
-        <span id={`${inputId}-label`}>{field.label}</span>
+        <span id={`${inputId}-label`}><FieldLabel field={field} /></span>
         <small>补充跨境店铺数据后，同时评估微众银行数据贷方向。</small>
       </div>
       <label className="toggle-control" htmlFor={inputId}>
@@ -266,7 +275,7 @@ function StandardField({ field, value, error, onChange, inputRef }) {
   return (
     <div className={`intake-field ${error ? "has-error" : ""}`}>
       <label htmlFor={inputId}>
-        <span>{field.label}</span>
+        <span><FieldLabel field={field} /></span>
         {field.unit && <small className="field-unit">单位：{field.unit}</small>}
       </label>
       {field.type === "select" ? (
@@ -326,7 +335,7 @@ function ConsentField({ field, value, error, onChange, inputRef }) {
           aria-invalid={error ? "true" : undefined}
           required
         />
-        <span>{field.label}</span>
+        <span><FieldLabel field={field} /></span>
       </label>
       <FieldSupport field={field} error={error} />
     </section>
