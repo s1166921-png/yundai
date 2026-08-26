@@ -246,3 +246,36 @@ test("preferred result presents its reference amount once", async (t) => {
   assert.match(markup, /<dt>期限<\/dt>/);
   assert.match(markup, /<dt>参考定价<\/dt>/);
 });
+
+test("catalog groups use product-count columns so partial rows fill the available width", async (t) => {
+  const server = await createServer({
+    configFile: fileURLToPath(new URL("../vite.config.mjs", import.meta.url)),
+    server: { middlewareMode: true, hmr: false, ws: false },
+  });
+  t.after(() => server.close());
+  const { ProductMatchCenter } = await server.ssrLoadModule("/src/components/ProductMatchCenter.jsx");
+  const product = (id, scenarioId, scenarioLabel, order) => ({
+    id,
+    institution: "测试机构",
+    name: `产品 ${id}`,
+    currency: "RMB",
+    limit: "待核定",
+    term: "待核定",
+    pricing: "待核定",
+    targetProfile: "测试画像",
+    scenario: { id: scenarioId, label: scenarioLabel, order },
+  });
+  const products = [
+    product("one", "single", "单产品场景", 1),
+    product("two-a", "double", "双产品场景", 2),
+    product("two-b", "double", "双产品场景", 2),
+    product("three-a", "triple", "三产品场景", 3),
+    product("three-b", "triple", "三产品场景", 3),
+    product("three-c", "triple", "三产品场景", 3),
+  ];
+  const markup = renderToStaticMarkup(createElement(ProductMatchCenter, { report: null, products }));
+
+  assert.match(markup, /scenario-product-grid product-count-1/);
+  assert.match(markup, /scenario-product-grid product-count-2/);
+  assert.match(markup, /scenario-product-grid product-count-3/);
+});

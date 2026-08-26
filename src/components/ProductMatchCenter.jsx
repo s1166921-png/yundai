@@ -38,7 +38,7 @@ function ProductCatalog({ groups }) {
             <h3 id={`scenario-${group.id}`}>{group.label}</h3>
             <span>{group.products.length} 款产品</span>
           </header>
-          <div className="scenario-product-grid">
+          <div className={`scenario-product-grid product-count-${Math.min(group.products.length, 3)}`}>
             {group.products.map((product) => <CatalogProductCard key={product.id} product={product} />)}
           </div>
         </section>
