@@ -60,7 +60,7 @@ test("AI narrative enforces bounded strings and returns an allowlisted copy", ()
     businessSummary: ["经营场景已确认。"],
     productExplanations: [{
       productId: "linklogis-amazon-sc",
-      reasons: ["规则结果支持该方向。"],
+      reasons: ["当前经营信息支持该方向。"],
       itemsToConfirm: [],
       internalReason: "不得进入报告",
     }],
@@ -164,4 +164,37 @@ test("public AI report has the fixed customer shape and review status", () => {
   assert.equal(publicReport.source, "ai");
   assert.equal(publicReport.reviewStatus, "in_review");
   assert.equal(publicReport.privacyNotice, "AI 仅分析脱敏经营字段，企业名称、联系人和手机号未发送给模型。");
+});
+
+test("AI narrative rejects deterministic amount and decision claims", () => {
+  const claims = [
+    "参考额度为 100 万元，已符合全部准入条件",
+    "参考额度：100万元。",
+    "参 考额度为 1 0 0 万元。",
+    "参考额度一百万元，满足产品要求。",
+    "可匹配范围为 50 万至 100 万元。",
+    "预计年化利率为 9%-11%。",
+    "最长 90 天，可循环使用。",
+    "已满足产品准入条件，符合申请资格。",
+    "合规审核已通过，风险可控。",
+    "排名第 1，优先推荐该产品。",
+    "规则评分 95 分，置信度 98%。",
+    "The product is approved and the credit limit is USD 100K.",
+    "Product eligibility is approved.",
+  ];
+
+  for (const claim of claims) {
+    const result = validateAiNarrative({
+      businessSummary: [claim],
+      productExplanations: [{
+        productId: "linklogis-amazon-sc",
+        reasons: ["当前经营场景与该方向一致。"],
+        itemsToConfirm: [],
+      }],
+      preparationActions: ["准备经营资料。"],
+      advisorFocus: [],
+    }, ["linklogis-amazon-sc"]);
+    assert.equal(result.ok, false, `claim should be rejected: ${claim}`);
+    assert.ok(result.errors.some((error) => error.includes("deterministic")), claim);
+  }
 });
