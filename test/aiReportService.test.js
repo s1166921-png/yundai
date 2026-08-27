@@ -125,6 +125,50 @@ test("DeepSeek client normalizes timeout, rate limit, provider, and malformed re
   }
 });
 
+test("DeepSeek client keeps its timeout active while consuming the response body", async () => {
+  const client = createDeepSeekClient({
+    apiKey: "test-key",
+    timeoutMs: 5,
+    fetchImpl: async (_url, options) => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const error = new Error("body aborted");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      }),
+    }),
+  });
+
+  const outcome = await Promise.race([
+    client.generateNarrative(sampleInput).then(
+      () => "resolved",
+      (error) => error.category,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("still_pending"), 50)),
+  ]);
+
+  assert.equal(outcome, "timeout");
+});
+
+test("DeepSeek client rejects malformed response objects before classifying HTTP status", async () => {
+  const malformedResponses = [
+    {},
+    { ok: true, status: 200 },
+    { ok: "true", status: 200, json() {} },
+    { ok: true, status: "200", json() {} },
+  ];
+
+  for (const response of malformedResponses) {
+    const client = createDeepSeekClient({ apiKey: "test-key", fetchImpl: async () => response });
+    await assert.rejects(client.generateNarrative(sampleInput), (error) => (
+      error.name === "AiProviderError" && error.category === "invalid_response"
+    ));
+  }
+});
+
 test("report service builds its sole provider input from the deidentified boundary", async () => {
   let receivedInput;
   const service = createAiReportService({
@@ -244,20 +288,37 @@ test("report service falls back when the provider reorders deterministic product
   assert.equal(analysis.meta.errorCategory, "contract_violation");
 });
 
-test("environment service returns not configured fallback without a network call", async () => {
+test("environment service returns repeated not configured fallbacks without network calls or limiter use", async () => {
   let calls = 0;
   const service = createAiReportServiceFromEnvironment({
     environment: {
       DEEPSEEK_TIMEOUT_MS: "not-a-positive-integer",
-      AI_DAILY_REQUEST_LIMIT: "0",
+      AI_DAILY_REQUEST_LIMIT: "1",
     },
     fetchImpl: async () => { calls += 1; throw new Error("network must not run"); },
     now: () => generatedAt,
   });
 
-  const analysis = await service.generate(sampleLead);
+  const analyses = await Promise.all([service.generate(sampleLead), service.generate(sampleLead)]);
 
   assert.equal(calls, 0);
+  assert.deepEqual(analyses.map((analysis) => analysis.status), ["fallback", "fallback"]);
+  assert.deepEqual(analyses.map((analysis) => analysis.meta.errorCategory), ["not_configured", "not_configured"]);
+});
+
+test("report service still resolves a fallback when telemetry throws", async () => {
+  const service = createAiReportService({
+    client: {
+      model: "deepseek-v4-pro",
+      generateNarrative: async () => { const error = new Error("late"); error.category = "timeout"; throw error; },
+    },
+    limiter: { tryAcquire: () => true },
+    logger: { warn: () => { throw new Error("telemetry unavailable"); } },
+    now: () => generatedAt,
+  });
+
+  const analysis = await service.generate(sampleLead);
+
   assert.equal(analysis.status, "fallback");
-  assert.equal(analysis.meta.errorCategory, "not_configured");
+  assert.equal(analysis.meta.errorCategory, "timeout");
 });

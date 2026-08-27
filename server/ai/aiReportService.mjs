@@ -35,17 +35,22 @@ export function createAiReportService({ client, limiter, logger, now = () => new
   const reportModel = typeof client?.model === "string" ? client.model : null;
 
   const fallback = (lead, category, durationMs) => {
-    logger?.warn?.({
-      category,
-      durationMs: numericDuration(durationMs),
-      model: reportModel,
-      promptVersion: AI_PROMPT_VERSION,
-    });
-    return buildFallbackAiAnalysis({
+    const analysis = buildFallbackAiAnalysis({
       matchReport: lead?.matchReport,
       errorCategory: category,
       now,
     });
+    try {
+      logger?.warn?.({
+        category,
+        durationMs: numericDuration(durationMs),
+        model: reportModel,
+        promptVersion: AI_PROMPT_VERSION,
+      });
+    } catch {
+      // Telemetry must never replace the customer-safe fallback.
+    }
+    return analysis;
   };
 
   return {
@@ -56,6 +61,8 @@ export function createAiReportService({ client, limiter, logger, now = () => new
       } catch (error) {
         return fallback(lead, "provider_error", error?.durationMs);
       }
+
+      if (client?.isConfigured === false) return fallback(lead, "not_configured", null);
 
       try {
         if (!configuredLimiter.tryAcquire()) return fallback(lead, "daily_limit", null);

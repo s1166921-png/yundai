@@ -20,6 +20,12 @@ export class AiProviderError extends Error {
 
 const durationSince = (startedAt) => Math.max(0, Date.now() - startedAt);
 const asObject = (value) => value != null && typeof value === "object" && !Array.isArray(value);
+const validResponse = (response) => (
+  asObject(response)
+  && typeof response.ok === "boolean"
+  && Number.isFinite(response.status)
+  && typeof response.json === "function"
+);
 
 export function createDeepSeekClient({
   apiKey,
@@ -34,6 +40,7 @@ export function createDeepSeekClient({
 
   return {
     model: configuredModel,
+    isConfigured: normalizedKey.length > 0,
     async generateNarrative(input) {
       const startedAt = Date.now();
       const failure = (category) => new AiProviderError(category, durationSince(startedAt));
@@ -41,9 +48,8 @@ export function createDeepSeekClient({
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      let response;
       try {
-        response = await fetchImpl(endpoint, {
+        const response = await fetchImpl(endpoint, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${normalizedKey}`,
@@ -60,43 +66,44 @@ export function createDeepSeekClient({
           }),
           signal: controller.signal,
         });
+        if (!validResponse(response)) throw failure("invalid_response");
+        if (!response.ok) throw failure(response.status === 429 ? "rate_limited" : "provider_error");
+
+        let payload;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          if (controller.signal.aborted || error?.name === "AbortError") throw failure("timeout");
+          throw failure("invalid_response");
+        }
+
+        const content = payload?.choices?.[0]?.message?.content;
+        if (typeof content !== "string") throw failure("invalid_response");
+
+        let narrative;
+        try {
+          narrative = JSON.parse(content);
+        } catch {
+          throw failure("invalid_response");
+        }
+        if (!asObject(narrative)) throw failure("invalid_response");
+
+        const providerUsage = asObject(payload?.usage) ? payload.usage : {};
+        return {
+          narrative,
+          usage: {
+            prompt_tokens: providerUsage.prompt_tokens,
+            completion_tokens: providerUsage.completion_tokens,
+          },
+          durationMs: durationSince(startedAt),
+        };
       } catch (error) {
+        if (error instanceof AiProviderError) throw error;
         if (controller.signal.aborted || error?.name === "AbortError") throw failure("timeout");
         throw failure("provider_error");
       } finally {
         clearTimeout(timeout);
       }
-
-      if (!asObject(response)) throw failure("invalid_response");
-      if (!response.ok) throw failure(response.status === 429 ? "rate_limited" : "provider_error");
-
-      let payload;
-      try {
-        payload = await response.json();
-      } catch {
-        throw failure("invalid_response");
-      }
-
-      const content = payload?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") throw failure("invalid_response");
-
-      let narrative;
-      try {
-        narrative = JSON.parse(content);
-      } catch {
-        throw failure("invalid_response");
-      }
-      if (!asObject(narrative)) throw failure("invalid_response");
-
-      const providerUsage = asObject(payload?.usage) ? payload.usage : {};
-      return {
-        narrative,
-        usage: {
-          prompt_tokens: providerUsage.prompt_tokens,
-          completion_tokens: providerUsage.completion_tokens,
-        },
-        durationMs: durationSince(startedAt),
-      };
     },
   };
 }
