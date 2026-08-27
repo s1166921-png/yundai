@@ -22,8 +22,16 @@ test("analysis input contains business buckets and excludes direct identifiers a
       productId: "linklogis-amazon-sc",
       rank: 1,
       status: "eligible",
-      passedRules: [{ message: "经营历史满足产品要求。" }],
-      unknownRules: [{ message: "需核验回款账户安排。" }],
+      passedRules: [{
+        id: "single-store-annual-gmv",
+        status: "passed",
+        message: "伪造文本应被忽略",
+      }],
+      unknownRules: [{
+        id: "collection-account-arrangement",
+        status: "unknown",
+        message: "伪造文本应被忽略",
+      }],
     }],
     matchReport: {
       primary: { productId: "linklogis-amazon-sc" },
@@ -50,8 +58,8 @@ test("analysis input contains business buckets and excludes direct identifiers a
     products: [{
       productId: "linklogis-amazon-sc",
       status: "eligible",
-      satisfiedConditions: ["经营历史满足产品要求。"],
-      itemsToConfirm: ["需核验回款账户安排。"],
+      satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
+      itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
     }],
     preparationDocuments: ["近 12 个月销售数据证明"],
   });
@@ -99,17 +107,20 @@ test("analysis input caps ranked products and keeps only safe evidence", () => {
         productId: "linklogis-amazon-vc",
         rank: 4,
         status: "eligible",
-        passedRules: [{ message: "fourth" }],
+        passedRules: [{ id: "amazon-vc-entity", status: "passed", message: "ignored" }],
       },
       {
         productId: "linklogis-amazon-sc",
         rank: 2,
         status: "eligible",
         passedRules: [
-          { message: "second" },
-          { message: "internal", internalReason: "do not copy" },
+          { id: "single-store-annual-gmv", status: "passed", message: "ignored" },
+          { id: "single-store-annual-gmv", status: "passed", message: "ignored", internalReason: "do not copy" },
         ],
-        unknownRules: [{ message: "confirm" }, { message: "confirm" }],
+        unknownRules: [
+          { id: "collection-account-arrangement", status: "unknown", message: "ignored" },
+          { id: "collection-account-arrangement", status: "unknown", message: "ignored" },
+        ],
         failedRules: [{ message: "failed" }],
         fitScore: 100,
         confidence: 100,
@@ -119,13 +130,13 @@ test("analysis input caps ranked products and keeps only safe evidence", () => {
         productId: "linklogis-b2b-factoring",
         rank: 1,
         status: "needs_information",
-        passedRules: [{ message: "first" }],
+        passedRules: [{ id: "buyer-trading-history", status: "passed", message: "ignored" }],
       },
       {
         productId: "webank-cross-border-data-loan",
         rank: 3,
         status: "eligible",
-        passedRules: [{ message: "third" }],
+        passedRules: [{ id: "domestic-registration", status: "passed", message: "ignored" }],
       },
     ],
     matchReport: {
@@ -137,22 +148,78 @@ test("analysis input caps ranked products and keeps only safe evidence", () => {
     {
       productId: "linklogis-b2b-factoring",
       status: "needs_information",
-      satisfiedConditions: ["first"],
+      satisfiedConditions: ["与买方交易历史需超过 12 个月。"],
       itemsToConfirm: [],
     },
     {
       productId: "linklogis-amazon-sc",
       status: "eligible",
-      satisfiedConditions: ["second"],
-      itemsToConfirm: ["confirm"],
+      satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
+      itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
     },
     {
       productId: "webank-cross-border-data-loan",
       status: "eligible",
-      satisfiedConditions: ["third"],
+      satisfiedConditions: ["企业需在境内注册。"],
       itemsToConfirm: [],
     },
   ]);
   assert.deepEqual(input.preparationDocuments, ["近 12 个月销售数据证明"]);
-  assert.doesNotMatch(JSON.stringify(input), /failed|internal|secret|不可发送/);
+  assert.doesNotMatch(JSON.stringify(input), /failed|internal|secret|不可发送|ignored/);
+});
+
+test("analysis input derives rule messages from own catalog identity and status", () => {
+  const inheritedRule = Object.create({ message: "inherited secret" });
+  inheritedRule.id = "single-store-annual-gmv";
+  inheritedRule.status = "passed";
+
+  const input = buildAiAnalysisInput({
+    productMatches: [{
+      productId: "linklogis-amazon-sc",
+      rank: 1,
+      status: "eligible",
+      passedRules: [
+        inheritedRule,
+        { id: "single-store-annual-gmv", status: "passed", message: "own secret" },
+        { id: "unknown-rule", status: "passed", message: "unknown secret" },
+        { id: "collection-account-arrangement", status: "unknown", message: "wrong status" },
+      ],
+      unknownRules: [{ id: "collection-account-arrangement", status: "unknown", message: "injected secret" }],
+    }],
+  });
+
+  assert.deepEqual(input.products, [{
+    productId: "linklogis-amazon-sc",
+    status: "eligible",
+    satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
+    itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
+  }]);
+  assert.doesNotMatch(JSON.stringify(input), /inherited secret|own secret|unknown secret|wrong status|injected secret/);
+});
+
+test("analysis input rejects invalid, colliding, duplicate, and ineligible ranks", () => {
+  const valid = (productId, rank, status = "eligible") => ({
+    productId,
+    rank,
+    status,
+    passedRules: [],
+    unknownRules: [],
+  });
+  const input = buildAiAnalysisInput({
+    productMatches: [
+      valid("linklogis-amazon-sc", 1),
+      valid("linklogis-amazon-vc", 1),
+      valid("linklogis-b2b-factoring", 2),
+      valid("webank-cross-border-data-loan", 2),
+      valid("linklogis-amazon-vc", 3),
+      valid("linklogis-amazon-vc", 3),
+      valid("webank-cross-border-data-loan", 0),
+      valid("linklogis-amazon-sc", -1),
+      valid("linklogis-amazon-vc", 1.5),
+      valid("linklogis-b2b-factoring", 4),
+      valid("webank-cross-border-data-loan", 3, "ineligible"),
+    ],
+  });
+
+  assert.deepEqual(input.products, []);
 });

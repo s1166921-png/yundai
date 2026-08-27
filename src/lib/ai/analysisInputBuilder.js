@@ -1,4 +1,4 @@
-import { PRODUCT_IDS } from "../matching/productCatalog.js";
+import { PRODUCT_CATALOG, PRODUCT_IDS } from "../matching/productCatalog.js";
 
 export const AI_ANALYSIS_SCHEMA_VERSION = "meiou-analysis-v1";
 
@@ -23,8 +23,9 @@ const FUND_USES = new Set([
   "tax_business_operations",
   "other",
 ]);
-const PRODUCT_STATUSES = new Set(["eligible", "needs_information", "ineligible"]);
+const PRODUCT_STATUSES = new Set(["eligible", "needs_information"]);
 const PRODUCT_ID_SET = new Set(PRODUCT_IDS);
+const PRODUCT_BY_ID = new Map(PRODUCT_CATALOG.map((product) => [product.id, product]));
 
 const SAFE_DOCUMENT_NAMES = new Set([
   "企业主体登记证明",
@@ -125,30 +126,64 @@ const addBucketFact = (facts, key, value, bucket) => {
   if (mapped != null) facts[key] = mapped;
 };
 
-const customerSafeMessages = (rules) => {
+const customerSafeMessages = (productId, rules, expectedStatus) => {
+  const product = PRODUCT_BY_ID.get(productId);
+  if (product == null) return [];
   const messages = [];
   for (const rule of Array.isArray(rules) ? rules : []) {
-    if (rule?.internalReason != null || typeof rule?.message !== "string" || rule.message.length === 0) continue;
-    if (!messages.includes(rule.message)) messages.push(rule.message);
+    if (
+      rule == null
+      || typeof rule !== "object"
+      || Array.isArray(rule)
+      || !Object.hasOwn(rule, "id")
+      || !Object.hasOwn(rule, "status")
+      || typeof rule.id !== "string"
+      || rule.status !== expectedStatus
+    ) continue;
+    const definition = product.ruleSet.find((candidate) => (
+      candidate.id === rule.id
+      && candidate.internalReason == null
+      && typeof candidate.message === "string"
+    ));
+    if (definition == null || messages.includes(definition.message)) continue;
+    messages.push(definition.message);
     if (messages.length === 3) break;
   }
   return messages;
 };
 
-const rankedProducts = (productMatches) => (Array.isArray(productMatches) ? productMatches : [])
-  .filter((match) => (
-    Number.isFinite(match?.rank)
-    && PRODUCT_ID_SET.has(match.productId)
-    && PRODUCT_STATUSES.has(match.status)
-  ))
+const rankedProducts = (productMatches) => {
+  const candidates = (Array.isArray(productMatches) ? productMatches : [])
+    .filter((match) => (
+      match != null
+      && typeof match === "object"
+      && !Array.isArray(match)
+      && Object.hasOwn(match, "productId")
+      && Object.hasOwn(match, "rank")
+      && Object.hasOwn(match, "status")
+      && PRODUCT_ID_SET.has(match.productId)
+      && Number.isInteger(match.rank)
+      && match.rank >= 1
+      && match.rank <= 3
+      && PRODUCT_STATUSES.has(match.status)
+    ));
+  const rankCounts = new Map();
+  const productCounts = new Map();
+  for (const match of candidates) {
+    rankCounts.set(match.rank, (rankCounts.get(match.rank) ?? 0) + 1);
+    productCounts.set(match.productId, (productCounts.get(match.productId) ?? 0) + 1);
+  }
+
+  return candidates
+    .filter((match) => rankCounts.get(match.rank) === 1 && productCounts.get(match.productId) === 1)
   .sort((left, right) => left.rank - right.rank)
-  .slice(0, 3)
   .map((match) => ({
     productId: match.productId,
     status: match.status,
-    satisfiedConditions: customerSafeMessages(match.passedRules),
-    itemsToConfirm: customerSafeMessages(match.unknownRules),
+    satisfiedConditions: customerSafeMessages(match.productId, match.passedRules, "passed"),
+    itemsToConfirm: customerSafeMessages(match.productId, match.unknownRules, "unknown"),
   }));
+};
 
 const preparationDocuments = (matchReport) => {
   const documents = [];
