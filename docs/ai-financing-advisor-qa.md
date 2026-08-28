@@ -15,6 +15,36 @@ and return the fallback. Deployment and SMS are out of scope.
 
 Official API check: Not run: official API key not configured.
 
+## Fix Round 1: trusted local-origin authority
+
+The first CORS continuation used a request-derived host while deciding whether to accept
+the documented Vite origins. This round removes that authority source. `createMeiouServer`
+now defaults `allowLocalDevelopmentOrigins` to `false`; the `dev:api` script explicitly
+sets the non-secret `MEIOU_LOCAL_DEV_ORIGINS=1` signal, and isolated local construction
+must opt in with the same explicit option. `pnpm start` remains off by default.
+
+Incoming `Origin` values must be exact serialized `http` or `https` origins. Userinfo,
+paths, queries, fragments, malformed values, `null`, `file:`, wrong schemes, wrong
+ports, and lookalike hostnames are rejected. Explicit `MEIOU_ALLOWED_ORIGINS` stays
+additive for configured frontends.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Focused hardened CORS integration | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test --test-name-pattern='CORS|local development origins|documented loopback' test/serverLead.test.js` | PASS: 4 passed, 0 failed. Disabled mode rejects a forged `Host`; configured origin remains valid; trusted local preflight/POST succeeds; all negative origin forms are denied. |
+| Full network-free suite | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test` | PASS: 305 passed, 0 failed, 0 skipped; 2873.479 ms. |
+| Modern/legacy build and exact privacy scan | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node ./node_modules/vite/bin/vite.js build` followed by the exact `rg` scan above | PASS: no privacy matches. |
+| Legacy/reduced-motion/old-WebKit confirmation | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test test/browserCompatibility.test.js test/productMatchView.test.js` | PASS: 18 passed, 0 failed; `index-legacy-ocn0JUJP.js` inspected at 327612 bytes. |
+| Inline-secret documentation scan | Searched README, docs, and this task report for concrete key/password assignments. | PASS: no matches. |
+
+The complete synthetic fallback UAT was replayed with the explicit server option at
+`1440x900` and `390x844`. Both customer journeys showed the same explicit fallback,
+deterministic rank/amount, privacy/disclaimer, and no scoped overflow/clipping. Both
+admin journeys saved all four review states and note, selected only the target record,
+and exported it. Reduced-motion emulation was active. No screenshots, real customer
+data, keys, or browser-stored credentials were used.
+
+Official API check: Not run: official API key not configured.
+
 ## Automated evidence
 
 | Check | Command | Result |
@@ -97,7 +127,7 @@ iPhone/Safari verification was not available and remains an external device limi
 
 ## Scope and secret audit
 
-The continuation's intended commit is limited to `server/index.mjs`,
+This round's intended commit is limited to `package.json`, `server/index.mjs`,
 `test/serverLead.test.js`, `README.md`, and this QA record. `.gitignore` already ignores
 `node_modules/`, `dist/`, `server/data/leads.json`, and local QA images, so it was not
 changed. Build assets, local lead data, temporary browser state, secrets, credentials,

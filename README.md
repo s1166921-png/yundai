@@ -56,17 +56,15 @@ synthetic profiles and placeholder local credentials for development and QA.
 Deployment, SMS, production hosting, and cloud credential setup are out of scope for
 this repository workflow.
 
-The documented local Vite workflow permits exactly
-`http://127.0.0.1:5173` and `http://localhost:5173` when the API is on loopback. Other
-origins remain denied by default. Set comma-separated `MEIOU_ALLOWED_ORIGINS` values
-only for explicitly approved frontends. Lead submissions must use
-`Content-Type: application/json`.
+`pnpm dev:api` explicitly enables only `http://127.0.0.1:5173` and
+`http://localhost:5173` for the documented local Vite workflow. Direct server
+construction and `pnpm start` keep that local-origin mode off by default. Other origins
+remain denied unless set in comma-separated `MEIOU_ALLOWED_ORIGINS` values for explicitly
+approved frontends. Lead submissions must use `Content-Type: application/json`.
 
 For a local frontend on a different port, use an exact origin:
 
 ```bash
-MEIOU_ADMIN_USER=<local-user> \
-MEIOU_ADMIN_PASSWORD=<local-password> \
 MEIOU_ALLOWED_ORIGINS=http://127.0.0.1:5174 \
 PORT=8787 pnpm dev:api
 ```
@@ -102,7 +100,7 @@ verification limitation.
 To exercise the built application locally, start the combined static and API server:
 
 ```bash
-MEIOU_ADMIN_USER=<local-user> MEIOU_ADMIN_PASSWORD=<local-password> PORT=8787 pnpm start
+PORT=8787 pnpm start
 ```
 
 This command is for local verification. Deployment, production server changes, and DNS

@@ -1683,7 +1683,7 @@ test("CORS allows same-origin and configured origins while rejecting others", as
 });
 
 test("documented loopback Vite origins pass preflight and progressive POST without allowing unrelated origins", async (t) => {
-  const { leadsFilePath, url } = await startTestServer(t);
+  const { leadsFilePath, url } = await startTestServer(t, { allowLocalDevelopmentOrigins: true });
   const viteLoopbackOrigin = "http://127.0.0.1:5173";
   const viteLocalhostOrigin = "http://localhost:5173";
   const unrelatedOrigin = "http://127.0.0.1:5174";
@@ -1727,6 +1727,43 @@ test("documented loopback Vite origins pass preflight and progressive POST witho
     const response = await request;
     assert.equal(response.status, 403);
     assert.equal(response.headers.get("access-control-allow-origin"), null);
+  }
+});
+
+test("local development origins require trusted server configuration and reject malformed origins", async (t) => {
+  const documentedOrigin = "http://127.0.0.1:5173";
+  const configuredOrigin = "https://ops.example.test";
+  const { url } = await startTestServer(t, { allowedOrigins: [configuredOrigin] });
+
+  const disabledLocalResponse = await fetch(`${url}/api/products`, {
+    headers: {
+      Origin: documentedOrigin,
+      Host: "127.0.0.1:8787",
+    },
+  });
+  assert.equal(disabledLocalResponse.status, 403);
+  assert.equal(disabledLocalResponse.headers.get("access-control-allow-origin"), null);
+
+  const configuredResponse = await fetch(`${url}/api/products`, { headers: { Origin: configuredOrigin } });
+  assert.equal(configuredResponse.status, 200);
+  assert.equal(configuredResponse.headers.get("access-control-allow-origin"), configuredOrigin);
+
+  const { url: localUrl } = await startTestServer(t, { allowLocalDevelopmentOrigins: true });
+  for (const origin of [
+    "http://evil.example@127.0.0.1:5173",
+    "http://127.0.0.1:5173/path",
+    "http://127.0.0.1:5173?query=1",
+    "http://127.0.0.1:5173#fragment",
+    "https://127.0.0.1:5173",
+    "null",
+    "file:///tmp/local.html",
+    "http://127.0.0.1:5174",
+    "http://localhost.evil.example:5173",
+    "http://[::1",
+  ]) {
+    const response = await fetch(`${localUrl}/api/products`, { headers: { Origin: origin } });
+    assert.equal(response.status, 403, origin);
+    assert.equal(response.headers.get("access-control-allow-origin"), null, origin);
   }
 });
 

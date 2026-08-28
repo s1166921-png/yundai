@@ -309,21 +309,25 @@ function normalizeAllowedOrigins(origins) {
   }).filter(Boolean));
 }
 
-function isLoopbackHost(hostname) {
-  return hostname === "127.0.0.1" || hostname === "localhost";
+function parseSerializedHttpOrigin(value) {
+  if (typeof value !== "string" || value !== value.trim() || !value) return null;
+  try {
+    const origin = new URL(value);
+    if (origin.protocol !== "http:" && origin.protocol !== "https:") return null;
+    if (origin.origin !== value || origin.username || origin.password) return null;
+    return origin.origin;
+  } catch {
+    return null;
+  }
 }
 
-function applyCorsHeaders(request, response, url, allowedOrigins) {
+function applyCorsHeaders(request, response, url, allowedOrigins, allowLocalDevelopmentOrigins) {
   const origin = request.headers.origin;
   if (!origin) return true;
 
-  let normalizedOrigin;
-  try {
-    normalizedOrigin = new URL(origin).origin;
-  } catch {
-    return false;
-  }
-  const isDocumentedLocalDevelopmentOrigin = isLoopbackHost(url.hostname)
+  const normalizedOrigin = parseSerializedHttpOrigin(origin);
+  if (normalizedOrigin == null) return false;
+  const isDocumentedLocalDevelopmentOrigin = allowLocalDevelopmentOrigins
     && localDevelopmentOrigins.has(normalizedOrigin);
   if (normalizedOrigin !== url.origin && !isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
 
@@ -813,6 +817,7 @@ async function handleRequest(request, response, {
   leadsFilePath,
   adminCredentials,
   allowedOrigins,
+  allowLocalDevelopmentOrigins,
   logger,
   aiReportService,
   now,
@@ -825,7 +830,7 @@ async function handleRequest(request, response, {
     response.setHeader("Cache-Control", "no-store");
   }
 
-  if (!applyCorsHeaders(request, response, url, allowedOrigins)) {
+  if (!applyCorsHeaders(request, response, url, allowedOrigins, allowLocalDevelopmentOrigins)) {
     sendJson(response, 403, { error: "请求来源不被允许" });
     return;
   }
@@ -1057,6 +1062,7 @@ export function createMeiouServer({
   leadsFilePath = leadsFile,
   adminCredentials = null,
   allowedOrigins = null,
+  allowLocalDevelopmentOrigins = false,
   logger = console,
   aiReportService = null,
   now = () => new Date(),
@@ -1065,6 +1071,7 @@ export function createMeiouServer({
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
   const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
+  const canUseLocalDevelopmentOrigins = allowLocalDevelopmentOrigins === true;
   const safeLogger = logger && typeof logger.error === "function" ? logger : console;
   const safeNow = typeof now === "function" ? now : () => new Date();
   const safeIdFactory = typeof idFactory === "function" ? idFactory : randomUUID;
@@ -1080,6 +1087,7 @@ export function createMeiouServer({
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,
+    allowLocalDevelopmentOrigins: canUseLocalDevelopmentOrigins,
     logger: safeLogger,
     aiReportService: configuredAiReportService,
     now: safeNow,
@@ -1091,7 +1099,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const adminCredentials = requiredStartupAdminCredentials();
   const aiReportService = createAiReportServiceFromEnvironment();
   await ensureStore(leadsFile);
-  createMeiouServer({ adminCredentials, aiReportService }).listen(port, "127.0.0.1", () => {
+  createMeiouServer({
+    adminCredentials,
+    aiReportService,
+    allowLocalDevelopmentOrigins: process.env.MEIOU_LOCAL_DEV_ORIGINS === "1",
+  }).listen(port, "127.0.0.1", () => {
     console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
   });
 }
