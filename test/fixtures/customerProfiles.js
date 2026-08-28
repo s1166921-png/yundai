@@ -31,6 +31,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "cmb-guangdong-business-loan",
     expectedStatuses: { "cmb-guangdong-business-loan": "eligible" },
+    expectedRankedIds: ["cmb-guangdong-business-loan", "pingan-orange-tax-loan", "pingan-foreign-trade-logistics-loan"],
   },
   {
     name: "pingan-orange-qualified-pass",
@@ -47,6 +48,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-orange-tax-loan",
     expectedStatuses: { "pingan-orange-tax-loan": "eligible" },
+    expectedRankedIds: ["pingan-orange-tax-loan", "cmb-guangdong-business-loan", "pingan-foreign-trade-logistics-loan"],
   },
   {
     name: "pingan-logistics-qualified-pass",
@@ -78,6 +80,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-foreign-trade-logistics-loan",
     expectedStatuses: { "pingan-foreign-trade-logistics-loan": "eligible" },
+    expectedRankedIds: ["pingan-foreign-trade-logistics-loan", "cmb-guangdong-business-loan", "pingan-orange-tax-loan"],
   },
   {
     name: "webank-qualified-pass",
@@ -107,6 +110,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "webank-cross-border-data-loan",
     expectedStatuses: { "webank-cross-border-data-loan": "eligible" },
+    expectedRankedIds: ["webank-cross-border-data-loan", "pingan-orange-tax-loan", "linklogis-amazon-sc"],
   },
   {
     name: "amazon-sc-qualified-pass",
@@ -127,6 +131,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-sc",
     expectedStatuses: { "linklogis-amazon-sc": "eligible" },
+    expectedRankedIds: ["linklogis-amazon-sc", "webank-cross-border-data-loan", "pingan-orange-tax-loan"],
   },
   {
     name: "amazon-vc-qualified-pass",
@@ -145,6 +150,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-vc",
     expectedStatuses: { "linklogis-amazon-vc": "eligible" },
+    expectedRankedIds: ["linklogis-amazon-vc", "pingan-orange-tax-loan", "linklogis-b2b-factoring"],
   },
   {
     name: "b2b-factoring-qualified-pass",
@@ -164,6 +170,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-b2b-factoring",
     expectedStatuses: { "linklogis-b2b-factoring": "eligible" },
+    expectedRankedIds: ["linklogis-b2b-factoring", "pingan-orange-tax-loan", "linklogis-amazon-sc"],
   },
   {
     name: "cmb-exact-inclusive-boundaries",
@@ -191,6 +198,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "cmb-guangdong-business-loan",
     expectedStatuses: { "cmb-guangdong-business-loan": "eligible" },
+    expectedRankedIds: ["cmb-guangdong-business-loan", "pingan-orange-tax-loan", "webank-cross-border-data-loan"],
   },
   {
     name: "pingan-orange-exact-inclusive-boundaries",
@@ -207,6 +215,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-orange-tax-loan",
     expectedStatuses: { "pingan-orange-tax-loan": "eligible" },
+    expectedRankedIds: ["pingan-orange-tax-loan", "pingan-foreign-trade-logistics-loan", "webank-cross-border-data-loan"],
   },
   {
     name: "pingan-logistics-exact-inclusive-boundaries",
@@ -238,6 +247,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-foreign-trade-logistics-loan",
     expectedStatuses: { "pingan-foreign-trade-logistics-loan": "eligible" },
+    expectedRankedIds: ["pingan-foreign-trade-logistics-loan", "pingan-orange-tax-loan", "linklogis-b2b-factoring"],
   },
   {
     name: "webank-exact-inclusive-boundaries",
@@ -267,6 +277,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "webank-cross-border-data-loan",
     expectedStatuses: { "webank-cross-border-data-loan": "eligible" },
+    expectedRankedIds: ["webank-cross-border-data-loan", "linklogis-b2b-factoring"],
   },
   {
     name: "amazon-sc-exact-exclusive-boundary-no-recommendation",
@@ -287,6 +298,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: null,
     expectedStatuses: { "linklogis-amazon-sc": "ineligible" },
+    expectedRankedIds: [],
   },
   {
     name: "amazon-vc-exact-exclusive-boundary-no-recommendation",
@@ -308,6 +320,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: null,
     expectedStatuses: { "linklogis-amazon-vc": "ineligible" },
+    expectedRankedIds: [],
   },
   {
     name: "b2b-factoring-exact-exclusive-boundary-no-recommendation",
@@ -330,6 +343,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: null,
     expectedStatuses: { "linklogis-b2b-factoring": "ineligible" },
+    expectedRankedIds: [],
   },
   {
     name: "amazon-sc-missing-history",
@@ -350,6 +364,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-sc",
     expectedStatuses: { "linklogis-amazon-sc": "needs_information" },
+    expectedRankedIds: ["linklogis-amazon-sc", "webank-cross-border-data-loan", "pingan-orange-tax-loan"],
   },
   {
     name: "pingan-logistics-missing-prior-year-volume",
@@ -382,6 +397,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-foreign-trade-logistics-loan",
     expectedStatuses: { "pingan-foreign-trade-logistics-loan": "needs_information" },
+    expectedRankedIds: ["pingan-foreign-trade-logistics-loan", "cmb-guangdong-business-loan", "pingan-orange-tax-loan"],
   },
   {
     name: "webank-missing-ahr-score",
@@ -411,6 +427,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "webank-cross-border-data-loan",
     expectedStatuses: { "webank-cross-border-data-loan": "needs_information" },
+    expectedRankedIds: ["webank-cross-border-data-loan", "pingan-orange-tax-loan", "linklogis-amazon-sc"],
   },
   {
     name: "amazon-sc-and-vc-multi-product-ranking",
@@ -430,6 +447,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-sc",
     expectedStatuses: { "linklogis-amazon-sc": "eligible" },
+    expectedRankedIds: ["linklogis-amazon-sc", "linklogis-amazon-vc", "webank-cross-border-data-loan"],
     expectedRankedPrefix: ["linklogis-amazon-sc", "linklogis-amazon-vc"],
   },
   {
@@ -451,6 +469,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-sc",
     expectedStatuses: { "linklogis-amazon-sc": "eligible" },
+    expectedRankedIds: ["linklogis-amazon-sc", "webank-cross-border-data-loan", "pingan-orange-tax-loan"],
   },
   {
     name: "cmb-sensitive-industry-review",
@@ -478,6 +497,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "cmb-guangdong-business-loan",
     expectedStatuses: { "cmb-guangdong-business-loan": "eligible" },
+    expectedRankedIds: ["cmb-guangdong-business-loan", "pingan-orange-tax-loan", "webank-cross-border-data-loan"],
   },
   {
     name: "cmb-excessive-bank-count-no-recommendation",
@@ -513,6 +533,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: null,
     expectedStatuses: { "cmb-guangdong-business-loan": "ineligible" },
+    expectedRankedIds: [],
   },
   {
     name: "pingan-logistics-customs-failure-no-recommendation",
@@ -549,6 +570,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: null,
     expectedStatuses: { "pingan-foreign-trade-logistics-loan": "ineligible" },
+    expectedRankedIds: [],
   },
   {
     name: "amazon-non-us-site-falls-back-to-sc",
@@ -580,6 +602,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-amazon-sc",
     expectedStatuses: { "linklogis-amazon-sc": "eligible" },
+    expectedRankedIds: ["linklogis-amazon-sc", "pingan-orange-tax-loan", "linklogis-b2b-factoring"],
   },
   {
     name: "rejected-account-control-consent-no-recommendation",
@@ -622,6 +645,7 @@ export const GOLDEN_PROFILES = deepFreeze([
       "linklogis-amazon-vc": "ineligible",
       "linklogis-b2b-factoring": "ineligible",
     },
+    expectedRankedIds: [],
   },
   {
     name: "all-products-explicit-hard-failure",
@@ -659,6 +683,7 @@ export const GOLDEN_PROFILES = deepFreeze([
       "linklogis-amazon-vc": "ineligible",
       "linklogis-b2b-factoring": "ineligible",
     },
+    expectedRankedIds: [],
   },
   {
     name: "cmb-missing-settlement-needs-information",
@@ -686,6 +711,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "cmb-guangdong-business-loan",
     expectedStatuses: { "cmb-guangdong-business-loan": "needs_information" },
+    expectedRankedIds: ["cmb-guangdong-business-loan", "pingan-orange-tax-loan", "pingan-foreign-trade-logistics-loan"],
   },
   {
     name: "pingan-orange-company-too-new-ineligible",
@@ -702,6 +728,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "webank-cross-border-data-loan",
     expectedStatuses: { "pingan-orange-tax-loan": "ineligible" },
+    expectedRankedIds: ["webank-cross-border-data-loan", "linklogis-amazon-sc", "linklogis-amazon-vc"],
   },
   {
     name: "pingan-logistics-fx-classification-ineligible",
@@ -733,6 +760,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "cmb-guangdong-business-loan",
     expectedStatuses: { "pingan-foreign-trade-logistics-loan": "ineligible" },
+    expectedRankedIds: ["cmb-guangdong-business-loan", "pingan-orange-tax-loan", "linklogis-b2b-factoring"],
   },
   {
     name: "webank-refund-rate-above-limit-ineligible",
@@ -762,6 +790,7 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "pingan-orange-tax-loan",
     expectedStatuses: { "webank-cross-border-data-loan": "ineligible" },
+    expectedRankedIds: ["pingan-orange-tax-loan", "linklogis-amazon-sc", "pingan-foreign-trade-logistics-loan"],
   },
   {
     name: "b2b-buyer-country-needs-review",
@@ -781,5 +810,6 @@ export const GOLDEN_PROFILES = deepFreeze([
     },
     expectedPrimary: "linklogis-b2b-factoring",
     expectedStatuses: { "linklogis-b2b-factoring": "needs_information" },
+    expectedRankedIds: ["linklogis-b2b-factoring", "pingan-orange-tax-loan", "linklogis-amazon-sc"],
   },
 ]);

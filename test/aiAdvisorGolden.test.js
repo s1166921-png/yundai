@@ -38,11 +38,85 @@ const FORBIDDEN_ANALYSIS_KEYS = new Set([
   "freeText",
 ]);
 
+const FORBIDDEN_PUBLIC_KEYS = new Set([
+  ...FORBIDDEN_ANALYSIS_KEYS,
+  "generatedAt",
+  "durationMs",
+  "usage",
+  "errorCategory",
+  "promptVersion",
+  "inputTokens",
+  "outputTokens",
+  "advisorNotes",
+  "failedRules",
+  "passedRules",
+  "unknownRules",
+  "authenticatedEvidence",
+  "advisorVerificationFields",
+  "ruleVersion",
+  "inputSnapshot",
+  "catalogOrder",
+  "primaryBusinessModelFit",
+]);
+
+const FORBIDDEN_PUBLIC_VALUE_MARKERS = [
+  "synthetic-provider",
+  "synthetic-model",
+  "synthetic-prompt",
+  "2026-08-28T00:00:00.000Z",
+  "fitScore",
+  "fitDimensions",
+  "confidence",
+  "advisorFocus",
+  "internalReason",
+  "generatedAt",
+  "durationMs",
+  "errorCategory",
+  "promptVersion",
+  "inputTokens",
+  "outputTokens",
+  "prompt",
+  "tokens",
+  "provider",
+  "model",
+  "score",
+  "internal",
+  "advisor",
+  "identity",
+  "companyName",
+  "contactName",
+  "buyerName",
+  "phone",
+];
+
 const assertNoForbiddenKeys = (value, path = "input") => {
   if (value == null || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value)) {
     assert.equal(FORBIDDEN_ANALYSIS_KEYS.has(key), false, `${path}.${key} must not reach model input`);
     assertNoForbiddenKeys(nested, `${path}.${key}`);
+  }
+};
+
+const assertPrivacyClean = (value, path = "public") => {
+  if (value == null) return;
+  if (typeof value === "string") {
+    for (const marker of FORBIDDEN_PUBLIC_VALUE_MARKERS) {
+      assert.equal(value.includes(marker), false, `${path} contains forbidden marker ${marker}`);
+    }
+    return;
+  }
+  if (typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(value)) {
+    assert.equal(FORBIDDEN_PUBLIC_KEYS.has(key), false, `${path}.${key} must not be public`);
+    assertPrivacyClean(nested, `${path}.${key}`);
+  }
+};
+
+const assertSerializedPrivacyClean = (value, path) => {
+  assertPrivacyClean(value, path);
+  const serialized = JSON.stringify(value);
+  for (const marker of FORBIDDEN_PUBLIC_VALUE_MARKERS) {
+    assert.equal(serialized.includes(marker), false, `${path} serialization contains forbidden marker ${marker}`);
   }
 };
 
@@ -61,8 +135,10 @@ test("at least thirty synthetic journeys preserve deterministic product authorit
   assert.ok(GOLDEN_PROFILES.length >= 30);
   for (const fixture of GOLDEN_PROFILES) {
     const matches = matchProducts(fixture.profile);
-    const primary = matches.find((match) => match.rank === 1) ?? null;
-    assert.equal(primary?.productId ?? null, fixture.expectedPrimary, fixture.name);
+    const actualRankedIds = rankedProductIds(matches);
+    assert.ok(Array.isArray(fixture.expectedRankedIds), `${fixture.name} needs expectedRankedIds`);
+    assert.deepEqual(actualRankedIds, fixture.expectedRankedIds, fixture.name);
+    assert.equal(actualRankedIds[0] ?? null, fixture.expectedPrimary, fixture.name);
     assert.ok(fixture.expectedStatuses && typeof fixture.expectedStatuses === "object", `${fixture.name} needs expectedStatuses`);
     for (const [productId, expectedStatus] of Object.entries(fixture.expectedStatuses ?? {})) {
       assert.equal(matches.find((match) => match.productId === productId)?.status, expectedStatus, fixture.name);
@@ -73,13 +149,15 @@ test("at least thirty synthetic journeys preserve deterministic product authorit
 test("every ranked journey survives deidentification, AI validation, and public projection", () => {
   for (const fixture of GOLDEN_PROFILES) {
     const matches = matchProducts(fixture.profile);
-    const rankedIds = rankedProductIds(matches);
+    const actualRankedIds = rankedProductIds(matches);
+    assert.ok(Array.isArray(fixture.expectedRankedIds), `${fixture.name} needs expectedRankedIds`);
+    assert.deepEqual(actualRankedIds, fixture.expectedRankedIds, fixture.name);
     const matchReport = buildCustomerMatchReport(fixture.profile, matches);
     const analysisInput = buildAiAnalysisInput({ profile: fixture.profile, productMatches: matches, matchReport });
     assertNoForbiddenKeys(analysisInput);
 
-    if (rankedIds.length > 0) {
-      const validation = validateAiNarrative(narrativeFor(rankedIds), rankedIds);
+    if (fixture.expectedRankedIds.length > 0) {
+      const validation = validateAiNarrative(narrativeFor(fixture.expectedRankedIds), fixture.expectedRankedIds);
       assert.equal(validation.ok, true, fixture.name);
       const analysis = buildPersistedAiAnalysis({
         narrative: validation.value,
@@ -93,10 +171,10 @@ test("every ranked journey survives deidentification, AI validation, and public 
       const aiReport = publicAiReport(analysis, { status: "pending" });
       const view = buildProductMatchView(matchReport, getPublicProducts(), aiReport);
 
-      assert.deepEqual(aiReport.productExplanations.map(({ productId }) => productId), rankedIds, fixture.name);
-      assert.deepEqual(publicProductIds(view), rankedIds, fixture.name);
-      assert.doesNotMatch(JSON.stringify(aiReport), /fitScore|confidence|advisorFocus|internalReason|companyName|contactName|phone|provider|model|promptVersion|inputTokens|outputTokens/);
-      assert.doesNotMatch(JSON.stringify(view), /fitScore|confidence|advisorFocus|internalReason|companyName|contactName|phone|provider|model|promptVersion|inputTokens|outputTokens/);
+      assert.deepEqual(aiReport.productExplanations.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
+      assert.deepEqual(publicProductIds(view), fixture.expectedRankedIds, fixture.name);
+      assertSerializedPrivacyClean(aiReport, `${fixture.name}.aiReport`);
+      assertSerializedPrivacyClean(view, `${fixture.name}.view`);
     } else {
       const fallback = buildFallbackAiAnalysis({
         matchReport,
@@ -109,6 +187,9 @@ test("every ranked journey survives deidentification, AI validation, and public 
       assert.deepEqual(aiReport.productExplanations, [], fixture.name);
       assert.equal(view.primary, null, fixture.name);
       assert.deepEqual(view.alternatives, [], fixture.name);
+      assert.deepEqual(publicProductIds(view), [], fixture.name);
+      assertSerializedPrivacyClean(aiReport, `${fixture.name}.fallbackAiReport`);
+      assertSerializedPrivacyClean(view, `${fixture.name}.fallbackView`);
     }
   }
 });
