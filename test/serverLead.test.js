@@ -6,6 +6,7 @@ import { chmod, readFile, readdir, mkdir, mkdtemp, rm, stat, writeFile } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { createMeiouServer } from "../server/index.mjs";
 import { buildAdminPage } from "../server/adminPage.mjs";
 import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
@@ -243,6 +244,172 @@ async function postLead(url, payload = completeAmazonScPayload()) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createAdminScriptVm(leads) {
+  class FakeClassList {
+    constructor() {
+      this.values = new Set();
+    }
+
+    add(value) { this.values.add(value); }
+    remove(value) { this.values.delete(value); }
+    contains(value) { return this.values.has(value); }
+  }
+
+  class FakeElement {
+    constructor(id, ownerDocument) {
+      this.id = id;
+      this.ownerDocument = ownerDocument;
+      this.listeners = new Map();
+      this.classList = new FakeClassList();
+      this.dataset = {};
+      this.value = "";
+      this.textContent = "";
+      this.hidden = false;
+      this.disabled = false;
+      this.checked = false;
+      this.indeterminate = false;
+      this.isConnected = true;
+      this.offsetParent = {};
+      this._innerHTML = "";
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) ?? [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+
+    async dispatch(type, init = {}) {
+      const event = {
+        target: this,
+        preventDefault() {},
+        ...init,
+      };
+      await Promise.all((this.listeners.get(type) ?? []).map((listener) => listener(event)));
+    }
+
+    focus() {
+      this.ownerDocument.activeElement = this;
+    }
+
+    click() {
+      return this.dispatch("click");
+    }
+
+    querySelectorAll(selector) {
+      if (this.id === "rows") return this.ownerDocument.rowElements.get(selector) ?? [];
+      if (this.id === "advisorDrawer") {
+        return ["closeDrawer", "reviewStatus", "reviewNote", "retryAi", "saveReview"]
+          .map((id) => this.ownerDocument.getElement(id));
+      }
+      return [];
+    }
+
+    set innerHTML(value) {
+      this._innerHTML = value;
+      if (this.id === "rows") this.ownerDocument.rebuildRows(value);
+    }
+
+    get innerHTML() {
+      return this._innerHTML;
+    }
+  }
+
+  class FakeDocument {
+    constructor() {
+      this.elements = new Map();
+      this.rowElements = new Map();
+      this.listeners = new Map();
+      this.body = { classList: new FakeClassList() };
+      this.activeElement = null;
+    }
+
+    getElement(id) {
+      if (!this.elements.has(id)) this.elements.set(id, new FakeElement(id, this));
+      return this.elements.get(id);
+    }
+
+    querySelector(selector) {
+      return this.getElement(selector.replace(/^#/, ""));
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) ?? [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+
+    createElement(tagName) {
+      return this.getElement(`created-${tagName}`);
+    }
+
+    rebuildRows(html) {
+      const viewButtons = [...html.matchAll(/class="view-button"[^>]*data-lead-id="([^"]+)"/g)]
+        .map((match) => {
+          const button = new FakeElement(`view-${match[1]}`, this);
+          button.classList.add("view-button");
+          button.dataset.leadId = match[1];
+          return button;
+        });
+      const checkboxes = [...html.matchAll(/class="row-select"[^>]*value="([^"]+)"/g)]
+        .map((match) => {
+          const checkbox = new FakeElement(`select-${match[1]}`, this);
+          checkbox.value = match[1];
+          return checkbox;
+        });
+      this.rowElements.set(".view-button", viewButtons);
+      this.rowElements.set(".row-select", checkboxes);
+    }
+  }
+
+  const document = new FakeDocument();
+  document.getElement("advisorDrawer").hidden = true;
+  document.getElement("drawerBackdrop").hidden = true;
+  document.getElement("retryAi").hidden = true;
+  const fetchCalls = [];
+  let fetchHandler = async (url) => {
+    if (url.startsWith("/api/leads")) {
+      return { ok: true, json: async () => ({ leads }) };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  const html = buildAdminPage({ leadColumns: [["companyName", "企业名称"]], products: [] });
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script);
+  runInNewContext(script, {
+    document,
+    fetch: async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      return fetchHandler(url, options);
+    },
+    btoa: (value) => Buffer.from(value).toString("base64"),
+    URL,
+    URLSearchParams,
+    console,
+  });
+
+  return {
+    document,
+    fetchCalls,
+    element: (id) => document.getElement(id),
+    setFetchHandler(handler) { fetchHandler = handler; },
+    viewButton(leadId) {
+      return (document.rowElements.get(".view-button") ?? [])
+        .find((button) => button.dataset.leadId === leadId);
+    },
+  };
 }
 
 test("createMeiouServer authenticates only the explicitly injected credentials", async (t) => {
@@ -1037,6 +1204,40 @@ test("advisor review and AI retry routes authenticate before accessing the lead 
   assert.deepEqual(await retryResponse.json(), { error: "后台口令不正确" });
 });
 
+test("malformed encoded review and retry IDs authenticate before returning cache-free 400", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  await mkdir(leadsFilePath);
+  const reviewEndpoint = `${url}/api/leads/%ZZ/review`;
+  const retryEndpoint = `${url}/api/leads/%ZZ/ai-retry`;
+
+  const unauthenticatedReview = await fetch(reviewEndpoint, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "" }),
+  });
+  const unauthenticatedRetry = await fetch(retryEndpoint, { method: "POST" });
+  assert.equal(unauthenticatedReview.status, 401);
+  assert.equal(unauthenticatedRetry.status, 401);
+  assert.deepEqual(await unauthenticatedReview.json(), { error: "后台口令不正确" });
+  assert.deepEqual(await unauthenticatedRetry.json(), { error: "后台口令不正确" });
+
+  const authenticatedReview = await fetch(reviewEndpoint, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "" }),
+  });
+  const authenticatedRetry = await fetch(retryEndpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  assert.equal(authenticatedReview.status, 400);
+  assert.equal(authenticatedRetry.status, 400);
+  assert.equal(authenticatedReview.headers.get("cache-control"), "no-store");
+  assert.equal(authenticatedRetry.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await authenticatedReview.json(), { error: "客户标识格式不正确" });
+  assert.deepEqual(await authenticatedRetry.json(), { error: "客户标识格式不正确" });
+});
+
 test("authenticated advisor review saves an internal review and returns 404 for a missing lead", async (t) => {
   const { url } = await startTestServer(t);
   const created = await (await postLead(url)).json();
@@ -1605,6 +1806,69 @@ test("authenticated lead filters cover customer, product, institution, currency,
   assert.equal((await query({ dateFrom: today })).length, 4);
 });
 
+test("legacy advisor reviews project as pending for admin filtering and selected export without store mutation", async (t) => {
+  const legacyLeads = [
+    {
+      id: "legacy-missing-review",
+      createdAt: "2026-08-20T00:00:00.000Z",
+      companyName: "Legacy Missing Review Co.",
+      contactName: "Legacy One",
+      phone: "13800139001",
+      productMatches: [],
+      matchReport: { alternatives: [] },
+      aiAnalysis: { status: "fallback" },
+    },
+    {
+      id: "legacy-invalid-review",
+      createdAt: "2026-08-21T00:00:00.000Z",
+      companyName: "Legacy Invalid Review Co.",
+      contactName: "Legacy Two",
+      phone: "13800139002",
+      productMatches: [],
+      matchReport: { alternatives: [] },
+      aiAnalysis: { status: "fallback" },
+      advisorReview: { status: "approved", note: { html: "bad" }, updatedAt: "not-a-date" },
+    },
+    {
+      id: "valid-reviewed",
+      createdAt: "2026-08-22T00:00:00.000Z",
+      companyName: "Valid Reviewed Co.",
+      contactName: "Valid Advisor",
+      phone: "13800139003",
+      productMatches: [],
+      matchReport: { alternatives: [] },
+      aiAnalysis: { status: "generated" },
+      advisorReview: { status: "reviewed", note: "已核验", updatedAt: "2026-08-27T08:00:00.000Z" },
+    },
+  ];
+  const { leadsFilePath, url } = await startTestServer(t, { seedStore: { leads: legacyLeads } });
+  const beforeRead = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  const pendingResponse = await fetch(`${url}/api/leads?reviewStatus=pending`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const pendingLeads = (await pendingResponse.json()).leads;
+  const exportResponse = await fetch(
+    `${url}/api/leads/export?ids=legacy-missing-review&ids=legacy-invalid-review`,
+    { headers: { Authorization: adminAuthorization } },
+  );
+  const excel = await exportResponse.text();
+
+  assert.equal(pendingResponse.status, 200);
+  assert.deepEqual(pendingLeads.map((lead) => lead.id).sort(), [
+    "legacy-invalid-review",
+    "legacy-missing-review",
+  ]);
+  assert.ok(pendingLeads.every((lead) => (
+    lead.advisorReview.status === "pending"
+      && lead.advisorReview.note === ""
+      && lead.advisorReview.updatedAt === null
+  )));
+  assert.equal(exportResponse.status, 200);
+  assert.equal((excel.match(/<td[^>]*>pending<\/td>/g) ?? []).length, 2);
+  assert.doesNotMatch(excel, /approved|not-a-date|\[object Object\]/);
+  assert.deepEqual(JSON.parse(await readFile(leadsFilePath, "utf8")), beforeRead);
+});
+
 test("admin page exposes useful filters while preserving explicit selection-only export", async (t) => {
   const { url } = await startTestServer(t);
   const response = await fetch(`${url}/admin`);
@@ -1667,4 +1931,131 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
   const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new Function(script));
+});
+
+test("admin drawer ignores deferred save and retry responses after switching leads", async () => {
+  const lead = (id, note) => ({
+    id,
+    companyName: `${id} Company`,
+    contactName: `${id} Contact`,
+    phone: `13800138${id === "A" ? "101" : "102"}`,
+    createdAt: "2026-08-27T08:00:00.000Z",
+    profile: { primaryBusinessModel: "amazon_sc", requestedAmount: { amount: 1000000, currency: "USD" } },
+    matchReport: { primary: null, alternatives: [] },
+    advisorVerificationFields: [],
+    aiAnalysis: {
+      status: "fallback",
+      customerReport: {
+        statusMessage: `${id} AI status`,
+        businessSummary: [`${id} summary`],
+        productExplanations: [],
+        preparationActions: [],
+      },
+      advisorFocus: [],
+    },
+    advisorReview: { status: "pending", note, updatedAt: null },
+  });
+  const leadA = lead("A", "A original");
+  const leadB = lead("B", "B original");
+  const vm = createAdminScriptVm([leadA, leadB]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  await vm.element("load").dispatch("click");
+
+  const responseFor = (savedLead) => ({ ok: true, json: async () => ({ lead: savedLead }) });
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "A save value";
+  const deferredSaveA = createDeferred();
+  vm.setFetchHandler(() => deferredSaveA.promise);
+  const saveAPromise = vm.element("saveReview").dispatch("click");
+  await vm.element("closeDrawer").dispatch("click");
+  await vm.viewButton("B").dispatch("click");
+  const bDisabledWhenOpenedDuringSave = vm.element("saveReview").disabled;
+
+  deferredSaveA.resolve(responseFor({
+    ...leadA,
+    advisorReview: { status: "reviewed", note: "A save value", updatedAt: "2026-08-27T09:00:00.000Z" },
+  }));
+  await saveAPromise;
+  const afterStaleSave = {
+    title: vm.element("advisorDrawerTitle").textContent,
+    note: vm.element("reviewNote").value,
+    status: vm.element("drawerActionStatus").textContent,
+    saveDisabled: vm.element("saveReview").disabled,
+  };
+
+  vm.element("reviewStatus").value = "in_review";
+  vm.element("reviewNote").value = "B subsequent save";
+  let subsequentSaveBody;
+  vm.setFetchHandler(async (url, options) => {
+    subsequentSaveBody = { url, body: JSON.parse(options.body) };
+    return responseFor({
+      ...leadB,
+      advisorReview: { status: "in_review", note: "B subsequent save", updatedAt: "2026-08-27T10:00:00.000Z" },
+    });
+  });
+  await vm.element("saveReview").dispatch("click");
+
+  await vm.element("closeDrawer").dispatch("click");
+  await vm.viewButton("A").dispatch("click");
+  const deferredRetryA = createDeferred();
+  vm.setFetchHandler(() => deferredRetryA.promise);
+  const retryAPromise = vm.element("retryAi").dispatch("click");
+  await vm.element("closeDrawer").dispatch("click");
+  await vm.viewButton("B").dispatch("click");
+  const bDisabledWhenOpenedDuringRetry = vm.element("saveReview").disabled;
+
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "B save while A retry waits";
+  const deferredSaveB = createDeferred();
+  vm.setFetchHandler(() => deferredSaveB.promise);
+  const saveBPromise = vm.element("saveReview").dispatch("click");
+  deferredRetryA.resolve(responseFor({
+    ...leadA,
+    aiAnalysis: {
+      ...leadA.aiAnalysis,
+      status: "generated",
+      retryCount: 1,
+      customerReport: { ...leadA.aiAnalysis.customerReport, businessSummary: ["A retry value"] },
+    },
+  }));
+  await retryAPromise;
+  const afterStaleRetry = {
+    title: vm.element("advisorDrawerTitle").textContent,
+    note: vm.element("reviewNote").value,
+    status: vm.element("drawerActionStatus").textContent,
+    saveDisabled: vm.element("saveReview").disabled,
+    retryDisabled: vm.element("retryAi").disabled,
+  };
+
+  deferredSaveB.resolve(responseFor({
+    ...leadB,
+    advisorReview: { status: "reviewed", note: "B save while A retry waits", updatedAt: "2026-08-27T11:00:00.000Z" },
+  }));
+  await saveBPromise;
+
+  assert.equal(bDisabledWhenOpenedDuringSave, false);
+  assert.deepEqual(afterStaleSave, {
+    title: "B Company",
+    note: "B original",
+    status: "",
+    saveDisabled: false,
+  });
+  assert.deepEqual(subsequentSaveBody, {
+    url: "/api/leads/B/review",
+    body: { status: "in_review", note: "B subsequent save" },
+  });
+  assert.equal(bDisabledWhenOpenedDuringRetry, false);
+  assert.deepEqual(afterStaleRetry, {
+    title: "B Company",
+    note: "B save while A retry waits",
+    status: "正在保存复核...",
+    saveDisabled: true,
+    retryDisabled: true,
+  });
+  assert.equal(vm.element("advisorDrawerTitle").textContent, "B Company");
+  assert.equal(vm.element("reviewNote").value, "B save while A retry waits");
+  assert.equal(vm.element("drawerActionStatus").textContent, "复核已保存。");
+  assert.equal(vm.element("saveReview").disabled, false);
 });

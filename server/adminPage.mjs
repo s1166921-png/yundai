@@ -228,6 +228,9 @@ export function buildAdminPage({ leadColumns, products }) {
     let loadedLeads = [];
     let activeLeadId = null;
     let drawerReturnFocus = null;
+    let drawerGeneration = 0;
+    let drawerOperationSequence = 0;
+    let activeDrawerOperation = null;
     const selectedIds = new Set();
     const getAuthHeaders = () => {
       const username = usernameInput.value.trim();
@@ -358,9 +361,13 @@ export function buildAdminPage({ leadColumns, products }) {
       drawerActionStatus.textContent = "";
     };
     const openDrawer = (lead, trigger) => {
+      drawerGeneration += 1;
+      activeDrawerOperation = null;
       activeLeadId = lead.id;
       drawerReturnFocus = trigger;
       renderDrawer(lead);
+      saveReviewButton.disabled = false;
+      retryAiButton.disabled = false;
       drawerBackdrop.hidden = false;
       advisorDrawer.hidden = false;
       document.body.classList.add("drawer-open");
@@ -368,12 +375,49 @@ export function buildAdminPage({ leadColumns, products }) {
     };
     const closeDrawer = () => {
       if (advisorDrawer.hidden) return;
+      drawerGeneration += 1;
+      activeDrawerOperation = null;
       advisorDrawer.hidden = true;
       drawerBackdrop.hidden = true;
       document.body.classList.remove("drawer-open");
       activeLeadId = null;
       if (drawerReturnFocus && drawerReturnFocus.isConnected) drawerReturnFocus.focus();
       drawerReturnFocus = null;
+    };
+    const beginDrawerOperation = (leadId) => {
+      const operation = {
+        leadId,
+        generation: drawerGeneration,
+        token: drawerOperationSequence + 1,
+      };
+      drawerOperationSequence = operation.token;
+      activeDrawerOperation = operation;
+      return operation;
+    };
+    const isCurrentDrawerOperation = (operation) => (
+      activeDrawerOperation !== null
+        && activeDrawerOperation.token === operation.token
+        && activeDrawerOperation.generation === operation.generation
+        && activeDrawerOperation.leadId === operation.leadId
+        && operation.generation === drawerGeneration
+        && operation.leadId === activeLeadId
+        && !advisorDrawer.hidden
+    );
+    const cacheLoadedLead = (lead) => {
+      const leadIndex = loadedLeads.findIndex((item) => item.id === lead?.id);
+      if (leadIndex !== -1) loadedLeads[leadIndex] = lead;
+    };
+    const renderOperationLead = (operation, lead) => {
+      cacheLoadedLead(lead);
+      if (!isCurrentDrawerOperation(operation) || lead?.id !== operation.leadId) return false;
+      renderDrawer(lead);
+      return true;
+    };
+    const finishDrawerOperation = (operation) => {
+      if (!isCurrentDrawerOperation(operation)) return;
+      saveReviewButton.disabled = false;
+      retryAiButton.disabled = false;
+      activeDrawerOperation = null;
     };
     const syncExport = () => {
       const ids = [...selectedIds];
@@ -444,19 +488,16 @@ export function buildAdminPage({ leadColumns, products }) {
         first.focus();
       }
     });
-    const replaceLoadedLead = (lead) => {
-      const leadIndex = loadedLeads.findIndex((item) => item.id === lead.id);
-      if (leadIndex !== -1) loadedLeads[leadIndex] = lead;
-      renderDrawer(lead);
-    };
     saveReviewButton.addEventListener("click", async () => {
       const headers = getAuthHeaders();
       if (!headers || !activeLeadId) return;
+      const requestLeadId = activeLeadId;
+      const operation = beginDrawerOperation(requestLeadId);
       saveReviewButton.disabled = true;
       retryAiButton.disabled = true;
       drawerActionStatus.textContent = "正在保存复核...";
       try {
-        const response = await fetch("/api/leads/" + encodeURIComponent(activeLeadId) + "/review", {
+        const response = await fetch("/api/leads/" + encodeURIComponent(requestLeadId) + "/review", {
           method: "PATCH",
           headers: { ...headers, "Content-Type": "application/json" },
           cache: "no-store",
@@ -464,36 +505,42 @@ export function buildAdminPage({ leadColumns, products }) {
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "保存失败");
-        replaceLoadedLead(payload.lead);
-        drawerActionStatus.textContent = "复核已保存。";
+        if (renderOperationLead(operation, payload.lead)) {
+          drawerActionStatus.textContent = "复核已保存。";
+        }
       } catch (error) {
-        drawerActionStatus.textContent = error.message || "保存失败";
+        if (isCurrentDrawerOperation(operation)) {
+          drawerActionStatus.textContent = error.message || "保存失败";
+        }
       } finally {
-        saveReviewButton.disabled = false;
-        retryAiButton.disabled = false;
+        finishDrawerOperation(operation);
       }
     });
     retryAiButton.addEventListener("click", async () => {
       const headers = getAuthHeaders();
       if (!headers || !activeLeadId) return;
+      const requestLeadId = activeLeadId;
+      const operation = beginDrawerOperation(requestLeadId);
       saveReviewButton.disabled = true;
       retryAiButton.disabled = true;
       drawerActionStatus.textContent = "正在重试 AI 分析...";
       try {
-        const response = await fetch("/api/leads/" + encodeURIComponent(activeLeadId) + "/ai-retry", {
+        const response = await fetch("/api/leads/" + encodeURIComponent(requestLeadId) + "/ai-retry", {
           method: "POST",
           headers,
           cache: "no-store",
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "重试失败");
-        replaceLoadedLead(payload.lead);
-        drawerActionStatus.textContent = "AI 分析已更新。";
+        if (renderOperationLead(operation, payload.lead)) {
+          drawerActionStatus.textContent = "AI 分析已更新。";
+        }
       } catch (error) {
-        drawerActionStatus.textContent = error.message || "重试失败";
+        if (isCurrentDrawerOperation(operation)) {
+          drawerActionStatus.textContent = error.message || "重试失败";
+        }
       } finally {
-        saveReviewButton.disabled = false;
-        retryAiButton.disabled = false;
+        finishDrawerOperation(operation);
       }
     });
     const loadLeads = async () => {

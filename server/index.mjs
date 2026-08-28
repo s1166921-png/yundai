@@ -17,7 +17,7 @@ import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
-import { normalizeAdvisorReview } from "./advisorReview.mjs";
+import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -134,6 +134,16 @@ class UnsupportedMediaTypeError extends Error {}
 class LeadLifecycleInvariantError extends Error {}
 class LeadNotFoundError extends Error {}
 class AiRetryConflictError extends Error {}
+class InvalidLeadIdError extends Error {}
+
+function decodeLeadId(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    if (error instanceof URIError) throw new InvalidLeadIdError("lead ID is malformed");
+    throw error;
+  }
+}
 
 function uniqueLeadId(leads, idFactory) {
   const existingIds = new Set(leads.map((lead) => lead?.id).filter((id) => typeof id === "string" && id));
@@ -641,10 +651,18 @@ function formatLeadValue(lead, key) {
   return value || (key.startsWith("estimate.") ? "-" : "");
 }
 
+function adminLead(lead) {
+  return {
+    ...lead,
+    advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
+  };
+}
+
 function buildExcel(leads) {
   const headers = exportColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
   const rows = leads
-    .map((lead) => {
+    .map((storedLead) => {
+      const lead = adminLead(storedLead);
       const cells = exportColumns
         .map(([key]) => {
           const value = formatLeadValue(lead, key);
@@ -714,7 +732,7 @@ function filterLeads(url, leads) {
     if (institution && product?.institution !== institution) return false;
     if (currency && product?.currency !== currency) return false;
     if (status && getOverallMatchStatus(lead) !== status) return false;
-    if (reviewStatus && lead.advisorReview?.status !== reviewStatus) return false;
+    if (reviewStatus && projectStoredAdvisorReview(lead.advisorReview).status !== reviewStatus) return false;
     if (hasAmountMin && (!Number.isFinite(submittedAmount) || submittedAmount < amountMin)) return false;
     if (hasAmountMax && (!Number.isFinite(submittedAmount) || submittedAmount > amountMax)) return false;
     if (Number.isFinite(fromTime) && (!Number.isFinite(createdTime) || createdTime < fromTime)) return false;
@@ -878,14 +896,14 @@ async function handleRequest(request, response, {
         return;
       }
       const leads = await readLeads(leadsFilePath);
-      sendJson(response, 200, { leads: filterLeads(url, leads) });
+      sendJson(response, 200, { leads: filterLeads(url, leads).map(adminLead) });
       return;
     }
 
     if (advisorRoute?.[2] === "review" && request.method === "PATCH") {
+      const leadId = decodeLeadId(advisorRoute[1]);
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const input = parseJsonBody(await readBody(request));
-      const leadId = decodeURIComponent(advisorRoute[1]);
       let updatedLead;
       await updateLeads(leadsFilePath, (leads) => {
         const leadIndex = leads.findIndex((lead) => lead.id === leadId);
@@ -905,12 +923,12 @@ async function handleRequest(request, response, {
         updatedLeads[leadIndex] = updatedLead;
         return updatedLeads;
       });
-      sendJson(response, 200, { ok: true, lead: updatedLead });
+      sendJson(response, 200, { ok: true, lead: adminLead(updatedLead) });
       return;
     }
 
     if (advisorRoute?.[2] === "ai-retry" && request.method === "POST") {
-      const leadId = decodeURIComponent(advisorRoute[1]);
+      const leadId = decodeLeadId(advisorRoute[1]);
       let retryLead;
       let retryCount;
       await updateLeads(leadsFilePath, (leads) => {
@@ -959,7 +977,7 @@ async function handleRequest(request, response, {
         updatedLeads[leadIndex] = completedLead;
         return updatedLeads;
       });
-      sendJson(response, 200, { ok: true, lead: completedLead });
+      sendJson(response, 200, { ok: true, lead: adminLead(completedLead) });
       return;
     }
 
@@ -1010,6 +1028,10 @@ async function handleRequest(request, response, {
     }
     if (error instanceof AiRetryConflictError) {
       sendJson(response, 409, { error: "AI 分析不可再次重试" });
+      return;
+    }
+    if (error instanceof InvalidLeadIdError) {
+      sendJson(response, 400, { error: "客户标识格式不正确" });
       return;
     }
     logger.error("Unhandled Meiou server request error", {

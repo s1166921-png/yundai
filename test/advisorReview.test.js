@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeAdvisorReview } from "../server/advisorReview.mjs";
+import { normalizeAdvisorReview, projectStoredAdvisorReview } from "../server/advisorReview.mjs";
 
 const currentReview = Object.freeze({
   status: "pending",
@@ -73,4 +73,32 @@ test("invalid review input never advances updatedAt", () => {
     },
   ), /note/);
   assert.equal(clockCalls, 0);
+});
+
+test("stored review projection preserves valid reviews and defaults malformed legacy values", () => {
+  const valid = {
+    status: "reviewed",
+    note: "已核验",
+    updatedAt: "2026-08-27T08:00:00.000Z",
+  };
+  const projected = projectStoredAdvisorReview(valid);
+  assert.deepEqual(projected, valid);
+  assert.notEqual(projected, valid);
+
+  for (const malformed of [
+    undefined,
+    null,
+    [],
+    { status: "approved", note: "", updatedAt: null },
+    { status: "pending", note: 42, updatedAt: null },
+    { status: "pending", note: " 未规范 ", updatedAt: null },
+    { status: "pending", note: "x".repeat(2001), updatedAt: null },
+    { status: "reviewed", note: "", updatedAt: "not-a-date" },
+  ]) {
+    assert.deepEqual(projectStoredAdvisorReview(malformed), {
+      status: "pending",
+      note: "",
+      updatedAt: null,
+    });
+  }
 });

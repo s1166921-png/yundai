@@ -11,6 +11,30 @@ const defaultReview = Object.freeze({
   updatedAt: null,
 });
 
+const defaultReviewProjection = () => ({ ...defaultReview });
+
+export function projectStoredAdvisorReview(review) {
+  if (review === null || typeof review !== "object" || Array.isArray(review)) {
+    return defaultReviewProjection();
+  }
+  if (!reviewStatuses.has(review.status)) return defaultReviewProjection();
+  if (typeof review.note !== "string" || review.note !== review.note.trim() || review.note.length > 2000) {
+    return defaultReviewProjection();
+  }
+  if (review.updatedAt !== null && (
+    typeof review.updatedAt !== "string"
+      || !Number.isFinite(Date.parse(review.updatedAt))
+      || new Date(review.updatedAt).toISOString() !== review.updatedAt
+  )) {
+    return defaultReviewProjection();
+  }
+  return {
+    status: review.status,
+    note: review.note,
+    updatedAt: review.updatedAt,
+  };
+}
+
 export function normalizeAdvisorReview(
   input,
   current = defaultReview,
@@ -28,11 +52,13 @@ export function normalizeAdvisorReview(
     throw new RangeError("review note must be at most 2000 characters");
   }
 
-  if (input.status === current?.status && note === current?.note) {
+  const projectedCurrent = projectStoredAdvisorReview(current);
+
+  if (input.status === projectedCurrent.status && note === projectedCurrent.note) {
     return {
-      status: current.status,
-      note: current.note,
-      updatedAt: current.updatedAt ?? null,
+      status: projectedCurrent.status,
+      note: projectedCurrent.note,
+      updatedAt: projectedCurrent.updatedAt,
     };
   }
 
