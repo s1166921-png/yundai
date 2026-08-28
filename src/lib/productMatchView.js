@@ -1,5 +1,5 @@
 import { MATCH_DISCLAIMER } from "./publicMatchContract.js";
-import { isCustomerSafeAiText } from "./aiReportView.js";
+import { normalizeCustomerAiText } from "./aiReportView.js";
 
 const currencyUnit = (currency) => ({ RMB: "元", USD: "美元" }[currency] ?? currency ?? "");
 
@@ -72,9 +72,7 @@ const formatEstimatedAmount = (estimatedAmount) => {
 
 const safeExplanationList = (value) => (
   Array.isArray(value)
-    ? value.filter((item) => (
-      typeof item === "string" && item.trim() && isCustomerSafeAiText(item)
-    )).slice(0, 3)
+    ? value.map(normalizeCustomerAiText).filter(Boolean).slice(0, 3)
     : []
 );
 
@@ -95,7 +93,9 @@ const safeReportProduct = (reportProduct, products, explanations) => {
   if (reportProduct == null || typeof reportProduct !== "object") return null;
   const catalog = catalogProductFor(reportProduct, products);
   const productId = reportProduct.productId ?? catalog?.id ?? null;
-  const explanation = typeof productId === "string" ? explanations.get(productId) : null;
+  const explanation = typeof reportProduct.productId === "string"
+    ? explanations.get(reportProduct.productId)
+    : null;
   const limit = reportProduct.limit ?? catalog?.limit ?? null;
   const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
   const presentationLabel = SAFE_PRESENTATION_LABELS.has(reportProduct.presentationLabel)

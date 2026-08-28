@@ -212,7 +212,7 @@ function HeroVisual() {
     <aside className="command-center cloud-loan" aria-label="Meiou cloud loan command center">
       <div className="panel-header">
         <span>AI 经营诊断中枢</span>
-        <strong>LIVE</strong>
+        <strong>流程示意</strong>
         <button type="button">经营视图</button>
       </div>
       <div className="map-stage">
@@ -224,22 +224,22 @@ function HeroVisual() {
       <div className="signal-cards">
         <button className="signal-card active" type="button">
           <span>经营画像</span>
-          <strong>已生成</strong>
+          <strong>待分析</strong>
           <small>识别经营阶段</small>
         </button>
         <button className="signal-card" type="button">
           <span>资金方向</span>
-          <strong>已匹配</strong>
+          <strong>待核对</strong>
           <small>结合周转场景</small>
         </button>
         <button className="signal-card" type="button">
           <span>资料清单</span>
-          <strong>待准备</strong>
+          <strong>待生成</strong>
           <small>提前减少反复沟通</small>
         </button>
         <button className="signal-card shield" type="button">
           <span>参考区间</span>
-          <strong>可测算</strong>
+          <strong>待测算</strong>
           <small>规则透明可查</small>
         </button>
       </div>

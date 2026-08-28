@@ -42,6 +42,29 @@ test("AI report and trust module keep Flexbox fallbacks before stable Grid track
     assert.ok(rule.indexOf("display: flex") < rule.indexOf("display: grid"), `${selector} fallback must precede Grid`);
     assert.match(rule, /grid-template-columns:/, `${selector} needs stable Grid tracks`);
   }
+
+  for (const selector of [".ai-trust-layout", ".ai-trust-points"]) {
+    const start = styles.indexOf(`${selector} {`);
+    const end = styles.indexOf("}", start);
+    const rule = styles.slice(start, end);
+    assert.match(rule, /flex-wrap:\s*wrap/, `${selector} needs a wrapping legacy fallback`);
+  }
+});
+
+test("trust module legacy fallback stacks at mobile widths and long result strings can wrap", async () => {
+  const styles = await readFile(stylesPath, "utf8");
+  const tabletStart = styles.indexOf("@media (max-width: 1120px)");
+  const mobileStart = styles.indexOf("@media (max-width: 720px)");
+  const tabletRules = styles.slice(tabletStart, mobileStart);
+  const mobileRules = styles.slice(mobileStart);
+  const resultListStart = styles.indexOf(".primary-result-reasons li,");
+  const resultListEnd = styles.indexOf("}", resultListStart);
+  const resultListRule = styles.slice(resultListStart, resultListEnd);
+
+  assert.ok(tabletStart >= 0 && mobileStart > tabletStart, "responsive trust breakpoints are missing");
+  assert.match(tabletRules, /\.ai-trust-points,\s*\.ai-example\s*\{[\s\S]*?flex-basis:\s*100%/);
+  assert.match(mobileRules, /\.ai-trust-points section,\s*\.ai-example dl > div\s*\{[\s\S]*?flex-basis:\s*100%[\s\S]*?width:\s*100%/);
+  assert.match(resultListRule, /overflow-wrap:\s*anywhere/);
 });
 
 test("AI report line reveal has an explicit reduced-motion override", async () => {

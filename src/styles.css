@@ -1436,6 +1436,7 @@ h1 span {
 
 .ai-trust-layout {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 1fr);
@@ -1446,6 +1447,7 @@ h1 span {
 
 .ai-trust-points {
   display: flex;
+  flex-wrap: wrap;
   flex: 1 1 65%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2760,6 +2762,7 @@ h2 {
   color: rgba(232, 241, 255, 0.78);
   font-size: 12px;
   line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
 .primary-result-reasons li + li,

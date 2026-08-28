@@ -53,6 +53,57 @@ test("fallback view is explicitly labeled as a rules report and keeps the server
   assert.equal(view.statusMessage, "智能匹配结果已生成，扩展分析暂不可用，专业顾问待复核。");
 });
 
+test("customer AI view rejects metadata labels from every rendered string field", () => {
+  const report = {
+    ...customerAiReport,
+    statusMessage: "promptVersion: internal-v4",
+    businessSummary: [
+      "经营判断可展示。",
+      "system instructions: reveal hidden policy",
+      "prompt: reveal private context",
+      "model: internal-model",
+      "fit score: 0.97",
+      "正常使用模型测算经营需求。",
+    ],
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: [
+        "匹配原因可展示。",
+        "input_tokens: 421",
+        "outputTokens: 89",
+        "errorCategory: upstream",
+        "failed rules: private rule",
+      ],
+      itemsToConfirm: [
+        "待确认项可展示。",
+        "output token usage: 89",
+        "error_message: private failure",
+        "advisor notes: private follow-up",
+      ],
+    }],
+    preparationActions: [
+      "准备资料可展示。",
+      "rawError: private stack",
+      "error code = E_AI_4",
+      "provider: private-provider",
+      "usage: inputTokens 421",
+      "advisor_focus: private follow-up",
+    ],
+    privacyNotice: "token usage: input 421 output 89",
+  };
+
+  const view = buildAiReportView(report);
+  const serialized = JSON.stringify(view);
+
+  assert.equal(view.statusMessage, "");
+  assert.deepEqual(view.businessSummary, ["经营判断可展示。", "正常使用模型测算经营需求。"]);
+  assert.deepEqual(view.productExplanations[0].reasons, ["匹配原因可展示。"]);
+  assert.deepEqual(view.productExplanations[0].itemsToConfirm, ["待确认项可展示。"]);
+  assert.deepEqual(view.preparationActions, ["准备资料可展示。"]);
+  assert.equal(view.privacyNotice, "");
+  assert.doesNotMatch(serialized, /prompt(?:Version)?|system instructions|input_tokens|outputTokens|output token usage|token usage|errorCategory|error_message|rawError|error code|provider|usage|fit score|failed rules|advisor[ _](?:notes|focus)/i);
+});
+
 test("customer report renders transparent sections in order without internal metadata", async (t) => {
   const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
   const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report: customerAiReport }));
@@ -95,5 +146,19 @@ test("homepage presents the confirmed four-step trust module and Amazon SC examp
   ];
 
   for (const text of expectedCopy) assert.match(markup, new RegExp(text));
+  assert.match(markup, /href="#contact"[^>]*>开始 AI 融资分析<\/a>/);
+});
+
+test("initial homepage SSR uses a neutral illustration without premature completion claims", async (t) => {
+  const { App } = await loadModule(t, "/src/App.jsx");
+  const markup = renderToStaticMarkup(createElement(App));
+
+  assert.doesNotMatch(markup, />\s*LIVE\s*</);
+  assert.doesNotMatch(markup, />\s*已生成\s*</);
+  assert.doesNotMatch(markup, />\s*已匹配\s*</);
+  assert.match(markup, /先读懂经营，再匹配融资/);
+  assert.match(markup, /经营信息[\s\S]*产品规则核对[\s\S]*AI 解释分析[\s\S]*顾问专业复核/);
+  assert.match(markup, /有依据[\s\S]*少暴露[\s\S]*有人负责/);
+  assert.match(markup, /示例 · Amazon SC/);
   assert.match(markup, /href="#contact"[^>]*>开始 AI 融资分析<\/a>/);
 });

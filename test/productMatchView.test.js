@@ -159,6 +159,46 @@ test("AI explanations merge only by immutable product id and preserve rule fallb
   assert.deepEqual(view.alternatives[1].itemsToConfirm, ["需确认买方交易记录。"]);
 });
 
+test("AI explanations never attach through a same-name catalog fallback when product id is absent", () => {
+  const reportWithoutProductId = {
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      productId: undefined,
+    },
+  };
+  const aiReport = {
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: ["不应通过同名产品关联。"],
+      itemsToConfirm: ["不应通过机构和名称关联。"],
+    }],
+  };
+
+  const view = buildProductMatchView(reportWithoutProductId, PUBLIC_PRODUCTS, aiReport);
+
+  assert.equal(view.primary.productId, "linklogis-amazon-sc");
+  assert.equal(view.primary.name, "联易融 Amazon SC 卖家融资贷");
+  assert.deepEqual(view.primary.aiReasons, []);
+  assert.deepEqual(view.primary.itemsToConfirm, []);
+  assert.deepEqual(view.primary.whyMatched, ["需为 Amazon 店铺。"]);
+});
+
+test("match-card AI strings are normalized and capped at 200 characters", () => {
+  const longReason = `  ${"A".repeat(260)}  `;
+  const longConfirmation = `  ${"B".repeat(260)}  `;
+  const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS, {
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: [longReason],
+      itemsToConfirm: [longConfirmation],
+    }],
+  });
+
+  assert.equal(view.primary.aiReasons[0], "A".repeat(200));
+  assert.equal(view.primary.itemsToConfirm[0], "B".repeat(200));
+});
+
 test("scroll uses smooth options and switches to auto for reduced motion", () => {
   const calls = [];
   const element = { scrollIntoView: (options) => calls.push(options) };
