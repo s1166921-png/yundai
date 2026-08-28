@@ -11,10 +11,18 @@ Install the pinned dependencies:
 pnpm install
 ```
 
-Start the API with locally supplied admin credentials:
+Start the API from your own terminal. This form keeps the API key and local admin
+password out of shell history and source files:
 
 ```bash
-MEIOU_ADMIN_USER=<local-user> MEIOU_ADMIN_PASSWORD=<local-password> pnpm dev:api
+read -s "DEEPSEEK_API_KEY?DeepSeek API Key: "; echo; export DEEPSEEK_API_KEY
+read "MEIOU_ADMIN_USER?Admin user: "; export MEIOU_ADMIN_USER
+read -s "MEIOU_ADMIN_PASSWORD?Admin password: "; echo; export MEIOU_ADMIN_PASSWORD
+DEEPSEEK_MODEL=deepseek-v4-pro \
+DEEPSEEK_BASE_URL=https://api.deepseek.com \
+DEEPSEEK_TIMEOUT_MS=12000 \
+AI_DAILY_REQUEST_LIMIT=100 \
+PORT=8787 pnpm dev:api
 ```
 
 In a second terminal, start Vite:
@@ -31,6 +39,23 @@ Vite proxies `/api` to the local API. The Node server binds to loopback and has 
 default admin credential; both environment values are required for the standalone
 runtime.
 
+Enter every secret only in your own terminal environment. Do not paste an API key or
+password into chat, source code, a committed `.env` file, or browser storage. Use only
+synthetic profiles and placeholder local credentials for development and QA.
+
+### AI local modes
+
+- **No `DEEPSEEK_API_KEY`:** submissions use the deterministic `rules_fallback` report.
+  The fallback is explicitly labeled for the customer and lead persistence still succeeds.
+- **Official key configured:** the server calls DeepSeek using the values above and
+  validates the returned analysis against the deterministic product order before it is
+  used.
+- Provider timeouts, rate limits, malformed responses, and other provider failures do
+  not block lead persistence. They resolve to the local fallback instead.
+
+Deployment, SMS, production hosting, and cloud credential setup are out of scope for
+this repository workflow.
+
 Cross-origin browser access is denied by default except for the request's own origin.
 Set comma-separated `MEIOU_ALLOWED_ORIGINS` values only for explicitly approved
 frontends. Lead submissions must use `Content-Type: application/json`.
@@ -43,6 +68,12 @@ MEIOU_ADMIN_PASSWORD=<local-password> \
 MEIOU_ALLOWED_ORIGINS=http://127.0.0.1:5174 \
 PORT=8787 pnpm dev:api
 ```
+
+Current local-UAT concern: the default Vite client at `http://127.0.0.1:5173` sends
+that origin to the API. Until the controller fixes the proxy/CORS integration, local
+browser submissions require that exact origin in `MEIOU_ALLOWED_ORIGINS`; see
+`docs/ai-financing-advisor-qa.md`. This is a local acceptance blocker, not a reason to
+use a broader origin or any production hostname.
 
 ## Test and build
 
