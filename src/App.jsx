@@ -261,17 +261,23 @@ function ProofRibbon() {
 
 function AiDiagnosticSection() {
   const steps = [
-    ["01", "经营信息", "营收、利润、增长、团队与融资需求"],
-    ["02", "AI 经营梳理", "识别经营阶段、资金场景与资料准备重点"],
-    ["03", "融资准备报告", "输出参考区间、行动建议与顾问跟进方向"],
+    ["01", "经营信息", "只填写影响产品判断的关键经营字段"],
+    ["02", "产品规则核对", "按产品准入条件完成确定性匹配"],
+    ["03", "AI 解释分析", "生成依据、待确认项与资料建议"],
+    ["04", "顾问专业复核", "由融资顾问进一步确认适配方向"],
+  ];
+  const trustPoints = [
+    ["有依据", "每个结论都有经营依据"],
+    ["少暴露", "AI 仅分析脱敏经营字段"],
+    ["有人负责", "结果由专业顾问进一步复核"],
   ];
 
   return (
     <section className="ai-diagnostic-section" aria-label="AI financing diagnostic" id="ai-diagnosis">
       <div className="ai-diagnostic-intro" data-reveal>
         <p className="eyebrow">AI financing diagnostic</p>
-        <h2>不是替您承诺额度，而是先把融资准备这件事看清楚</h2>
-        <p>经营数据、资金用途和资料准备被整理成一份可执行的融资准备报告，让每次沟通都有更明确的起点。</p>
+        <h2>先读懂经营，再匹配融资</h2>
+        <p>AI 梳理企业经营信息，结合产品准入规则生成融资方向，由专业顾问进一步复核。</p>
       </div>
       <div className="ai-diagnostic-flow" data-reveal>
         {steps.map(([index, title, body], stepIndex) => (
@@ -283,7 +289,25 @@ function AiDiagnosticSection() {
           </div>
         ))}
       </div>
-      <a className="outline-button ai-diagnostic-action" href="#contact" data-reveal>开始 AI 经营诊断</a>
+      <div className="ai-trust-layout" data-reveal>
+        <div className="ai-trust-points">
+          {trustPoints.map(([title, body]) => (
+            <section key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </section>
+          ))}
+        </div>
+        <aside className="ai-example" aria-label="Amazon SC 分析示例">
+          <span>示例 · Amazon SC</span>
+          <dl>
+            <div><dt>经营事实</dt><dd>单店近 12 个月 GMV 已提交</dd></div>
+            <div><dt>产品方向</dt><dd>Amazon SC 卖家融资</dd></div>
+            <div><dt>仍需确认</dt><dd>销售报告与回款账户安排</dd></div>
+          </dl>
+        </aside>
+      </div>
+      <a className="outline-button ai-diagnostic-action" href="#contact" data-reveal>开始 AI 融资分析</a>
     </section>
   );
 }
@@ -410,11 +434,11 @@ function AdvantageEngine() {
   );
 }
 
-function AccessAndProcess({ report, products }) {
+function AccessAndProcess({ report, products, aiReport }) {
   return (
     <section id="access" className="access-process" aria-label="Product matching and application process">
       <div className="access-inner">
-        <ProductMatchCenter report={report} products={products} />
+        <ProductMatchCenter report={report} products={products} aiReport={aiReport} />
 
         <div className="process-panel">
           <div className="process-heading" data-reveal>
@@ -528,7 +552,11 @@ export function App() {
 
       <AdvantageEngine />
 
-      <AccessAndProcess report={leadResult?.matchReport ?? null} products={publicProducts} />
+      <AccessAndProcess
+        report={leadResult?.matchReport ?? null}
+        products={publicProducts}
+        aiReport={leadResult?.aiReport ?? null}
+      />
 
       <ProductPanel />
 

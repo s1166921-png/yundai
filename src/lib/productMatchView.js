@@ -1,4 +1,5 @@
 import { MATCH_DISCLAIMER } from "./publicMatchContract.js";
+import { isCustomerSafeAiText } from "./aiReportView.js";
 
 const currencyUnit = (currency) => ({ RMB: "元", USD: "美元" }[currency] ?? currency ?? "");
 
@@ -69,9 +70,32 @@ const formatEstimatedAmount = (estimatedAmount) => {
   return { amount: note ?? "待资金方进一步核定", amountNote: null };
 };
 
-const safeReportProduct = (reportProduct, products) => {
+const safeExplanationList = (value) => (
+  Array.isArray(value)
+    ? value.filter((item) => (
+      typeof item === "string" && item.trim() && isCustomerSafeAiText(item)
+    )).slice(0, 3)
+    : []
+);
+
+const explanationMapFrom = (aiReport) => {
+  const explanations = new Map();
+  if (!Array.isArray(aiReport?.productExplanations)) return explanations;
+  for (const explanation of aiReport.productExplanations) {
+    if (typeof explanation?.productId !== "string" || explanations.has(explanation.productId)) continue;
+    explanations.set(explanation.productId, {
+      aiReasons: safeExplanationList(explanation.reasons),
+      itemsToConfirm: safeExplanationList(explanation.itemsToConfirm),
+    });
+  }
+  return explanations;
+};
+
+const safeReportProduct = (reportProduct, products, explanations) => {
   if (reportProduct == null || typeof reportProduct !== "object") return null;
   const catalog = catalogProductFor(reportProduct, products);
+  const productId = reportProduct.productId ?? catalog?.id ?? null;
+  const explanation = typeof productId === "string" ? explanations.get(productId) : null;
   const limit = reportProduct.limit ?? catalog?.limit ?? null;
   const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
   const presentationLabel = SAFE_PRESENTATION_LABELS.has(reportProduct.presentationLabel)
@@ -84,12 +108,14 @@ const safeReportProduct = (reportProduct, products) => {
   const amountPresentation = formatEstimatedAmount(canShowAmount ? reportProduct.estimatedAmount : null);
 
   return {
-    productId: reportProduct.productId ?? catalog?.id ?? null,
+    productId,
     institution: reportProduct.institution ?? catalog?.institution ?? "",
     name: reportProduct.name ?? catalog?.name ?? "",
     whyMatched: Array.isArray(reportProduct.whyMatched)
       ? reportProduct.whyMatched.filter((reason) => typeof reason === "string").slice(0, 3)
       : [],
+    aiReasons: explanation?.aiReasons ?? [],
+    itemsToConfirm: explanation?.itemsToConfirm ?? [],
     presentationLabel,
     ...amountPresentation,
     currency,
@@ -138,14 +164,15 @@ const buildCatalogView = (products) => {
   };
 };
 
-const buildReportView = (report, products) => {
-  const primary = safeReportProduct(report.primary, products);
+const buildReportView = (report, products, aiReport) => {
+  const explanations = explanationMapFrom(aiReport);
+  const primary = safeReportProduct(report.primary, products, explanations);
   const missingDocuments = Array.isArray(report.missingDocuments)
     ? report.missingDocuments.filter((item) => typeof item === "string").slice(0, 5)
     : [];
   const alternatives = (Array.isArray(report.alternatives) ? report.alternatives : [])
     .slice(0, 2)
-    .map((product) => safeReportProduct(product, products))
+    .map((product) => safeReportProduct(product, products, explanations))
     .filter(Boolean)
     .map((product) => ({
       ...product,
@@ -172,9 +199,9 @@ const buildReportView = (report, products) => {
   };
 };
 
-export function buildProductMatchView(report, products = []) {
+export function buildProductMatchView(report, products = [], aiReport = null) {
   const safeProducts = Array.isArray(products) ? products : [];
-  return report == null ? buildCatalogView(safeProducts) : buildReportView(report, safeProducts);
+  return report == null ? buildCatalogView(safeProducts) : buildReportView(report, safeProducts, aiReport);
 }
 
 export function scrollProductMatchCenterIntoView(element, windowObject = globalThis.window) {

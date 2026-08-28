@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   INTAKE_VERSION,
   INTAKE_STEPS,
+  INTAKE_INFORMATION_USE_NOTICE,
+  INTAKE_SUBMISSION_COPY,
   getVisibleIntakeFields,
   validateIntakeStep,
 } from "../lib/matching/intakeSchema.js";
@@ -319,9 +321,7 @@ function ConsentField({ field, value, error, onChange, inputRef }) {
     <section className={`intake-field consent-field ${error ? "has-error" : ""}`} aria-labelledby={`${noticeId}-title`}>
       <div className="information-use-notice" id={noticeId}>
         <h4 id={`${noticeId}-title`}>信息使用说明</h4>
-        <p>
-          您提交的联系人及企业经营数据将用于融资产品匹配和融资顾问后续跟进。匹配结果仅供融资准备参考，不构成授信或放款承诺。
-        </p>
+        <p>{INTAKE_INFORMATION_USE_NOTICE}</p>
       </div>
       <label className="consent-checkbox" htmlFor={inputId}>
         <input
@@ -580,7 +580,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
 
     setErrors({});
     invalidateIntakeResult(onInvalidate, "submit_start");
-    setStatus({ type: "loading", message: "正在提交经营信息并生成匹配结果..." });
+    setStatus({ type: "loading", message: INTAKE_SUBMISSION_COPY.loading });
     cancelPendingSubmission();
     const controller = typeof AbortController === "function" ? new AbortController() : null;
     requestController.current = controller;
@@ -593,7 +593,7 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
       const leadResponse = responsePayload.lead;
       setStatus({
         type: "success",
-        message: "信息已提交，产品匹配报告已生成。",
+        message: INTAKE_SUBMISSION_COPY.success,
       });
       if (typeof onComplete === "function") onComplete(leadResponse);
     } catch (error) {
@@ -667,10 +667,10 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
         </button>
         <button className="hot-button" type="submit" disabled={status.type === "loading"}>
           {status.type === "loading"
-            ? "正在提交..."
+            ? "正在生成初步报告…"
             : currentStep < INTAKE_STEPS.length
               ? "下一步"
-              : "生成产品匹配报告"}
+              : "生成初步报告"}
         </button>
       </div>
       <div className="form-status-slot" aria-live="polite" aria-atomic="true">

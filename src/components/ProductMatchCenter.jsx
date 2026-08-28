@@ -1,4 +1,9 @@
 import { buildProductMatchView } from "../lib/productMatchView.js";
+import { AiPreliminaryReport } from "./AiPreliminaryReport.jsx";
+
+const productReasons = (product) => (
+  product.aiReasons.length > 0 ? product.aiReasons : product.whyMatched
+);
 
 function CatalogProductCard({ product }) {
   return (
@@ -48,6 +53,7 @@ function ProductCatalog({ groups }) {
 }
 
 function PrimaryResult({ product }) {
+  const reasons = productReasons(product);
   return (
     <article className="match-primary-result">
       <header className="primary-result-heading">
@@ -80,8 +86,8 @@ function PrimaryResult({ product }) {
       <div className="primary-result-reasons">
         <section>
           <h4>为什么匹配</h4>
-          {product.whyMatched.length > 0 ? (
-            <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+          {reasons.length > 0 ? (
+            <ul>{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
           ) : (
             <p>{product.presentationLabel === "优先匹配"
               ? "当前已提交信息支持优先评估该产品方向。"
@@ -89,8 +95,12 @@ function PrimaryResult({ product }) {
           )}
         </section>
         <section>
-          <h4>核心前置条件</h4>
-          <p>{product.keyPrerequisite || "待资金方进一步核验"}</p>
+          <h4>仍需确认</h4>
+          {product.itemsToConfirm.length > 0 ? (
+            <ul>{product.itemsToConfirm.map((item) => <li key={item}>{item}</li>)}</ul>
+          ) : (
+            <p>{product.keyPrerequisite || "待资金方进一步核验"}</p>
+          )}
         </section>
       </div>
     </article>
@@ -98,6 +108,10 @@ function PrimaryResult({ product }) {
 }
 
 function AlternativeResult({ product }) {
+  const reasons = productReasons(product);
+  const confirmations = product.itemsToConfirm.length > 0
+    ? product.itemsToConfirm
+    : product.missingInformation;
   return (
     <article className="match-alternative-result">
       <header>
@@ -116,13 +130,17 @@ function AlternativeResult({ product }) {
         <div><dt>期限</dt><dd>{product.term}</dd></div>
       </dl>
       <section>
-        <h5>与首选的差异</h5>
-        <ul>{product.differences.map((difference) => <li key={difference}>{difference}</li>)}</ul>
+        <h5>为什么匹配</h5>
+        {reasons.length > 0 ? (
+          <ul>{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        ) : (
+          <p>当前资料支持将该产品作为进一步核验方向。</p>
+        )}
       </section>
       <section>
-        <h5>本轮待补信息</h5>
-        {product.missingInformation.length > 0 ? (
-          <ul>{product.missingInformation.map((item) => <li key={item}>{item}</li>)}</ul>
+        <h5>仍需确认</h5>
+        {confirmations.length > 0 ? (
+          <ul>{confirmations.map((item) => <li key={item}>{item}</li>)}</ul>
         ) : (
           <p>暂无额外资料提示。</p>
         )}
@@ -186,8 +204,8 @@ function MatchResults({ view }) {
   );
 }
 
-export function ProductMatchCenter({ report, products }) {
-  const view = buildProductMatchView(report, products);
+export function ProductMatchCenter({ report, products, aiReport }) {
+  const view = buildProductMatchView(report, products, aiReport);
   const catalogIsLoading = view.state === "catalog" && products == null;
   const catalogIsUnavailable = view.state === "catalog" && !catalogIsLoading && view.groups.length === 0;
 
@@ -208,6 +226,7 @@ export function ProductMatchCenter({ report, products }) {
       {catalogIsLoading && <p className="product-catalog-status" role="status">正在加载产品目录…</p>}
       {catalogIsUnavailable && <p className="product-catalog-status" role="status">产品目录暂时无法加载，请稍后刷新。</p>}
       {view.state === "catalog" && !catalogIsLoading && !catalogIsUnavailable && <ProductCatalog groups={view.groups} />}
+      {view.state === "report" && aiReport && <AiPreliminaryReport report={aiReport} />}
       {view.state === "report" && <MatchResults view={view} />}
     </section>
   );

@@ -1,5 +1,12 @@
 export const INTAKE_VERSION = "progressive-v1";
 
+export const INTAKE_INFORMATION_USE_NOTICE = "为生成初步报告，脱敏后的企业经营字段将发送至第三方 AI 服务；企业身份信息、联系人和联系电话不会发送。";
+
+export const INTAKE_SUBMISSION_COPY = Object.freeze({
+  loading: "正在整理经营信息、核对产品规则并生成初步分析…",
+  success: "初步报告已生成，专业顾问将进一步复核。",
+});
+
 export const INTAKE_STEPS = Object.freeze([
   Object.freeze({ id: 1, title: "融资场景与需求", shortTitle: "场景" }),
   Object.freeze({ id: 2, title: "关键经营数据", shortTitle: "经营" }),
@@ -177,7 +184,7 @@ const INTAKE_FIELDS = Object.freeze([
   booleanField("acceptsReceivablesArrangement", 3, "接受应收账款安排", { visibleWhen: primaryIs("amazon_vc", "b2b_supermarket") }),
   textField("contactName", 3, "联系人", required),
   textField("phone", 3, "联系电话", { ...required, inputMode: "tel" }),
-  field({ key: "consentToDataUse", step: 3, label: "我已了解并同意上述信息使用说明", type: "consent", ...required }),
+  field({ key: "consentToDataUse", step: 3, label: "我已了解并同意上述 AI 信息使用说明", type: "consent", ...required }),
 ]);
 
 export const INTAKE_FIELD_KEYS = Object.freeze(INTAKE_FIELDS.map(({ key }) => key));

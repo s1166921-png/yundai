@@ -126,6 +126,39 @@ test("submitted view keeps one dominant result, two alternatives, and customer-s
   assert.doesNotMatch(serialized, /fitScore|confidence|failedRules|priority|unsafe replacement/);
 });
 
+test("AI explanations merge only by immutable product id and preserve rule fallbacks", () => {
+  const aiReport = {
+    productExplanations: [
+      {
+        productId: "linklogis-amazon-vc",
+        name: "联易融 Amazon SC 卖家融资贷",
+        reasons: ["VC 发货后应收场景与该方向一致。"],
+        itemsToConfirm: ["需确认 VC 结算文件。"],
+      },
+      {
+        productId: "linklogis-amazon-sc",
+        name: "错误展示名称",
+        reasons: ["Amazon SC 经营场景与该方向一致。", "advisorNotes: internal"],
+        itemsToConfirm: ["需确认单店铺 GMV 证明。"],
+      },
+      {
+        productId: "linklogis-b2b-factoring",
+        reasons: [],
+        itemsToConfirm: ["需确认买方交易记录。"],
+      },
+    ],
+  };
+
+  const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS, aiReport);
+
+  assert.deepEqual(view.primary.aiReasons, ["Amazon SC 经营场景与该方向一致。"]);
+  assert.deepEqual(view.primary.itemsToConfirm, ["需确认单店铺 GMV 证明。"]);
+  assert.deepEqual(view.alternatives[0].aiReasons, ["VC 发货后应收场景与该方向一致。"]);
+  assert.deepEqual(view.alternatives[1].aiReasons, []);
+  assert.deepEqual(view.alternatives[1].whyMatched, ["与买方交易历史需超过 12 个月。"]);
+  assert.deepEqual(view.alternatives[1].itemsToConfirm, ["需确认买方交易记录。"]);
+});
+
 test("scroll uses smooth options and switches to auto for reduced motion", () => {
   const calls = [];
   const element = { scrollIntoView: (options) => calls.push(options) };
