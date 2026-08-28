@@ -34,3 +34,16 @@ The corpus now contains 30 explicit, recursively frozen synthetic profiles. Ever
 ## Concerns
 
 The full suite’s server tests require local socket permission in this environment; the escalated verification completed successfully. No remaining functional concerns.
+
+## Fix Round 1 Evidence
+
+Status: GREEN
+Fix round 1 implementation SHA: `ca7aa44`
+
+- Finding 1 addressed: all 30 fixtures now own literal `expectedRankedIds` arrays, including explicit empty arrays for no-rank cases. The test asserts actual matcher-ranked IDs against the fixture before constructing the narrative. Narrative product IDs, persisted AI product explanations, and public product order are all compared to fixture-owned arrays; no expected public order is derived solely from matcher output. The existing `expectedRankedPrefix` remains an explicit stable prefix for its multi-product fixture, while the new exact array covers the full deterministic sequence.
+- Finding 2 addressed: recursive public assertions reject forbidden keys and serialized value markers for metadata, timestamps, duration, usage, errors, provider/model/prompt/tokens, scoring/confidence, advisor/internal fields, and identity/free-text fields. They run for every ranked public report and every no-rank fallback report. Fallback assertions also require no invented product.
+- RED: after adding the independent contract, the focused suite failed 2 tests and passed 12 because fixtures had not yet received `expectedRankedIds`.
+- GREEN: `node --test test/productMatchingGolden.test.js test/aiAdvisorGolden.test.js test/analysisInputBuilder.test.js test/aiReportContract.test.js` passed with 27 passes and 0 failures.
+- GREEN: Full `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test` passed with 303 passes and 0 failures using local socket access.
+
+Self-review: only `test/aiAdvisorGolden.test.js`, `test/fixtures/customerProfiles.js`, and this report changed in the fix round. Production code, matching rules, product IDs, and deterministic ordering authority were untouched. No remaining functional concerns.
