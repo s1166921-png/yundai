@@ -446,6 +446,70 @@ test("POST without an injected service returns and persists a deterministic loca
   assert.equal(stored.aiAnalysis.meta.generatedAt, "2026-08-27T00:00:00.000Z");
 });
 
+test("POST recovers from a rejecting AI service with a persisted safe fallback", async (t) => {
+  const logged = [];
+  const aiReportService = {
+    generate: async () => {
+      throw new Error("customer data must not escape the lifecycle boundary");
+    },
+  };
+  const { leadsFilePath, url } = await startTestServer(t, {
+    aiReportService,
+    logger: { error: (...args) => logged.push(args) },
+  });
+  const response = await postLead(url, completeProgressiveAmazonScPayload());
+  const body = await response.json();
+  const [stored] = JSON.parse(await readFile(leadsFilePath, "utf8"));
+
+  assert.equal(response.status, 201);
+  assert.equal(body.lead.aiReport.source, "rules_fallback");
+  assert.equal(stored.aiAnalysis.status, "fallback");
+  assert.equal(stored.aiAnalysis.meta.errorCategory, "provider_error");
+  assert.equal(logged.length, 0);
+  assert.doesNotMatch(JSON.stringify(body), /customer data|provider_error|"meta"|"provider"|errorCategory/);
+});
+
+test("POST resolves an injected ID collision before persisting and completes only the new lead", async (t) => {
+  const generatedAnalysis = {
+    status: "generated",
+    customerReport: {
+      statusMessage: "AI 初筛完成，专业顾问待复核。",
+      businessSummary: ["新客户的分析结果。"],
+      productExplanations: [],
+      preparationActions: ["准备经营资料。"],
+    },
+    advisorFocus: [],
+    meta: { provider: "test", model: "test", promptVersion: "test", generatedAt: "2026-08-28T00:00:00.000Z" },
+  };
+  const ids = ["forced-collision", "unique-after-collision"];
+  const { leadsFilePath, url } = await startTestServer(t, {
+    idFactory: () => ids.shift(),
+    aiReportService: { generate: async () => generatedAnalysis },
+    seedStore: {
+      leads: [{
+        id: "forced-collision",
+        companyName: "Existing Collision Co.",
+        aiAnalysis: { status: "pending", marker: "existing-lead" },
+        advisorReview: { status: "pending", note: "", updatedAt: null },
+      }],
+    },
+  });
+  const response = await postLead(url, completeProgressiveAmazonScPayload({
+    companyName: "Collision New Co.",
+  }));
+  const body = await response.json();
+  const stored = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  const existing = stored.find((lead) => lead.id === "forced-collision");
+  const created = stored.find((lead) => lead.id === "unique-after-collision");
+
+  assert.equal(response.status, 201);
+  assert.equal(body.lead.id, "unique-after-collision");
+  assert.equal(stored.length, 2);
+  assert.equal(existing.aiAnalysis.marker, "existing-lead");
+  assert.deepEqual(created.aiAnalysis, generatedAnalysis);
+  assert.equal(new Set(stored.map((lead) => lead.id)).size, 2);
+});
+
 test("POST /api/leads enforces the raw progressive version and mode envelope", async (t) => {
   const { url } = await startTestServer(t);
   const progressiveEnvelope = (overrides = {}) => ({

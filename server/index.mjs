@@ -14,6 +14,7 @@ import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
+import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,6 +119,20 @@ class PublicInputError extends Error {
 
 class PayloadTooLargeError extends Error {}
 class UnsupportedMediaTypeError extends Error {}
+class LeadLifecycleInvariantError extends Error {}
+
+function uniqueLeadId(leads, idFactory) {
+  const existingIds = new Set(leads.map((lead) => lead?.id).filter((id) => typeof id === "string" && id));
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const candidate = idFactory();
+    if (typeof candidate === "string" && candidate && !existingIds.has(candidate)) return candidate;
+  }
+  let candidate;
+  do {
+    candidate = randomUUID();
+  } while (existingIds.has(candidate));
+  return candidate;
+}
 
 async function ensureStore(leadsFilePath = leadsFile) {
   await mkdir(path.dirname(leadsFilePath), { recursive: true });
@@ -434,7 +449,6 @@ function normalizeLead(input, now = () => new Date()) {
     },
   };
   const identity = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: now().toISOString(),
     estimationMode,
     companyName: profile.companyName,
@@ -1028,6 +1042,7 @@ async function handleRequest(request, response, {
   logger,
   aiReportService,
   now,
+  idFactory,
 }) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
@@ -1069,15 +1084,34 @@ async function handleRequest(request, response, {
     if (url.pathname === "/api/leads" && request.method === "POST") {
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const body = await readBody(request);
-      const lead = normalizeLead(parseJsonBody(body), now);
-      await updateLeads(leadsFilePath, (leads) => [lead, ...leads]);
-      const aiAnalysis = await aiReportService.generate(lead);
+      const normalizedLead = normalizeLead(parseJsonBody(body), now);
+      let lead;
+      await updateLeads(leadsFilePath, (leads) => {
+        lead = { ...normalizedLead, id: uniqueLeadId(leads, idFactory) };
+        return [lead, ...leads];
+      });
+      let aiAnalysis;
+      try {
+        aiAnalysis = await aiReportService.generate(lead);
+      } catch {
+        aiAnalysis = buildFallbackAiAnalysis({
+          matchReport: lead.matchReport,
+          errorCategory: "provider_error",
+          now,
+        });
+      }
       let completedLead;
-      await updateLeads(leadsFilePath, (leads) => leads.map((item) => {
-        if (item.id !== lead.id) return item;
-        completedLead = { ...item, aiAnalysis };
-        return completedLead;
-      }));
+      await updateLeads(leadsFilePath, (leads) => {
+        let matchedLeadCount = 0;
+        const updatedLeads = leads.map((item) => {
+          if (item.id !== lead.id) return item;
+          matchedLeadCount += 1;
+          completedLead = { ...item, aiAnalysis };
+          return completedLead;
+        });
+        if (matchedLeadCount !== 1) throw new LeadLifecycleInvariantError("lead completion target must exist exactly once");
+        return updatedLeads;
+      });
       sendJson(response, 201, { ok: true, lead: publicLead(completedLead) });
       return;
     }
@@ -1144,12 +1178,14 @@ export function createMeiouServer({
   logger = console,
   aiReportService = null,
   now = () => new Date(),
+  idFactory = randomUUID,
 } = {}) {
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
   const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
   const safeLogger = logger && typeof logger.error === "function" ? logger : console;
   const safeNow = typeof now === "function" ? now : () => new Date();
+  const safeIdFactory = typeof idFactory === "function" ? idFactory : randomUUID;
   const localAiReportService = createAiReportService({
     client: { isConfigured: false },
     logger: safeLogger,
@@ -1165,6 +1201,7 @@ export function createMeiouServer({
     logger: safeLogger,
     aiReportService: configuredAiReportService,
     now: safeNow,
+    idFactory: safeIdFactory,
   }));
 }
 
