@@ -1682,6 +1682,54 @@ test("CORS allows same-origin and configured origins while rejecting others", as
   assert.equal(rejectedResponse.headers.get("access-control-allow-origin"), null);
 });
 
+test("documented loopback Vite origins pass preflight and progressive POST without allowing unrelated origins", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const viteLoopbackOrigin = "http://127.0.0.1:5173";
+  const viteLocalhostOrigin = "http://localhost:5173";
+  const unrelatedOrigin = "http://127.0.0.1:5174";
+
+  for (const origin of [viteLoopbackOrigin, viteLocalhostOrigin]) {
+    const preflight = await fetch(`${url}/api/leads`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
+    assert.match(preflight.headers.get("access-control-allow-methods"), /POST/);
+  }
+
+  const post = await fetch(`${url}/api/leads`, {
+    method: "POST",
+    headers: { Origin: viteLoopbackOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify(completeProgressiveAmazonScPayload()),
+  });
+  const payload = await post.json();
+  assert.equal(post.status, 201);
+  assert.equal(post.headers.get("access-control-allow-origin"), viteLoopbackOrigin);
+  assert.equal(payload.lead.aiReport.source, "rules_fallback");
+  assert.equal(JSON.parse(await readFile(leadsFilePath, "utf8")).length, 1);
+
+  for (const request of [
+    fetch(`${url}/api/leads`, {
+      method: "OPTIONS",
+      headers: { Origin: unrelatedOrigin, "Access-Control-Request-Method": "POST" },
+    }),
+    fetch(`${url}/api/leads`, {
+      method: "POST",
+      headers: { Origin: unrelatedOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify(completeProgressiveAmazonScPayload()),
+    }),
+  ]) {
+    const response = await request;
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get("access-control-allow-origin"), null);
+  }
+});
+
 test("persisted raw input is allowlisted and estimator snapshots are minimal", async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
   const response = await postLead(url, completeAmazonScPayload({

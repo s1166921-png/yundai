@@ -30,6 +30,10 @@ const contactFields = ["companyName", "contactName", "phone"];
 const leadUpdateQueues = new Map();
 const storeFileMode = 0o600;
 const maximumBodyBytes = 1_000_000;
+const localDevelopmentOrigins = new Set([
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+]);
 
 const legacyBaseFields = [
   "companyName",
@@ -305,6 +309,10 @@ function normalizeAllowedOrigins(origins) {
   }).filter(Boolean));
 }
 
+function isLoopbackHost(hostname) {
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
 function applyCorsHeaders(request, response, url, allowedOrigins) {
   const origin = request.headers.origin;
   if (!origin) return true;
@@ -315,7 +323,9 @@ function applyCorsHeaders(request, response, url, allowedOrigins) {
   } catch {
     return false;
   }
-  if (normalizedOrigin !== url.origin && !allowedOrigins.has(normalizedOrigin)) return false;
+  const isDocumentedLocalDevelopmentOrigin = isLoopbackHost(url.hostname)
+    && localDevelopmentOrigins.has(normalizedOrigin);
+  if (normalizedOrigin !== url.origin && !isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
 
   response.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
   response.setHeader("Access-Control-Allow-Credentials", "true");

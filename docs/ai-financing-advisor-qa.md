@@ -31,6 +31,9 @@ Node command. The first sandboxed suite attempt could not bind local test ports
 
 ## Local UAT evidence
 
+The following was the original UAT result before the loopback CORS correction. It is
+retained as historical evidence; the completed continuation is recorded below.
+
 Local services used only loopback addresses, no `DEEPSEEK_API_KEY`, and disposable
 synthetic identity values. No screenshots were retained.
 
@@ -50,6 +53,41 @@ in `server/index.mjs` (`applyCorsHeaders`, lines 308-323; request gate, lines 81
 The rendered form therefore cannot exercise no-key fallback persistence with the default
 local workflow. No production code was changed under Task 8.
 
+## Continuation: loopback CORS fix and completed UAT
+
+### Diagnosis and fix
+
+Vite correctly forwards the browser's `Origin: http://127.0.0.1:5173`, but the API had
+compared it only with its own `http://127.0.0.1:8787` origin or an explicit allowlist.
+The default local workflow therefore received 403 before persistence. The server now
+allows exactly `http://127.0.0.1:5173` and `http://localhost:5173`, only while the API
+host itself is loopback. Other origins still require `MEIOU_ALLOWED_ORIGINS` and no
+wildcard, port range, or production-origin policy was added.
+
+### Continuation automated evidence
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Focused loopback CORS integration | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test --test-name-pattern='CORS|documented loopback' test/serverLead.test.js` | PASS: 3 passed, 0 failed. Covers `127.0.0.1:5173` and `localhost:5173` preflight, a progressive fallback POST, and rejects `127.0.0.1:5174`. |
+| Full network-free suite | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test` | PASS: 304 passed, 0 failed, 0 skipped; 2851.864 ms. |
+| Modern and legacy build/privacy scan | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node ./node_modules/vite/bin/vite.js build` followed by the exact `rg` privacy scan above | PASS: modern and legacy bundles built; scan printed no matches. |
+| Legacy/reduced-motion/old-WebKit confirmation | `/Users/vera/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test test/browserCompatibility.test.js test/productMatchView.test.js` | PASS: 18 passed, 0 failed; legacy asset `index-legacy-ocn0JUJP.js` inspected at 327612 bytes. |
+
+### Completed local UAT
+
+An isolated loopback API used a temporary synthetic-only lead store; Vite and headless
+Chrome used only loopback addresses and no `DEEPSEEK_API_KEY`. No screenshots were kept.
+
+| Viewport and journey | Observation | Status |
+| --- | --- | --- |
+| Customer, 1440x900 | Three-step synthetic Amazon SC submission completed. The result showed `规则匹配报告`, primary `微众银行跨境电商数据贷`, deterministic `75万-262.5万元`, the same two ordered alternatives, privacy copy, and the non-approval disclaimer. No page overflow or result/intake text clipping. | PASS |
+| Admin, 1440x900 | Synthetic admin login, drawer, all four states (`pending`, `in_review`, `reviewed`, `needs_information`), note save, one-record selection, and Excel export completed. No admin-control/drawer overflow or clipping. | PASS |
+| Customer, 390x844 | Repeated the synthetic Amazon SC submission with the same explicit fallback, product order, amount, privacy, and disclaimer. No page overflow or result/intake text clipping. | PASS |
+| Admin, 390x844 | Repeated login, drawer, four review states, note, selected-only export, and layout checks. | PASS |
+| Reduced motion | Chrome emulated `prefers-reduced-motion: reduce`; the media query was active. Targeted tests verify the no-animation override and old-WebKit boolean scroll fallback. | PASS |
+
+Official API check: Not run: official API key not configured.
+
 ## Browser and device limits
 
 Reduced motion, legacy target configuration, and the old-WebKit boolean scroll fallback
@@ -59,7 +97,8 @@ iPhone/Safari verification was not available and remains an external device limi
 
 ## Scope and secret audit
 
-Only documentation is intended for commit: `README.md` and this QA record. `.gitignore`
-already ignores `node_modules/`, `dist/`, `server/data/leads.json`, and local QA images,
-so it was not changed. Build assets, local lead data, temporary browser state, secrets,
-credentials, and screenshots are not staged or committed.
+The continuation's intended commit is limited to `server/index.mjs`,
+`test/serverLead.test.js`, `README.md`, and this QA record. `.gitignore` already ignores
+`node_modules/`, `dist/`, `server/data/leads.json`, and local QA images, so it was not
+changed. Build assets, local lead data, temporary browser state, secrets, credentials,
+and screenshots are not staged or committed.
