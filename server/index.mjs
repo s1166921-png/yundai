@@ -16,6 +16,8 @@ import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../sr
 import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
+import { buildAdminPage } from "./adminPage.mjs";
+import { normalizeAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -110,6 +112,16 @@ const leadColumns = [
   ["note", "补充说明"],
 ];
 
+const advisorExportColumns = [
+  ["aiAnalysis.source", "AI 报告来源"],
+  ["aiAnalysis.status", "AI 生成状态"],
+  ["advisorReview.status", "顾问复核状态"],
+  ["advisorReview.updatedAt", "顾问复核时间"],
+  ["advisorReview.note", "顾问内部备注"],
+];
+
+const exportColumns = [...leadColumns, ...advisorExportColumns];
+
 class PublicInputError extends Error {
   constructor(errors) {
     super("提交信息有误");
@@ -120,6 +132,8 @@ class PublicInputError extends Error {
 class PayloadTooLargeError extends Error {}
 class UnsupportedMediaTypeError extends Error {}
 class LeadLifecycleInvariantError extends Error {}
+class LeadNotFoundError extends Error {}
+class AiRetryConflictError extends Error {}
 
 function uniqueLeadId(leads, idFactory) {
   const existingIds = new Set(leads.map((lead) => lead?.id).filter((id) => typeof id === "string" && id));
@@ -613,6 +627,11 @@ function formatMatchingValue(lead, key) {
 
 function formatLeadValue(lead, key) {
   if (key.startsWith("matching.")) return formatMatchingValue(lead, key);
+  if (key === "aiAnalysis.source") {
+    return lead.aiAnalysis?.status === "generated"
+      ? "ai"
+      : lead.aiAnalysis?.status === "fallback" ? "rules_fallback" : "";
+  }
   const value = getLeadValue(lead, key);
   if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
   if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
@@ -623,10 +642,10 @@ function formatLeadValue(lead, key) {
 }
 
 function buildExcel(leads) {
-  const headers = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
+  const headers = exportColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
   const rows = leads
     .map((lead) => {
-      const cells = leadColumns
+      const cells = exportColumns
         .map(([key]) => {
           const value = formatLeadValue(lead, key);
           return `<td style="mso-number-format:'\\@';">${escapeHtml(value)}</td>`;
@@ -672,6 +691,7 @@ function filterLeads(url, leads) {
   const institution = (url.searchParams.get("institution") ?? "").trim();
   const currency = (url.searchParams.get("currency") ?? "").trim().toUpperCase();
   const status = (url.searchParams.get("status") ?? "").trim();
+  const reviewStatus = (url.searchParams.get("reviewStatus") ?? "").trim();
   const amountMin = Number(url.searchParams.get("amountMin"));
   const amountMax = Number(url.searchParams.get("amountMax"));
   const hasAmountMin = url.searchParams.has("amountMin") && Number.isFinite(amountMin);
@@ -694,6 +714,7 @@ function filterLeads(url, leads) {
     if (institution && product?.institution !== institution) return false;
     if (currency && product?.currency !== currency) return false;
     if (status && getOverallMatchStatus(lead) !== status) return false;
+    if (reviewStatus && lead.advisorReview?.status !== reviewStatus) return false;
     if (hasAmountMin && (!Number.isFinite(submittedAmount) || submittedAmount < amountMin)) return false;
     if (hasAmountMax && (!Number.isFinite(submittedAmount) || submittedAmount > amountMax)) return false;
     if (Number.isFinite(fromTime) && (!Number.isFinite(createdTime) || createdTime < fromTime)) return false;
@@ -702,281 +723,6 @@ function filterLeads(url, leads) {
   });
 }
 
-function buildAdminPage() {
-  const publicProducts = getPublicProducts();
-  const productOptions = publicProducts
-    .map((product) => `<option value="${escapeHtml(product.id)}">${escapeHtml(product.name)}</option>`)
-    .join("");
-  const institutionOptions = [...new Set(publicProducts.map((product) => product.institution))]
-    .map((institution) => `<option value="${escapeHtml(institution)}">${escapeHtml(institution)}</option>`)
-    .join("");
-  const headerCells = leadColumns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("");
-  const rowCells = leadColumns
-    .map(([key]) => {
-      return `<td>\${escapeHtml(formatLeadValue(lead, "${key}"))}</td>`;
-    })
-    .join("");
-  const emptyColspan = leadColumns.length + 1;
-
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>美鸥云贷客户信息后台</title>
-  <style>
-    :root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; color: #17243d; background: #f5f7fb; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-width: 320px; background: #f5f7fb; }
-    main { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 40px; }
-    .panel { border: 1px solid #d9e1ee; border-radius: 8px; background: #fff; box-shadow: 0 12px 34px rgba(22,34,58,.08); }
-    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e7edf5; }
-    h1 { margin: 0; font-size: 22px; line-height: 1.2; }
-    .tools { display: flex; flex-wrap: wrap; gap: 10px; }
-    input, select, button, a { font: inherit; }
-    input, select { width: 220px; height: 40px; padding: 0 12px; border: 1px solid #cbd6e5; border-radius: 6px; color: #17243d; background: #fff; outline: none; }
-    input:focus, select:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91,141,239,.14); }
-    button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 14px; border: 1px solid #cbd6e5; border-radius: 8px; background: #fff; color: #17243d; font-weight: 700; text-decoration: none; cursor: pointer; }
-    button:hover, a:hover { background: #f5f8fc; }
-    a.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
-    a.primary:hover { background: #1d4ed8; }
-    a.disabled { opacity: .45; pointer-events: none; }
-    .filters { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e7edf5; }
-    .filters label { display: grid; gap: 6px; min-width: 0; color: #53637a; font-size: 12px; font-weight: 700; }
-    .filters input, .filters select { width: 100%; }
-    .filter-actions { display: flex; align-items: end; gap: 8px; }
-    .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #e7edf5; color: #53637a; font-size: 14px; }
-    .summary strong { color: #17243d; }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; min-width: 2380px; border-collapse: collapse; background: #fff; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid #edf1f7; color: #34445b; text-align: left; white-space: nowrap; font-size: 14px; }
-    th { position: sticky; top: 0; z-index: 1; color: #17243d; font-size: 13px; font-weight: 800; background: #f8fafc; }
-    tbody tr:hover td { background: #f8fbff; }
-    td:last-child { max-width: 360px; white-space: normal; line-height: 1.55; }
-    .select-col { width: 48px; text-align: center; }
-    input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
-    @media (max-width: 980px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 720px) { main { width: min(100% - 20px, 1440px); padding-top: 12px; } .topbar { align-items: stretch; flex-direction: column; } .tools, .tools input, .tools button, .tools a, .filters { width: 100%; } .filters { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <main>
-    <section class="panel">
-      <div class="topbar">
-        <h1>客户信息后台</h1>
-        <div class="tools">
-          <input id="username" autocomplete="username" placeholder="管理员账户" />
-          <input id="password" type="password" autocomplete="current-password" placeholder="管理员密码" />
-          <button id="load" type="button">读取客户信息</button>
-          <button id="export" class="primary" type="button" disabled>导出选中 Excel</button>
-        </div>
-      </div>
-      <div class="filters" aria-label="客户筛选">
-        <label>客户搜索<input id="searchFilter" type="search" placeholder="企业、联系人或电话" /></label>
-        <label>第一推荐产品<select id="productFilter"><option value="">全部产品</option>${productOptions}</select></label>
-        <label>机构<select id="institutionFilter"><option value="">全部机构</option>${institutionOptions}</select></label>
-        <label>币种<select id="currencyFilter"><option value="">全部币种</option><option value="RMB">RMB</option><option value="USD">USD</option></select></label>
-        <label>匹配状态<select id="statusFilter"><option value="">全部状态</option><option value="eligible">符合准入</option><option value="needs_information">待补充资料</option><option value="ineligible">暂不匹配</option></select></label>
-        <label>融资金额下限<input id="amountMinFilter" type="number" min="0" step="1" inputmode="decimal" /></label>
-        <label>融资金额上限<input id="amountMaxFilter" type="number" min="0" step="1" inputmode="decimal" /></label>
-        <label>提交日期起<input id="dateFromFilter" type="date" /></label>
-        <label>提交日期止<input id="dateToFilter" type="date" /></label>
-        <div class="filter-actions"><button id="applyFilters" type="button">应用筛选</button><button id="clearFilters" type="button">清空</button></div>
-      </div>
-      <div class="summary">
-        <span id="status">请输入管理员账户和密码。</span>
-        <span>客户数量：<strong id="count">0</strong></span>
-        <span>已选择：<strong id="selectedCount">0</strong></span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th class="select-col"><input id="selectAll" type="checkbox" aria-label="全选客户" /></th>${headerCells}</tr>
-          </thead>
-          <tbody id="rows"><tr><td colspan="${emptyColspan}">暂无已读取数据</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-  <script>
-    const usernameInput = document.querySelector("#username");
-    const passwordInput = document.querySelector("#password");
-    const loadButton = document.querySelector("#load");
-    const exportLink = document.querySelector("#export");
-    const statusNode = document.querySelector("#status");
-    const countNode = document.querySelector("#count");
-    const selectedCountNode = document.querySelector("#selectedCount");
-    const selectAllNode = document.querySelector("#selectAll");
-    const rowsNode = document.querySelector("#rows");
-    const filterInputs = {
-      search: document.querySelector("#searchFilter"),
-      product: document.querySelector("#productFilter"),
-      institution: document.querySelector("#institutionFilter"),
-      currency: document.querySelector("#currencyFilter"),
-      status: document.querySelector("#statusFilter"),
-      amountMin: document.querySelector("#amountMinFilter"),
-      amountMax: document.querySelector("#amountMaxFilter"),
-      dateFrom: document.querySelector("#dateFromFilter"),
-      dateTo: document.querySelector("#dateToFilter"),
-    };
-    const applyFiltersButton = document.querySelector("#applyFilters");
-    const clearFiltersButton = document.querySelector("#clearFilters");
-    let loadedLeads = [];
-    const selectedIds = new Set();
-    const getAuthHeaders = () => {
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
-      return username && password ? { Authorization: "Basic " + btoa(username + ":" + password) } : null;
-    };
-    const getFilterQuery = () => {
-      const params = new URLSearchParams();
-      Object.entries(filterInputs).forEach(([key, input]) => {
-        const value = input.value.trim();
-        if (value) params.set(key, value);
-      });
-      const query = params.toString();
-      return query ? "?" + query : "";
-    };
-    const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-    const primaryMatchFor = (lead) => (lead.productMatches || []).find((match) => match.rank === 1) || null;
-    const overallMatchStatusFor = (lead) => {
-      const primary = primaryMatchFor(lead);
-      if (primary) return primary.status;
-      const matches = lead.productMatches || [];
-      return matches.length && matches.every((match) => match.status === "ineligible") ? "ineligible" : "";
-    };
-    const productNameFor = (lead, productId) => {
-      const products = [lead.matchReport && lead.matchReport.primary].concat((lead.matchReport && lead.matchReport.alternatives) || []).filter(Boolean);
-      const product = products.find((item) => item.productId === productId);
-      return (product && product.name) || productId || "";
-    };
-    const formatMatchStatus = (status) => ({ eligible: "符合准入", needs_information: "待补充资料", ineligible: "暂不匹配" }[status] || status || "");
-    const formatAmountRange = (amount) => {
-      if (!amount || typeof amount !== "object") return "";
-      if (Number.isFinite(amount.min) && Number.isFinite(amount.max)) {
-        return amount.min === amount.max ? String(amount.min) : amount.min + " - " + amount.max;
-      }
-      return amount.note || "";
-    };
-    const formatMatchingValue = (lead, key) => {
-      const primaryMatch = primaryMatchFor(lead);
-      if (key === "matching.primaryProduct") return (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.name) || productNameFor(lead, primaryMatch && primaryMatch.productId);
-      if (key === "matching.alternatives") return (((lead.matchReport && lead.matchReport.alternatives) || []).map((product) => product.name).filter(Boolean).join("；"));
-      if (key === "matching.status") return formatMatchStatus(overallMatchStatusFor(lead)) || "无推荐";
-      if (key === "matching.fitScore") return primaryMatch && Number.isFinite(primaryMatch.fitScore) ? primaryMatch.fitScore + " 分" : "";
-      if (key === "matching.confidence") return primaryMatch && Number.isFinite(primaryMatch.confidence) ? primaryMatch.confidence + "%" : "";
-      if (key === "matching.ruleVersion") return lead.ruleVersion || (primaryMatch && primaryMatch.ruleVersion) || "";
-      if (key === "matching.amountRange") return formatAmountRange(primaryMatch && primaryMatch.estimatedAmount);
-      if (key === "matching.currency") return (primaryMatch && primaryMatch.estimatedAmount && primaryMatch.estimatedAmount.currency) || (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.currency) || "";
-      if (key === "matching.missingFields") return primaryMatch ? (primaryMatch.missingFields || []).join("；") : "";
-      if (key === "matching.failedRules") return (lead.productMatches || []).flatMap((match) => (match.failedRules || []).map((rule) => productNameFor(lead, match.productId) + "：" + (rule.internalReason || rule.message || rule.id || "未通过"))).join("；");
-      if (key === "matching.advisorNextStep") return (lead.aiInsight && lead.aiInsight.nextStep) || "";
-      return "";
-    };
-    const formatLeadValue = (lead, key) => {
-      if (key.startsWith("matching.")) return formatMatchingValue(lead, key);
-      const value = key.split(".").reduce((current, part) => current && current[part], lead);
-      if (key === "createdAt") return value ? new Date(value).toLocaleString("zh-CN") : "";
-      if (key === "estimationMode") return value === "simple" ? "简易版" : value === "complex" ? "复杂版" : value === "progressive" ? "产品匹配" : "";
-      if (key === "debtOverRevenue70") return value === "yes" ? "是（扣 10 分）" : value === "no" ? "否" : "";
-      if (key === "estimate.score") return value === undefined || value === null ? "-" : value + " 分";
-      return value || (key.startsWith("estimate.") ? "-" : "");
-    };
-    const syncExport = () => {
-      const ids = [...selectedIds];
-      const credentials = getAuthHeaders();
-      exportLink.disabled = !credentials || ids.length === 0;
-      selectedCountNode.textContent = ids.length;
-      selectAllNode.checked = loadedLeads.length > 0 && ids.length === loadedLeads.length;
-      selectAllNode.indeterminate = ids.length > 0 && ids.length < loadedLeads.length;
-      exportLink.textContent = ids.length ? "导出选中 " + ids.length + " 条" : "导出选中 Excel";
-    };
-    const renderRows = () => {
-      rowsNode.innerHTML = loadedLeads.length ? loadedLeads.map((lead) => \`
-          <tr>
-            <td class="select-col"><input class="row-select" type="checkbox" value="\${escapeHtml(lead.id)}" \${selectedIds.has(lead.id) ? "checked" : ""} aria-label="选择客户" /></td>${rowCells}
-          </tr>\`).join("") : '<tr><td colspan="${emptyColspan}">暂无客户信息</td></tr>';
-      rowsNode.querySelectorAll(".row-select").forEach((checkbox) => {
-        checkbox.addEventListener("change", () => {
-          if (checkbox.checked) {
-            selectedIds.add(checkbox.value);
-          } else {
-            selectedIds.delete(checkbox.value);
-          }
-          syncExport();
-        });
-      });
-      syncExport();
-    };
-    usernameInput.addEventListener("input", syncExport);
-    passwordInput.addEventListener("input", syncExport);
-    selectAllNode.addEventListener("change", () => {
-      if (selectAllNode.checked) {
-        loadedLeads.forEach((lead) => selectedIds.add(lead.id));
-      } else {
-        selectedIds.clear();
-      }
-      renderRows();
-    });
-    const loadLeads = async () => {
-      const headers = getAuthHeaders();
-      if (!headers) {
-        statusNode.textContent = "请输入管理员账户和密码。";
-        return;
-      }
-      syncExport();
-      statusNode.textContent = "正在读取客户信息...";
-      try {
-        const response = await fetch("/api/leads" + getFilterQuery(), { headers, cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "读取失败");
-        loadedLeads = payload.leads;
-        selectedIds.clear();
-        statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
-        countNode.textContent = payload.leads.length;
-        renderRows();
-      } catch (error) {
-        statusNode.textContent = error.message || "读取失败";
-        countNode.textContent = "0";
-        selectedIds.clear();
-        syncExport();
-      }
-    };
-    loadButton.addEventListener("click", loadLeads);
-    applyFiltersButton.addEventListener("click", loadLeads);
-    clearFiltersButton.addEventListener("click", () => {
-      Object.values(filterInputs).forEach((input) => { input.value = ""; });
-      loadLeads();
-    });
-    exportLink.addEventListener("click", async () => {
-      const headers = getAuthHeaders();
-      const ids = [...selectedIds];
-      if (!headers || ids.length === 0) return;
-      const params = new URLSearchParams();
-      ids.forEach((id) => params.append("ids", id));
-      statusNode.textContent = "正在生成 Excel...";
-      try {
-        const response = await fetch("/api/leads/export?" + params.toString(), { headers });
-        if (!response.ok) {
-          const payload = await response.json();
-          throw new Error(payload.error || "导出失败");
-        }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "meiou-leads.xls";
-        link.click();
-        URL.revokeObjectURL(url);
-        statusNode.textContent = "Excel 已开始下载。";
-      } catch (error) {
-        statusNode.textContent = error.message || "导出失败";
-      }
-    });
-  </script>
-</body>
-</html>`;
-}
 
 function shouldUseLegacyMobileBundle(request) {
   return /iP(?:hone|ad|od)/i.test(request.headers["user-agent"] || "");
@@ -1045,8 +791,9 @@ async function handleRequest(request, response, {
   idFactory,
 }) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+  const advisorRoute = url.pathname.match(/^\/api\/leads\/([^/]+)\/(review|ai-retry)$/);
 
-  if (["/admin", "/api/leads", "/api/leads/export"].includes(url.pathname)) {
+  if (["/admin", "/api/leads", "/api/leads/export"].includes(url.pathname) || advisorRoute) {
     response.setHeader("Cache-Control", "no-store");
   }
 
@@ -1057,10 +804,15 @@ async function handleRequest(request, response, {
 
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type",
     });
     response.end();
+    return;
+  }
+
+  if (advisorRoute && !isAuthorized(request, adminCredentials)) {
+    sendJson(response, 401, { error: "后台口令不正确" });
     return;
   }
 
@@ -1077,7 +829,7 @@ async function handleRequest(request, response, {
 
     if (url.pathname === "/admin" && request.method === "GET") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      response.end(buildAdminPage());
+      response.end(buildAdminPage({ leadColumns, products: getPublicProducts() }));
       return;
     }
 
@@ -1106,6 +858,10 @@ async function handleRequest(request, response, {
         const updatedLeads = leads.map((item) => {
           if (item.id !== lead.id) return item;
           matchedLeadCount += 1;
+          if (Number.isInteger(item.aiAnalysis?.retryCount) && item.aiAnalysis.retryCount >= 1) {
+            completedLead = item;
+            return item;
+          }
           completedLead = { ...item, aiAnalysis };
           return completedLead;
         });
@@ -1123,6 +879,92 @@ async function handleRequest(request, response, {
       }
       const leads = await readLeads(leadsFilePath);
       sendJson(response, 200, { leads: filterLeads(url, leads) });
+      return;
+    }
+
+    if (advisorRoute?.[2] === "review" && request.method === "PATCH") {
+      if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
+      const input = parseJsonBody(await readBody(request));
+      const leadId = decodeURIComponent(advisorRoute[1]);
+      let updatedLead;
+      await updateLeads(leadsFilePath, (leads) => {
+        const leadIndex = leads.findIndex((lead) => lead.id === leadId);
+        if (leadIndex === -1) throw new LeadNotFoundError("lead does not exist");
+
+        let advisorReview;
+        try {
+          advisorReview = normalizeAdvisorReview(input, leads[leadIndex].advisorReview, now);
+        } catch (error) {
+          if (!(error instanceof TypeError || error instanceof RangeError)) throw error;
+          const field = /status/.test(error.message) ? "status" : "note";
+          throw new PublicInputError([{ field, message: error.message }]);
+        }
+
+        updatedLead = { ...leads[leadIndex], advisorReview };
+        const updatedLeads = [...leads];
+        updatedLeads[leadIndex] = updatedLead;
+        return updatedLeads;
+      });
+      sendJson(response, 200, { ok: true, lead: updatedLead });
+      return;
+    }
+
+    if (advisorRoute?.[2] === "ai-retry" && request.method === "POST") {
+      const leadId = decodeURIComponent(advisorRoute[1]);
+      let retryLead;
+      let retryCount;
+      await updateLeads(leadsFilePath, (leads) => {
+        const leadIndex = leads.findIndex((lead) => lead.id === leadId);
+        if (leadIndex === -1) throw new LeadNotFoundError("lead does not exist");
+
+        const currentAnalysis = leads[leadIndex].aiAnalysis;
+        const previousRetryCount = Number.isInteger(currentAnalysis?.retryCount)
+          && currentAnalysis.retryCount >= 0
+          ? currentAnalysis.retryCount
+          : 0;
+        if (!new Set(["pending", "fallback"]).has(currentAnalysis?.status) || previousRetryCount >= 1) {
+          throw new AiRetryConflictError("AI analysis cannot be retried");
+        }
+
+        retryCount = previousRetryCount + 1;
+        retryLead = {
+          ...leads[leadIndex],
+          aiAnalysis: { status: "pending", retryCount },
+        };
+        const updatedLeads = [...leads];
+        updatedLeads[leadIndex] = retryLead;
+        return updatedLeads;
+      });
+
+      let aiAnalysis;
+      try {
+        aiAnalysis = await aiReportService.generate(retryLead);
+      } catch {
+        aiAnalysis = buildFallbackAiAnalysis({
+          matchReport: retryLead.matchReport,
+          errorCategory: "provider_error",
+          now,
+        });
+      }
+
+      let completedLead;
+      await updateLeads(leadsFilePath, (leads) => {
+        const leadIndex = leads.findIndex((lead) => lead.id === leadId);
+        if (leadIndex === -1) throw new LeadLifecycleInvariantError("AI retry target must still exist");
+        completedLead = {
+          ...leads[leadIndex],
+          aiAnalysis: { ...aiAnalysis, retryCount },
+        };
+        const updatedLeads = [...leads];
+        updatedLeads[leadIndex] = completedLead;
+        return updatedLeads;
+      });
+      sendJson(response, 200, { ok: true, lead: completedLead });
+      return;
+    }
+
+    if (advisorRoute) {
+      sendJson(response, 405, { error: "请求方法不被允许" });
       return;
     }
 
@@ -1160,6 +1002,14 @@ async function handleRequest(request, response, {
     }
     if (error instanceof PublicInputError) {
       sendJson(response, 400, { error: error.message, errors: error.errors });
+      return;
+    }
+    if (error instanceof LeadNotFoundError) {
+      sendJson(response, 404, { error: "客户信息不存在" });
+      return;
+    }
+    if (error instanceof AiRetryConflictError) {
+      sendJson(response, 409, { error: "AI 分析不可再次重试" });
       return;
     }
     logger.error("Unhandled Meiou server request error", {

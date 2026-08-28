@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMeiouServer } from "../server/index.mjs";
+import { buildAdminPage } from "../server/adminPage.mjs";
 import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 
 const serverEntryPath = fileURLToPath(new URL("../server/index.mjs", import.meta.url));
@@ -1017,6 +1018,302 @@ test("GET /api/leads and GET /api/leads/export reject unauthenticated requests",
   assert.equal(exportResponse.status, 401);
 });
 
+test("advisor review and AI retry routes authenticate before accessing the lead store", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  await mkdir(leadsFilePath);
+
+  const reviewResponse = await fetch(`${url}/api/leads/private-lead/review`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "must not be read" }),
+  });
+  const retryResponse = await fetch(`${url}/api/leads/private-lead/ai-retry`, {
+    method: "POST",
+  });
+
+  assert.equal(reviewResponse.status, 401);
+  assert.equal(retryResponse.status, 401);
+  assert.deepEqual(await reviewResponse.json(), { error: "后台口令不正确" });
+  assert.deepEqual(await retryResponse.json(), { error: "后台口令不正确" });
+});
+
+test("authenticated advisor review saves an internal review and returns 404 for a missing lead", async (t) => {
+  const { url } = await startTestServer(t);
+  const created = await (await postLead(url)).json();
+  const endpoint = `${url}/api/leads/${created.lead.id}/review`;
+  const savedResponse = await fetch(endpoint, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "  已核验  " }),
+  });
+  const saved = await savedResponse.json();
+  const missingResponse = await fetch(`${url}/api/leads/missing/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "" }),
+  });
+  const missingRetryResponse = await fetch(`${url}/api/leads/missing/ai-retry`, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+
+  assert.equal(savedResponse.status, 200);
+  assert.equal(savedResponse.headers.get("cache-control"), "no-store");
+  assert.equal(saved.lead.id, created.lead.id);
+  assert.equal(saved.lead.phone, "13800138000");
+  assert.deepEqual(saved.lead.advisorReview, {
+    status: "reviewed",
+    note: "已核验",
+    updatedAt: saved.lead.advisorReview.updatedAt,
+  });
+  assert.match(saved.lead.advisorReview.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(missingResponse.status, 404);
+  assert.equal(missingRetryResponse.status, 404);
+});
+
+test("advisor review rejects invalid JSON, states, and notes without changing the lead", async (t) => {
+  const { url } = await startTestServer(t);
+  const created = await (await postLead(url)).json();
+  const endpoint = `${url}/api/leads/${created.lead.id}/review`;
+  const headers = { Authorization: adminAuthorization, "Content-Type": "application/json" };
+
+  for (const { label, body } of [
+    { label: "invalid JSON", body: "{" },
+    { label: "unknown status", body: JSON.stringify({ status: "approved", note: "" }) },
+    { label: "non-string note", body: JSON.stringify({ status: "reviewed", note: { html: "no" } }) },
+    { label: "overlong note", body: JSON.stringify({ status: "reviewed", note: "x".repeat(2001) }) },
+  ]) {
+    const response = await fetch(endpoint, { method: "PATCH", headers, body });
+    assert.equal(response.status, 400, label);
+  }
+
+  const leadsResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const lead = (await leadsResponse.json()).leads.find((item) => item.id === created.lead.id);
+  assert.deepEqual(lead.advisorReview, { status: "pending", note: "", updatedAt: null });
+});
+
+test("CORS advertises PATCH for authenticated advisor review requests", async (t) => {
+  const configuredOrigin = "https://advisor.example.com";
+  const { url } = await startTestServer(t, { allowedOrigins: [configuredOrigin] });
+  const response = await fetch(`${url}/api/leads/lead-1/review`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: configuredOrigin,
+      "Access-Control-Request-Method": "PATCH",
+    },
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), configuredOrigin);
+  assert.match(response.headers.get("access-control-allow-methods"), /(?:^|,)PATCH(?:,|$)/);
+});
+
+test("simultaneous advisor review and lead submission preserve both atomic updates", async (t) => {
+  const { url } = await startTestServer(t);
+  const existing = await (await postLead(url, completeAmazonScPayload({ companyName: "Reviewed Co." }))).json();
+
+  const [reviewResponse, createdResponse] = await Promise.all([
+    fetch(`${url}/api/leads/${existing.lead.id}/review`, {
+      method: "PATCH",
+      headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "in_review", note: "并发复核" }),
+    }),
+    postLead(url, completeAmazonVcPayload({ companyName: "Concurrent New Co." })),
+  ]);
+
+  assert.equal(reviewResponse.status, 200);
+  assert.equal(createdResponse.status, 201);
+  const leadsResponse = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  const leads = (await leadsResponse.json()).leads;
+  assert.equal(leads.length, 2);
+  assert.equal(leads.find((lead) => lead.id === existing.lead.id).advisorReview.status, "in_review");
+  assert.ok(leads.some((lead) => lead.companyName === "Concurrent New Co."));
+});
+
+test("AI retry persists its claim before generation and atomically rejects every later retry", async (t) => {
+  let leadsFilePath;
+  let generateCalls = 0;
+  let releaseRetry;
+  let signalRetryStarted;
+  const retryStarted = new Promise((resolve) => { signalRetryStarted = resolve; });
+  const initialFallback = {
+    status: "fallback",
+    customerReport: {
+      statusMessage: "智能匹配结果已生成，AI 扩展分析暂不可用，专业顾问待复核。",
+      businessSummary: ["当前经营资料已完成规则匹配。"],
+      productExplanations: [],
+      preparationActions: ["准备经营资料。"],
+    },
+    advisorFocus: [],
+    meta: { provider: "local", model: null, promptVersion: "test", errorCategory: "not_configured", generatedAt: "2026-08-27T00:00:00.000Z" },
+  };
+  const generatedAnalysis = {
+    status: "generated",
+    customerReport: {
+      statusMessage: "AI 初筛完成，专业顾问待复核。",
+      businessSummary: ["重试分析已完成。"],
+      productExplanations: [],
+      preparationActions: ["准备经营资料。"],
+    },
+    advisorFocus: ["核验回款安排。"],
+    meta: { provider: "test", model: "test-model", promptVersion: "test", generatedAt: "2026-08-27T01:00:00.000Z", durationMs: 10, usage: { inputTokens: 5, outputTokens: 3 }, errorCategory: null },
+  };
+  const aiReportService = {
+    generate: async (lead) => {
+      generateCalls += 1;
+      if (generateCalls === 1) return initialFallback;
+      const storedLead = JSON.parse(await readFile(leadsFilePath, "utf8"))
+        .find((item) => item.id === lead.id);
+      signalRetryStarted(storedLead);
+      await new Promise((resolve) => { releaseRetry = resolve; });
+      return generatedAnalysis;
+    },
+  };
+  const started = await startTestServer(t, { aiReportService });
+  leadsFilePath = started.leadsFilePath;
+  const created = await (await postLead(started.url)).json();
+  const endpoint = `${started.url}/api/leads/${created.lead.id}/ai-retry`;
+  const retryPromise = fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  const persistedPending = await Promise.race([
+    retryStarted,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("AI retry service was not invoked")), 1000)),
+  ]);
+
+  assert.equal(persistedPending.aiAnalysis.status, "pending");
+  assert.equal(persistedPending.aiAnalysis.retryCount, 1);
+  const reviewWhilePending = await fetch(`${started.url}/api/leads/${created.lead.id}/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "in_review", note: "重试期间复核" }),
+  });
+  assert.equal(reviewWhilePending.status, 200);
+  const simultaneousRetry = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  assert.equal(simultaneousRetry.status, 409);
+  releaseRetry();
+
+  const retryResponse = await retryPromise;
+  const retried = await retryResponse.json();
+  assert.equal(retryResponse.status, 200);
+  assert.equal(retryResponse.headers.get("cache-control"), "no-store");
+  assert.equal(retried.lead.aiAnalysis.status, "generated");
+  assert.equal(retried.lead.aiAnalysis.retryCount, 1);
+  assert.equal(retried.lead.advisorReview.status, "in_review");
+  assert.equal(retried.lead.advisorReview.note, "重试期间复核");
+  assert.equal(generateCalls, 2);
+
+  const completedRetry = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  assert.equal(completedRetry.status, 409);
+  assert.equal(generateCalls, 2);
+});
+
+test("an original pending generation cannot erase an authenticated AI retry claim", async (t) => {
+  let generateCalls = 0;
+  let releaseInitial;
+  let releaseRetry;
+  let signalInitial;
+  let signalRetry;
+  const initialStarted = new Promise((resolve) => { signalInitial = resolve; });
+  const retryStarted = new Promise((resolve) => { signalRetry = resolve; });
+  const analysis = (label, status = "generated") => ({
+    status,
+    customerReport: {
+      statusMessage: `${label} status`,
+      businessSummary: [`${label} summary`],
+      productExplanations: [],
+      preparationActions: [`${label} action`],
+    },
+    advisorFocus: [],
+    meta: { provider: status === "fallback" ? "local" : "test", model: null, promptVersion: "test", errorCategory: status === "fallback" ? "timeout" : null, generatedAt: "2026-08-27T00:00:00.000Z" },
+  });
+  const aiReportService = {
+    generate: async (lead) => {
+      generateCalls += 1;
+      if (generateCalls === 1) {
+        signalInitial(lead.id);
+        await new Promise((resolve) => { releaseInitial = resolve; });
+        return analysis("original", "fallback");
+      }
+      if (generateCalls === 2) {
+        signalRetry();
+        await new Promise((resolve) => { releaseRetry = resolve; });
+        return analysis("retry");
+      }
+      return analysis("unexpected second retry");
+    },
+  };
+  const { leadsFilePath, url } = await startTestServer(t, { aiReportService });
+  const createPromise = postLead(url);
+  const leadId = await initialStarted;
+  const endpoint = `${url}/api/leads/${leadId}/ai-retry`;
+  const firstRetryPromise = fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  await retryStarted;
+
+  releaseInitial();
+  assert.equal((await createPromise).status, 201);
+  const secondRetry = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  releaseRetry();
+  const firstRetryResponse = await firstRetryPromise;
+
+  assert.equal(secondRetry.status, 409);
+  assert.equal(generateCalls, 2);
+  assert.equal(firstRetryResponse.status, 200);
+  const stored = JSON.parse(await readFile(leadsFilePath, "utf8"))[0];
+  assert.equal(stored.aiAnalysis.retryCount, 1);
+  assert.deepEqual(stored.aiAnalysis.customerReport.businessSummary, ["retry summary"]);
+});
+
+test("a rejecting AI retry service persists a safe fallback and never leaks its error", async (t) => {
+  let generateCalls = 0;
+  const aiReportService = {
+    generate: async () => {
+      generateCalls += 1;
+      if (generateCalls === 1) {
+        return {
+          status: "fallback",
+          customerReport: { statusMessage: "暂不可用", businessSummary: [], productExplanations: [], preparationActions: [] },
+          advisorFocus: [],
+          meta: { provider: "local", model: null, promptVersion: "test", errorCategory: "not_configured", generatedAt: "2026-08-27T00:00:00.000Z" },
+        };
+      }
+      throw new Error("provider raw body and secret key");
+    },
+  };
+  const { leadsFilePath, url } = await startTestServer(t, { aiReportService });
+  const created = await (await postLead(url)).json();
+  const response = await fetch(`${url}/api/leads/${created.lead.id}/ai-retry`, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization },
+  });
+  const body = await response.json();
+  const stored = JSON.parse(await readFile(leadsFilePath, "utf8"))[0];
+
+  assert.equal(response.status, 200);
+  assert.equal(body.lead.aiAnalysis.status, "fallback");
+  assert.equal(body.lead.aiAnalysis.retryCount, 1);
+  assert.equal(stored.aiAnalysis.status, "fallback");
+  assert.equal(stored.aiAnalysis.retryCount, 1);
+  assert.doesNotMatch(JSON.stringify(body), /provider raw body|secret key/);
+});
+
 test("authenticated GET /api/leads returns full internal matching evidence", async (t) => {
   const { url } = await startTestServer(t);
   await postLead(url);
@@ -1068,12 +1365,41 @@ test("authenticated export rejects an empty lead selection", async (t) => {
 });
 
 test("authenticated export includes only selected leads and escapes internal table values", async (t) => {
-  const { url } = await startTestServer(t);
+  const aiReportService = {
+    generate: async () => ({
+      status: "generated",
+      customerReport: {
+        statusMessage: "AI 初筛完成，专业顾问待复核。",
+        businessSummary: ["经营摘要。"],
+        productExplanations: [],
+        preparationActions: ["准备经营资料。"],
+      },
+      advisorFocus: ["顾问核验。"],
+      meta: {
+        provider: "test-provider",
+        model: "SECRET-MODEL",
+        promptVersion: "SECRET-PROMPT",
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        usage: { inputTokens: 99, outputTokens: 88 },
+        providerErrorBody: "SECRET-PROVIDER-BODY",
+        rawModelPayload: "SECRET-RAW-PAYLOAD",
+        apiKey: "SECRET-API-KEY",
+      },
+    }),
+  };
+  const { url } = await startTestServer(t, { aiReportService });
   const selectedResponse = await postLead(url, completeAmazonScPayload({
     companyName: "<script>alert(1)</script>",
   }));
   const selectedPayload = await selectedResponse.json();
   await postLead(url, completeAmazonScPayload({ companyName: "Not Selected Co." }));
+  const reviewNote = "<img src=x onerror=alert(2)>";
+  const reviewResponse = await fetch(`${url}/api/leads/${selectedPayload.lead.id}/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: reviewNote }),
+  });
+  assert.equal(reviewResponse.status, 200);
 
   const response = await fetch(
     `${url}/api/leads/export?ids=${encodeURIComponent(selectedPayload.lead.id)}`,
@@ -1089,6 +1415,15 @@ test("authenticated export includes only selected leads and escapes internal tab
   assert.match(excel, /联易融 Amazon SC 卖家融资贷/);
   assert.match(excel, /匹配可信度/);
   assert.match(excel, /规则版本/);
+  for (const column of ["AI 报告来源", "AI 生成状态", "顾问复核状态", "顾问复核时间", "顾问内部备注"]) {
+    assert.equal(excel.match(new RegExp(column, "g"))?.length, 1, column);
+  }
+  assert.match(excel, /<td[^>]*>ai<\/td>/);
+  assert.match(excel, /<td[^>]*>generated<\/td>/);
+  assert.match(excel, /<td[^>]*>reviewed<\/td>/);
+  assert.match(excel, /&lt;img src=x onerror=alert\(2\)&gt;/);
+  assert.doesNotMatch(excel, /<img src=x onerror=alert\(2\)>/);
+  assert.doesNotMatch(excel, /SECRET-(?:MODEL|PROMPT|PROVIDER-BODY|RAW-PAYLOAD|API-KEY)|inputTokens|outputTokens|test-provider/);
 });
 
 for (const { label, payload, productId } of [
@@ -1227,7 +1562,7 @@ test("lead, admin, and selected export responses disable caching", async (t) => 
 
 test("authenticated lead filters cover customer, product, institution, currency, status, amount, and date", async (t) => {
   const { url } = await startTestServer(t);
-  await postLead(url, completeAmazonScPayload({ companyName: "Filter SC", requestedAmount: 1000000 }));
+  const reviewedLead = await (await postLead(url, completeAmazonScPayload({ companyName: "Filter SC", requestedAmount: 1000000 }))).json();
   await postLead(url, completeAmazonVcPayload({ companyName: "Filter VC", requestedAmount: 2000000 }));
   await postLead(url, completeLogisticsPayload({ companyName: "Filter Logistics", requestedAmount: 3000000 }));
   await postLead(url, completeAmazonScPayload({
@@ -1240,6 +1575,12 @@ test("authenticated lead filters cover customer, product, institution, currency,
     acceptsAccountControl: false,
     hasCompatibleCollectionAccount: false,
   }));
+  const reviewResponse = await fetch(`${url}/api/leads/${reviewedLead.lead.id}/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "reviewed", note: "筛选测试" }),
+  });
+  assert.equal(reviewResponse.status, 200);
 
   const query = async (parameters) => {
     const response = await fetch(`${url}/api/leads?${new URLSearchParams(parameters)}`, {
@@ -1255,6 +1596,8 @@ test("authenticated lead filters cover customer, product, institution, currency,
   assert.deepEqual((await query({ currency: "USD" })).sort(), ["Filter SC", "Filter VC"]);
   assert.deepEqual((await query({ status: "eligible" })).sort(), ["Filter Logistics", "Filter SC", "Filter VC"]);
   assert.deepEqual(await query({ status: "ineligible" }), ["Filter Ineligible"]);
+  assert.deepEqual(await query({ reviewStatus: "reviewed" }), ["Filter SC"]);
+  assert.deepEqual((await query({ reviewStatus: "pending" })).sort(), ["Filter Ineligible", "Filter Logistics", "Filter VC"]);
   assert.deepEqual(await query({ amountMin: "2500000" }), ["Filter Logistics"]);
   assert.deepEqual(await query({ amountMax: "1500000" }), ["Filter SC"]);
   assert.deepEqual(await query({ dateTo: "2000-01-01" }), []);
@@ -1274,6 +1617,7 @@ test("admin page exposes useful filters while preserving explicit selection-only
     "institutionFilter",
     "currencyFilter",
     "statusFilter",
+    "reviewStatusFilter",
     "amountMinFilter",
     "amountMaxFilter",
     "dateFromFilter",
@@ -1285,4 +1629,42 @@ test("admin page exposes useful filters while preserving explicit selection-only
   assert.match(html, /value === "progressive" \? "产品匹配"/);
   assert.match(html, /ids\.forEach\(\(id\) => params\.append\("ids", id\)\)/);
   assert.doesNotMatch(html, /href="\/api\/leads\/export"/);
+});
+
+test("admin page provides an accessible orderly advisor drawer and escapes build-time values", () => {
+  const html = buildAdminPage({
+    leadColumns: [["safe\");</script><script>alert(1)</script>//", "<img src=x onerror=alert(2)>"]],
+    products: [{
+      id: "product\"><script>alert(3)</script>",
+      name: "<svg onload=alert(4)>",
+      institution: "</option><script>alert(5)</script>",
+    }],
+  });
+
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /aria-modal="true"/);
+  assert.match(html, /id="advisorDrawerTitle"/);
+  for (const id of [
+    "drawerCustomerSummary",
+    "drawerDeterministicMatch",
+    "drawerAiReport",
+    "drawerAdvisorFocus",
+    "drawerReview",
+    "drawerActions",
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, /id="closeDrawer"/);
+  assert.match(html, /id="saveReview"/);
+  assert.match(html, /id="retryAi"/);
+  assert.match(html, /event\.key === "Escape"/);
+  assert.match(html, /drawerReturnFocus\.focus\(\)/);
+  assert.match(html, /@media \(max-width: 720px\)[\s\S]*\.drawer[^}]*width: 100%/);
+  assert.match(html, /&lt;img src=x onerror=alert\(2\)&gt;/);
+  assert.match(html, /&lt;svg onload=alert\(4\)&gt;/);
+  assert.doesNotMatch(html, /<img src=x onerror=alert\(2\)>|<svg onload=alert\(4\)>|<script>alert\([135]\)<\/script>/);
+  assert.doesNotMatch(html, /safe\\?"\);<\/script>/);
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script);
+  assert.doesNotThrow(() => new Function(script));
 });
