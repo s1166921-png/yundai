@@ -2520,8 +2520,7 @@ h2 {
 }
 
 .ai-report-business > span,
-.ai-report-actions > span,
-.ai-report-product > span {
+.ai-report-actions > span {
   flex: 0 0 44px;
   color: #5ce1e6;
   font-size: 11px;
@@ -2534,8 +2533,7 @@ h2 {
 }
 
 .ai-report-business > div,
-.ai-report-actions > div,
-.ai-report-product > section {
+.ai-report-actions > div {
   min-width: 0;
 }
 
@@ -2574,31 +2572,6 @@ h2 {
   width: 7px;
   height: 2px;
   background: #5ce1e6;
-}
-
-.ai-report-products {
-  min-width: 0;
-}
-
-.ai-report-product {
-  display: flex;
-  flex-wrap: wrap;
-  display: grid;
-  grid-template-columns: 44px repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  min-width: 0;
-  min-height: 154px;
-  padding: 26px 24px;
-  border-bottom: 1px solid rgba(92, 225, 230, 0.16);
-}
-
-.ai-report-product > section {
-  flex: 1 1 calc(50% - 31px);
-}
-
-.ai-report-product > section + section {
-  padding-left: 18px;
-  border-left: 1px solid rgba(140, 82, 255, 0.18);
 }
 
 .ai-report-empty {
@@ -2738,6 +2711,18 @@ h2 {
 
 .primary-result-reasons section + section {
   margin-left: 34px;
+}
+
+.primary-result-reasons .ai-product-supplement {
+  grid-column: 1 / -1;
+  margin-left: 0;
+  padding-top: 22px;
+  border-top: 1px solid rgba(92, 225, 230, 0.12);
+}
+
+.ai-product-supplement h4,
+.ai-product-supplement h5 {
+  color: #5ce1e6;
 }
 
 .primary-result-reasons h4,
@@ -3902,25 +3887,16 @@ h2 {
     padding: 18px 0 18px 18px;
   }
 
-  .ai-report-status,
-  .ai-report-product {
+  .ai-report-status {
     align-items: start;
     flex-direction: column;
     grid-template-columns: 1fr;
   }
 
   .ai-report-status > div,
-  .ai-report-status > p,
-  .ai-report-product > section {
+  .ai-report-status > p {
     flex-basis: 100%;
     width: 100%;
-  }
-
-  .ai-report-product > section + section {
-    padding-top: 18px;
-    padding-left: 0;
-    border-top: 1px solid rgba(140, 82, 255, 0.18);
-    border-left: 0;
   }
 
   .ai-preliminary-report ul {
@@ -4080,7 +4056,6 @@ h2 {
   .ai-example dl > div,
   .ai-report-status > div,
   .ai-report-status > p,
-  .ai-report-product > section,
   .primary-result-metrics > div,
   .primary-result-reasons section,
   .match-alternative-result,

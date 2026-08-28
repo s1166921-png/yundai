@@ -1,6 +1,6 @@
 export const INTAKE_VERSION = "progressive-v1";
 
-export const INTAKE_INFORMATION_USE_NOTICE = "为生成初步报告，脱敏后的企业经营字段将发送至第三方 AI 服务；企业身份信息、联系人和联系电话不会发送。";
+export const INTAKE_INFORMATION_USE_NOTICE = "您提交的联系方式和经营信息将由美鸥保存，用于产品匹配和融资顾问跟进；仅脱敏经营字段会发送至第三方 AI 辅助分析，企业身份与联系方式不会发送。结果仅供融资准备参考，不构成授信、审批或放款承诺。";
 
 export const INTAKE_SUBMISSION_COPY = Object.freeze({
   loading: "正在整理经营信息、核对产品规则并生成初步分析…",

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDeepSeekClient } from "../server/ai/deepSeekClient.mjs";
+import { AI_NARRATIVE_SCHEMA_VERSION } from "../src/lib/ai/aiReportContract.js";
 import {
   createAiReportService,
   createAiReportServiceFromEnvironment,
@@ -10,16 +11,17 @@ import { createDailyLimiter } from "../server/ai/dailyLimiter.mjs";
 const generatedAt = new Date("2026-08-27T00:00:00.000Z");
 
 const sampleInput = {
-  schemaVersion: "meiou-analysis-v1",
+  schemaVersion: "meiou-analysis-v2",
   scenario: "amazon_sc",
   facts: { entityRegion: "mainland" },
+  summaryCodes: ["summary:profile-submitted", "summary:scenario:amazon_sc"],
   products: [{
     productId: "linklogis-amazon-sc",
-    status: "eligible",
-    satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
-    itemsToConfirm: [],
+    reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
+    confirmationCodes: [],
   }],
-  preparationDocuments: ["近 12 个月销售数据证明"],
+  preparationActionCodes: ["action:document:sales-data-last-12-months"],
+  advisorFocusCodes: [],
 };
 
 const sampleLead = {
@@ -48,14 +50,15 @@ const sampleLead = {
 };
 
 const validNarrative = (productId = "linklogis-amazon-sc") => ({
-  businessSummary: ["当前为平台经营周转场景。"],
+  schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+  businessSummaryCodes: ["summary:profile-submitted", "summary:scenario:amazon_sc"],
   productExplanations: [{
     productId,
-    reasons: ["当前经营场景与该方向一致。"],
-    itemsToConfirm: [],
+    reasonCodes: [`evidence:${productId}:single-store-annual-gmv`],
+    confirmationCodes: [],
   }],
-  preparationActions: ["准备经营资料。"],
-  advisorFocus: [],
+  preparationActionCodes: ["action:document:sales-data-last-12-months"],
+  advisorFocusCodes: [],
 });
 
 const jsonResponse = (payload, status = 200) => new Response(JSON.stringify(payload), {
@@ -93,10 +96,29 @@ test("DeepSeek client sends the official request with only the deidentified JSON
       { role: "user", content: JSON.stringify(sampleInput) },
     ],
   });
-  assert.match(request.body.messages[0].content, /product ids and order are immutable/i);
-  assert.match(request.body.messages[0].content, /no new financial terms/i);
-  assert.match(request.body.messages[0].content, /only supplied facts/i);
-  assert.match(request.body.messages[0].content, /Task 1 JSON contract/i);
+  const prompt = request.body.messages[0].content;
+  for (const field of [
+    "schemaVersion",
+    "businessSummaryCodes",
+    "productExplanations",
+    "productId",
+    "reasonCodes",
+    "confirmationCodes",
+    "preparationActionCodes",
+    "advisorFocusCodes",
+  ]) assert.match(prompt, new RegExp(field));
+  assert.match(prompt, /exactly five top-level fields/i);
+  assert.match(prompt, /one to three businessSummaryCodes/i);
+  assert.match(prompt, /zero to three reasonCodes/i);
+  assert.match(prompt, /zero to three confirmationCodes/i);
+  assert.match(prompt, /one to five preparationActionCodes/i);
+  assert.match(prompt, /zero to five advisorFocusCodes/i);
+  assert.match(prompt, /unique ordered subset/i);
+  assert.match(prompt, /product ids and order are immutable/i);
+  assert.match(prompt, /do not output free-form prose/i);
+  assert.match(prompt, /Chinese customer text is resolved only by the server/i);
+  assert.match(prompt, /advisor output is code-only.*server.*Chinese text/i);
+  assert.doesNotMatch(prompt, /Task 1 JSON contract/i);
   assert.doesNotMatch(request.options.body, /companyName|contactName|phone/);
   assert.deepEqual(result.usage, { prompt_tokens: 40, completion_tokens: 20 });
 });
@@ -212,7 +234,7 @@ test("report service falls back on provider timeout and logs only approved metad
     category: "timeout",
     durationMs: null,
     model: "deepseek-v4-pro",
-    promptVersion: "meiou-ai-advisor-v1",
+    promptVersion: "meiou-ai-advisor-v2",
   }]);
 });
 
@@ -220,10 +242,48 @@ test("daily limiter resets at the next UTC natural day", () => {
   let currentTime = new Date("2026-08-27T23:59:59.000Z");
   const limiter = createDailyLimiter({ limit: 1, now: () => currentTime });
 
+  assert.equal(limiter.canAcquire(), true);
+  assert.equal(limiter.canAcquire(), true);
   assert.equal(limiter.tryAcquire(), true);
+  assert.equal(limiter.canAcquire(), false);
   assert.equal(limiter.tryAcquire(), false);
   currentTime = new Date("2026-08-28T00:00:00.000Z");
+  assert.equal(limiter.canAcquire(), true);
   assert.equal(limiter.tryAcquire(), true);
+});
+
+test("retry capability is non-consuming for repeated no-key and daily-limit checks", async () => {
+  let limiterChecks = 0;
+  const noKeyService = createAiReportService({
+    client: { isConfigured: false },
+    limiter: {
+      canAcquire: () => { limiterChecks += 1; return true; },
+      tryAcquire: () => { throw new Error("must not reserve without a key"); },
+    },
+    now: () => generatedAt,
+  });
+
+  assert.deepEqual(noKeyService.getRetryCapability(), { allowed: false, reason: "not_configured" });
+  assert.deepEqual(noKeyService.getRetryCapability(), { allowed: false, reason: "not_configured" });
+  assert.equal(limiterChecks, 0);
+
+  let currentTime = new Date("2026-08-27T23:59:59.000Z");
+  const dailyService = createAiReportService({
+    client: {
+      isConfigured: true,
+      generateNarrative: async () => ({ narrative: validNarrative(), durationMs: 1 }),
+    },
+    limiter: createDailyLimiter({ limit: 1, now: () => currentTime }),
+    now: () => currentTime,
+  });
+
+  assert.deepEqual(dailyService.getRetryCapability(), { allowed: true, reason: null });
+  assert.deepEqual(dailyService.getRetryCapability(), { allowed: true, reason: null });
+  await dailyService.generate(sampleLead);
+  assert.deepEqual(dailyService.getRetryCapability(), { allowed: false, reason: "daily_limit" });
+  assert.deepEqual(dailyService.getRetryCapability(), { allowed: false, reason: "daily_limit" });
+  currentTime = new Date("2026-08-28T00:00:00.000Z");
+  assert.deepEqual(dailyService.getRetryCapability(), { allowed: true, reason: null });
 });
 
 test("report service does not call the client after its daily limit is exhausted", async () => {
@@ -240,6 +300,7 @@ test("report service does not call the client after its daily limit is exhausted
   assert.equal(calls, 1);
   assert.equal(analysis.status, "fallback");
   assert.equal(analysis.meta.errorCategory, "daily_limit");
+  assert.equal(analysis.meta.providerAttempted, false);
 });
 
 test("report service falls back when the provider response is malformed", async () => {
@@ -271,8 +332,8 @@ test("report service falls back when the provider reorders deterministic product
         narrative: {
           ...validNarrative("webank-cross-border-data-loan"),
           productExplanations: [
-            { productId: "webank-cross-border-data-loan", reasons: ["当前经营场景与该方向一致。"], itemsToConfirm: [] },
-            { productId: "linklogis-amazon-sc", reasons: ["当前经营场景与该方向一致。"], itemsToConfirm: [] },
+            { productId: "webank-cross-border-data-loan", reasonCodes: [], confirmationCodes: [] },
+            { productId: "linklogis-amazon-sc", reasonCodes: [], confirmationCodes: [] },
           ],
         },
         durationMs: 1,
@@ -286,6 +347,34 @@ test("report service falls back when the provider reorders deterministic product
 
   assert.equal(analysis.status, "fallback");
   assert.equal(analysis.meta.errorCategory, "contract_violation");
+});
+
+test("report service rejects provider prose, unknown references, and duplicate code selections", async () => {
+  const invalidNarratives = [
+    { ...validNarrative(), businessSummary: ["保证获批 100 万元"] },
+    { ...validNarrative(), businessSummaryCodes: ["summary:model:injected-model-value"] },
+    {
+      ...validNarrative(),
+      productExplanations: [{
+        ...validNarrative().productExplanations[0],
+        reasonCodes: [
+          "evidence:linklogis-amazon-sc:single-store-annual-gmv",
+          "evidence:linklogis-amazon-sc:single-store-annual-gmv",
+        ],
+      }],
+    },
+  ];
+
+  for (const narrative of invalidNarratives) {
+    const service = createAiReportService({
+      client: { generateNarrative: async () => ({ narrative, durationMs: 1 }) },
+      limiter: { tryAcquire: () => true },
+      now: () => generatedAt,
+    });
+    const analysis = await service.generate(sampleLead);
+    assert.equal(analysis.status, "fallback");
+    assert.equal(analysis.meta.errorCategory, "contract_violation");
+  }
 });
 
 test("environment service returns repeated not configured fallbacks without network calls or limiter use", async () => {
@@ -304,6 +393,8 @@ test("environment service returns repeated not configured fallbacks without netw
   assert.equal(calls, 0);
   assert.deepEqual(analyses.map((analysis) => analysis.status), ["fallback", "fallback"]);
   assert.deepEqual(analyses.map((analysis) => analysis.meta.errorCategory), ["not_configured", "not_configured"]);
+  assert.deepEqual(analyses.map((analysis) => analysis.meta.providerAttempted), [false, false]);
+  assert.deepEqual(service.getRetryCapability(), { allowed: false, reason: "not_configured" });
 });
 
 test("report service still resolves a fallback when telemetry throws", async () => {

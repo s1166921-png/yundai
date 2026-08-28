@@ -175,6 +175,15 @@ const safeWhyMatched = (product, passedRules = []) => {
     .slice(0, 3);
 };
 
+const safeItemsToConfirm = (product, unknownRules = []) => {
+  const unknownRuleIds = new Set(unknownRules.map((rule) => rule.id));
+  return product.ruleSet
+    .filter((rule) => unknownRuleIds.has(rule.id))
+    .map((rule) => rule.message)
+    .filter((message, index, messages) => messages.indexOf(message) === index)
+    .slice(0, 3);
+};
+
 const reportProduct = (profile, match, role) => {
   const product = getProductById(match.productId);
   if (product == null) return null;
@@ -193,6 +202,7 @@ const reportProduct = (profile, match, role) => {
       ? customerAmount(match.estimatedAmount)
       : null,
     whyMatched: safeWhyMatched(product, match.passedRules),
+    itemsToConfirm: safeItemsToConfirm(product, match.unknownRules),
   };
 };
 

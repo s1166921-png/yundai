@@ -127,15 +127,13 @@ test("customer AI view rejects system metadata shapes while preserving natural-l
   assert.equal(view.privacyNotice, "");
 });
 
-test("customer report renders transparent sections in order without internal metadata", async (t) => {
+test("customer report renders summary and actions once without anonymous product explanations", async (t) => {
   const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
   const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report: customerAiReport }));
   const expectedOrder = [
     "AI 初步分析",
     "专业顾问待复核",
     "经营判断",
-    "为什么匹配",
-    "仍需确认",
     "融资准备清单",
     customerAiReport.privacyNotice,
   ];
@@ -145,6 +143,8 @@ test("customer report renders transparent sections in order without internal met
     assert.ok(nextIndex > previousIndex, `${text} should follow the preceding report section`);
     return nextIndex;
   }, -1);
+  assert.doesNotMatch(markup, /Amazon SC 场景与产品方向一致。|需确认单店铺 GMV 证明。/);
+  assert.doesNotMatch(markup, /为什么匹配|仍需确认/);
   assert.doesNotMatch(markup, /DeepSeek|internal-model|confidence|置信|评分|advisorNotes|顾问备注/);
 });
 

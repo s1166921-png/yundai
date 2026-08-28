@@ -9,6 +9,10 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { createMeiouServer } from "../server/index.mjs";
 import { buildAdminPage } from "../server/adminPage.mjs";
+import { createAiReportService } from "../server/ai/aiReportService.mjs";
+import { createDailyLimiter } from "../server/ai/dailyLimiter.mjs";
+import { AI_NARRATIVE_SCHEMA_VERSION } from "../src/lib/ai/aiReportContract.js";
+import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 
 const serverEntryPath = fileURLToPath(new URL("../server/index.mjs", import.meta.url));
@@ -246,6 +250,14 @@ async function postLead(url, payload = completeAmazonScPayload()) {
   });
 }
 
+async function getAdminLead(url, leadId) {
+  const response = await fetch(`${url}/api/leads`, {
+    headers: { Authorization: adminAuthorization },
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).leads.find((lead) => lead.id === leadId);
+}
+
 function createDeferred() {
   let resolve;
   let reject;
@@ -412,6 +424,37 @@ function createAdminScriptVm(leads) {
   };
 }
 
+function adminVmLead(id, overrides = {}) {
+  return {
+    id,
+    revision: 2,
+    companyName: `${id} Company`,
+    contactName: `${id} Contact`,
+    phone: `13800138${id === "A" ? "101" : "102"}`,
+    createdAt: "2026-08-27T08:00:00.000Z",
+    profile: {
+      primaryBusinessModel: "amazon_sc",
+      requestedAmount: { amount: 1000000, currency: "USD" },
+    },
+    matchReport: { primary: null, alternatives: [] },
+    advisorVerificationFields: [],
+    aiAnalysis: {
+      status: "fallback",
+      retryCount: 0,
+      customerReport: {
+        statusMessage: `${id} AI status`,
+        businessSummary: [`${id} summary`],
+        productExplanations: [],
+        preparationActions: [],
+      },
+      advisorFocus: [],
+    },
+    aiRetry: { allowed: true, reason: null },
+    advisorReview: { status: "pending", note: `${id} original`, updatedAt: null },
+    ...overrides,
+  };
+}
+
 test("createMeiouServer authenticates only the explicitly injected credentials", async (t) => {
   const { url } = await startTestServer(t);
   const explicitResponse = await fetch(`${url}/api/leads`, {
@@ -538,35 +581,39 @@ test("POST persists the lead before AI generation and returns a customer-safe in
   let sawPersistedPending = false;
   let pendingStoreMode = null;
   let generatedCount = 0;
-  const generatedAnalysis = {
-    status: "generated",
-    customerReport: {
-      statusMessage: "AI 初筛完成，专业顾问待复核。",
-      businessSummary: ["当前为 Amazon SC 经营场景。"],
-      productExplanations: [{
-        productId: "linklogis-amazon-sc",
-        reasons: ["当前经营场景与产品方向一致。"],
-        itemsToConfirm: ["需核验销售数据。"],
-      }],
-      preparationActions: ["准备近 12 个月销售数据。"],
-    },
-    advisorFocus: ["确认回款账户安排。"],
-    meta: {
-      provider: "deepseek",
-      model: "deepseek-v4-pro",
-      promptVersion: "meiou-ai-advisor-v1",
-      generatedAt: "2026-08-27T00:00:00.000Z",
-      durationMs: 50,
-      usage: { inputTokens: 40, outputTokens: 20 },
-      errorCategory: null,
-    },
-  };
+  let generatedAnalysis;
   const aiReportService = {
     generate: async (lead) => {
       generatedCount += 1;
       const stored = JSON.parse(await readFile(leadsFilePath, "utf8"));
       sawPersistedPending = stored.some((item) => item.id === lead.id && item.aiAnalysis.status === "pending");
       pendingStoreMode = (await stat(leadsFilePath)).mode & 0o777;
+      const input = buildAiAnalysisInput(lead);
+      generatedAnalysis = {
+        status: "generated",
+        customerReport: {
+          schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+          businessSummaryCodes: input.summaryCodes.slice(0, 2),
+          productExplanations: input.products.map((product) => ({
+            productId: product.productId,
+            reasonCodes: product.reasonCodes.slice(0, 1),
+            confirmationCodes: product.confirmationCodes.slice(0, 1),
+          })),
+          preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+        },
+        advisorFocusCodes: [],
+        advisorFocus: [],
+        meta: {
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          promptVersion: "meiou-ai-advisor-v2",
+          generatedAt: "2026-08-27T00:00:00.000Z",
+          durationMs: 50,
+          usage: { inputTokens: 40, outputTokens: 20 },
+          errorCategory: null,
+          providerAttempted: true,
+        },
+      };
       return generatedAnalysis;
     },
   };
@@ -583,6 +630,10 @@ test("POST persists the lead before AI generation and returns a customer-safe in
   assert.equal(body.lead.aiReport.reviewStatus, "pending");
   assert.equal("advisorFocus" in body.lead.aiReport, false);
   assert.equal("meta" in body.lead.aiReport, false);
+
+  const admin = await getAdminLead(started.url, body.lead.id);
+  assert.deepEqual(admin.aiReport, body.lead.aiReport);
+  assert.equal(admin.aiAnalysis.customerReport.businessSummary, undefined);
 
   const [stored] = JSON.parse(await readFile(leadsFilePath, "utf8"));
   assert.deepEqual(stored.aiAnalysis, generatedAnalysis);
@@ -635,6 +686,163 @@ test("POST recovers from a rejecting AI service with a persisted safe fallback",
   assert.equal(stored.aiAnalysis.meta.errorCategory, "provider_error");
   assert.equal(logged.length, 0);
   assert.doesNotMatch(JSON.stringify(body), /customer data|provider_error|"meta"|"provider"|errorCategory/);
+});
+
+test("raw public responses recursively project only server-owned AI text despite generated metadata injection", async (t) => {
+  const markers = [
+    "injected-provider-value",
+    "injected-model-value",
+    "injected-prompt-value",
+    "injected-system-value",
+    "injected-token-value",
+    "injected-usage-value",
+    "injected-error-value",
+    "injected-rule-value",
+    "injected-advisor-value",
+    "injected-score-value",
+    "injected-confidence-value",
+  ];
+  const privateKeys = new Set([
+    "meta", "provider", "model", "promptVersion", "usage", "errorCategory",
+    "advisorFocus", "advisorFocusCodes", "advisorReview", "note", "score", "confidence",
+  ]);
+  const aiReportService = {
+    generate: async (lead) => {
+      const input = buildAiAnalysisInput(lead);
+      return {
+        status: "generated",
+        customerReport: {
+          schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+          businessSummaryCodes: [input.summaryCodes[0]],
+          productExplanations: input.products.map((product) => ({
+            productId: product.productId,
+            reasonCodes: product.reasonCodes.slice(0, 1),
+            confirmationCodes: product.confirmationCodes.slice(0, 1),
+            reasons: ["provider: injected-provider-value"],
+            itemsToConfirm: ["system: injected-system-value"],
+          })),
+          preparationActionCodes: [input.preparationActionCodes[0]],
+          advisorFocusCodes: [],
+          statusMessage: "model: injected-model-value",
+          businessSummary: ["prompt: injected-prompt-value"],
+          preparationActions: ["token: injected-token-value", "usage: injected-usage-value"],
+        },
+        advisorFocus: ["advisor: injected-advisor-value"],
+        meta: {
+          provider: "injected-provider-value",
+          model: "injected-model-value",
+          promptVersion: "injected-prompt-value",
+          usage: "injected-usage-value",
+          errorCategory: "injected-error-value",
+          score: "injected-score-value",
+          confidence: "injected-confidence-value",
+          internalRule: "injected-rule-value",
+        },
+      };
+    },
+  };
+  const { url } = await startTestServer(t, { aiReportService });
+  const response = await postLead(url, completeProgressiveAmazonScPayload());
+  const raw = await response.text();
+  const payload = JSON.parse(raw);
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.lead.aiReport.source, "rules_fallback");
+  const visit = (value, path = "lead") => {
+    if (value == null) return;
+    if (typeof value === "string") {
+      for (const marker of markers) assert.equal(value.includes(marker), false, `${path}: ${marker}`);
+      return;
+    }
+    if (typeof value !== "object") return;
+    for (const [key, nested] of Object.entries(value)) {
+      assert.equal(privateKeys.has(key), false, `${path}.${key}`);
+      visit(nested, `${path}.${key}`);
+    }
+  };
+  visit(payload.lead.aiReport);
+  for (const marker of markers) assert.equal(raw.includes(marker), false, marker);
+  assert.ok(payload.lead.matchReport.primary.whyMatched.length > 0);
+  assert.ok(Array.isArray(payload.lead.matchReport.primary.itemsToConfirm));
+});
+
+test("raw valid generated responses omit persisted metadata, advisor output, and submitted notes", async (t) => {
+  const markers = [
+    "raw-valid-provider-marker",
+    "raw-valid-model-marker",
+    "raw-valid-prompt-marker",
+    "raw-valid-usage-marker",
+    "raw-valid-error-marker",
+    "raw-valid-advisor-marker",
+    "raw-valid-note-marker",
+  ];
+  const aiReportService = {
+    generate: async (lead) => {
+      const input = buildAiAnalysisInput(lead);
+      return {
+        status: "generated",
+        customerReport: {
+          schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+          businessSummaryCodes: input.summaryCodes.slice(0, 1),
+          productExplanations: input.products.map((product) => ({
+            productId: product.productId,
+            reasonCodes: product.reasonCodes.slice(0, 1),
+            confirmationCodes: product.confirmationCodes.slice(0, 1),
+          })),
+          preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+        },
+        advisorFocusCodes: input.advisorFocusCodes.slice(0, 1),
+        advisorFocus: ["raw-valid-advisor-marker"],
+        meta: {
+          provider: "raw-valid-provider-marker",
+          model: "raw-valid-model-marker",
+          promptVersion: "raw-valid-prompt-marker",
+          usage: { raw: "raw-valid-usage-marker" },
+          errorCategory: "raw-valid-error-marker",
+          providerAttempted: true,
+        },
+      };
+    },
+  };
+  const { url } = await startTestServer(t, { aiReportService });
+  const response = await postLead(url, completeAmazonScPayload({ note: "raw-valid-note-marker" }));
+  const raw = await response.text();
+  const payload = JSON.parse(raw);
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.lead.aiReport.source, "ai");
+  for (const marker of markers) assert.equal(raw.includes(marker), false, marker);
+  assert.doesNotMatch(raw, /"(?:meta|advisorFocus|advisorFocusCodes|advisorReview|promptVersion|usage|errorCategory)"/);
+});
+
+test("raw fallback responses ignore adversarial persisted status, summary, explanation, confirmation, and action prose", async (t) => {
+  const aiReportService = {
+    generate: async () => ({
+      status: "fallback",
+      customerReport: {
+        statusMessage: "provider: raw-provider-marker",
+        businessSummary: ["model: raw-model-marker"],
+        productExplanations: [{
+          productId: "linklogis-amazon-sc",
+          reasons: ["prompt: raw-prompt-marker"],
+          itemsToConfirm: ["system: raw-system-marker"],
+        }],
+        preparationActions: ["token usage: raw-token-marker"],
+      },
+      advisorFocus: ["advisor note: raw-advisor-marker"],
+      meta: { provider: "raw-provider-marker", errorCategory: "raw-error-marker" },
+    }),
+  };
+  const { url } = await startTestServer(t, { aiReportService });
+  const response = await postLead(url, completeProgressiveAmazonScPayload());
+  const raw = await response.text();
+  const body = JSON.parse(raw);
+
+  assert.equal(response.status, 201);
+  assert.equal(body.lead.aiReport.source, "rules_fallback");
+  assert.match(body.lead.aiReport.statusMessage, /AI 扩展分析暂不可用/);
+  assert.doesNotMatch(raw, /raw-(?:provider|model|prompt|system|token|advisor|error)-marker/);
+  assert.doesNotMatch(JSON.stringify(body.lead.aiReport), /"(?:meta|provider|model|promptVersion|usage|errorCategory|advisorFocus|advisorReview|note)"/);
 });
 
 test("POST resolves an injected ID collision before persisting and completes only the new lead", async (t) => {
@@ -1241,21 +1449,23 @@ test("malformed encoded review and retry IDs authenticate before returning cache
 test("authenticated advisor review saves an internal review and returns 404 for a missing lead", async (t) => {
   const { url } = await startTestServer(t);
   const created = await (await postLead(url)).json();
+  const initial = await getAdminLead(url, created.lead.id);
   const endpoint = `${url}/api/leads/${created.lead.id}/review`;
   const savedResponse = await fetch(endpoint, {
     method: "PATCH",
     headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "reviewed", note: "  已核验  " }),
+    body: JSON.stringify({ expectedRevision: initial.revision, status: "reviewed", note: "  已核验  " }),
   });
   const saved = await savedResponse.json();
   const missingResponse = await fetch(`${url}/api/leads/missing/review`, {
     method: "PATCH",
     headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "reviewed", note: "" }),
+    body: JSON.stringify({ expectedRevision: 0, status: "reviewed", note: "" }),
   });
   const missingRetryResponse = await fetch(`${url}/api/leads/missing/ai-retry`, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: 0 }),
   });
 
   assert.equal(savedResponse.status, 200);
@@ -1275,14 +1485,15 @@ test("authenticated advisor review saves an internal review and returns 404 for 
 test("advisor review rejects invalid JSON, states, and notes without changing the lead", async (t) => {
   const { url } = await startTestServer(t);
   const created = await (await postLead(url)).json();
+  const initial = await getAdminLead(url, created.lead.id);
   const endpoint = `${url}/api/leads/${created.lead.id}/review`;
   const headers = { Authorization: adminAuthorization, "Content-Type": "application/json" };
 
   for (const { label, body } of [
     { label: "invalid JSON", body: "{" },
-    { label: "unknown status", body: JSON.stringify({ status: "approved", note: "" }) },
-    { label: "non-string note", body: JSON.stringify({ status: "reviewed", note: { html: "no" } }) },
-    { label: "overlong note", body: JSON.stringify({ status: "reviewed", note: "x".repeat(2001) }) },
+    { label: "unknown status", body: JSON.stringify({ expectedRevision: initial.revision, status: "approved", note: "" }) },
+    { label: "non-string note", body: JSON.stringify({ expectedRevision: initial.revision, status: "reviewed", note: { html: "no" } }) },
+    { label: "overlong note", body: JSON.stringify({ expectedRevision: initial.revision, status: "reviewed", note: "x".repeat(2001) }) },
   ]) {
     const response = await fetch(endpoint, { method: "PATCH", headers, body });
     assert.equal(response.status, 400, label);
@@ -1314,12 +1525,13 @@ test("CORS advertises PATCH for authenticated advisor review requests", async (t
 test("simultaneous advisor review and lead submission preserve both atomic updates", async (t) => {
   const { url } = await startTestServer(t);
   const existing = await (await postLead(url, completeAmazonScPayload({ companyName: "Reviewed Co." }))).json();
+  const existingAdmin = await getAdminLead(url, existing.lead.id);
 
   const [reviewResponse, createdResponse] = await Promise.all([
     fetch(`${url}/api/leads/${existing.lead.id}/review`, {
       method: "PATCH",
       headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "in_review", note: "并发复核" }),
+      body: JSON.stringify({ expectedRevision: existingAdmin.revision, status: "in_review", note: "并发复核" }),
     }),
     postLead(url, completeAmazonVcPayload({ companyName: "Concurrent New Co." })),
   ]);
@@ -1333,6 +1545,138 @@ test("simultaneous advisor review and lead submission preserve both atomic updat
   assert.equal(leads.length, 2);
   assert.equal(leads.find((lead) => lead.id === existing.lead.id).advisorReview.status, "in_review");
   assert.ok(leads.some((lead) => lead.companyName === "Concurrent New Co."));
+});
+
+test("admin mutations reject stale revisions with the current committed lead", async (t) => {
+  const { url } = await startTestServer(t);
+  const created = await (await postLead(url)).json();
+  const initial = await getAdminLead(url, created.lead.id);
+
+  const savedResponse = await fetch(`${url}/api/leads/${created.lead.id}/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: initial.revision,
+      status: "in_review",
+      note: "first committed review",
+    }),
+  });
+  const saved = await savedResponse.json();
+  assert.equal(savedResponse.status, 200);
+  assert.equal(saved.lead.revision, initial.revision + 1);
+
+  const staleResponse = await fetch(`${url}/api/leads/${created.lead.id}/review`, {
+    method: "PATCH",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: initial.revision,
+      status: "reviewed",
+      note: "must not overwrite",
+    }),
+  });
+  const stale = await staleResponse.json();
+
+  assert.equal(staleResponse.status, 409);
+  assert.equal(stale.code, "revision_conflict");
+  assert.equal(stale.lead.revision, saved.lead.revision);
+  assert.equal(stale.lead.advisorReview.note, "first committed review");
+  assert.equal((await getAdminLead(url, created.lead.id)).advisorReview.note, "first committed review");
+});
+
+test("no-key retries remain available for a future configuration without consuming retryCount", async (t) => {
+  const { leadsFilePath, url } = await startTestServer(t);
+  const createdResponse = await postLead(url);
+  const created = await createdResponse.json();
+  const initial = await getAdminLead(url, created.lead.id);
+
+  assert.equal(createdResponse.status, 201);
+  assert.equal(created.lead.aiRetry, undefined);
+  assert.equal(created.lead.revision, undefined);
+  assert.deepEqual(initial.aiRetry, { allowed: false, reason: "not_configured" });
+  assert.equal(initial.aiAnalysis.retryCount, 0);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(`${url}/api/leads/${created.lead.id}/ai-retry`, {
+      method: "POST",
+      headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: initial.revision }),
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(payload.code, "ai_retry_unavailable");
+    assert.equal(payload.reason, "not_configured");
+    assert.equal(payload.lead.revision, initial.revision);
+    assert.equal(payload.lead.aiAnalysis.retryCount, 0);
+  }
+
+  const stored = JSON.parse(await readFile(leadsFilePath, "utf8"))[0];
+  assert.equal(stored.revision, initial.revision);
+  assert.equal(stored.aiAnalysis.retryCount ?? 0, 0);
+});
+
+test("daily-limit retry availability returns on the next UTC day without spending the retry", async (t) => {
+  let currentTime = new Date("2026-08-27T23:59:59.000Z");
+  let providerCalls = 0;
+  const limiter = createDailyLimiter({ limit: 1, now: () => currentTime });
+  assert.equal(limiter.tryAcquire(), true);
+  const aiReportService = createAiReportService({
+    client: {
+      isConfigured: true,
+      model: "test-model",
+      generateNarrative: async (input) => {
+        providerCalls += 1;
+        return {
+          narrative: {
+            schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+            businessSummaryCodes: input.summaryCodes.slice(0, 1),
+            productExplanations: input.products.map((product) => ({
+              productId: product.productId,
+              reasonCodes: product.reasonCodes.slice(0, 1),
+              confirmationCodes: product.confirmationCodes.slice(0, 1),
+            })),
+            preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+            advisorFocusCodes: [],
+          },
+          durationMs: 1,
+        };
+      },
+    },
+    limiter,
+    now: () => currentTime,
+  });
+  const { leadsFilePath, url } = await startTestServer(t, {
+    aiReportService,
+    now: () => currentTime,
+  });
+  const created = await (await postLead(url)).json();
+  const limited = await getAdminLead(url, created.lead.id);
+
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(limited.aiRetry, { allowed: false, reason: "daily_limit" });
+  const denied = await fetch(`${url}/api/leads/${created.lead.id}/ai-retry`, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: limited.revision }),
+  });
+  assert.equal(denied.status, 409);
+  assert.equal((await denied.json()).reason, "daily_limit");
+  assert.equal(JSON.parse(await readFile(leadsFilePath, "utf8"))[0].aiAnalysis.retryCount ?? 0, 0);
+
+  currentTime = new Date("2026-08-28T00:00:00.000Z");
+  const available = await getAdminLead(url, created.lead.id);
+  assert.deepEqual(available.aiRetry, { allowed: true, reason: null });
+  const retriedResponse = await fetch(`${url}/api/leads/${created.lead.id}/ai-retry`, {
+    method: "POST",
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: available.revision }),
+  });
+  const retried = await retriedResponse.json();
+
+  assert.equal(retriedResponse.status, 200);
+  assert.equal(providerCalls, 1);
+  assert.equal(retried.lead.aiAnalysis.retryCount, 1);
+  assert.equal(retried.lead.aiRetry.allowed, false);
+  assert.equal(JSON.parse(await readFile(leadsFilePath, "utf8"))[0].aiAnalysis.retryCount, 1);
 });
 
 test("AI retry persists its claim before generation and atomically rejects every later retry", async (t) => {
@@ -1377,10 +1721,12 @@ test("AI retry persists its claim before generation and atomically rejects every
   const started = await startTestServer(t, { aiReportService });
   leadsFilePath = started.leadsFilePath;
   const created = await (await postLead(started.url)).json();
+  const initialAdminLead = await getAdminLead(started.url, created.lead.id);
   const endpoint = `${started.url}/api/leads/${created.lead.id}/ai-retry`;
   const retryPromise = fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: initialAdminLead.revision }),
   });
   const persistedPending = await Promise.race([
     retryStarted,
@@ -1388,16 +1734,22 @@ test("AI retry persists its claim before generation and atomically rejects every
   ]);
 
   assert.equal(persistedPending.aiAnalysis.status, "pending");
-  assert.equal(persistedPending.aiAnalysis.retryCount, 1);
+  assert.equal(persistedPending.aiAnalysis.retryCount, 0);
   const reviewWhilePending = await fetch(`${started.url}/api/leads/${created.lead.id}/review`, {
     method: "PATCH",
     headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "in_review", note: "重试期间复核" }),
+    body: JSON.stringify({
+      expectedRevision: persistedPending.revision,
+      status: "in_review",
+      note: "重试期间复核",
+    }),
   });
   assert.equal(reviewWhilePending.status, 200);
+  const reviewedWhilePending = await reviewWhilePending.json();
   const simultaneousRetry = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: reviewedWhilePending.lead.revision }),
   });
   assert.equal(simultaneousRetry.status, 409);
   releaseRetry();
@@ -1414,7 +1766,8 @@ test("AI retry persists its claim before generation and atomically rejects every
 
   const completedRetry = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: retried.lead.revision }),
   });
   assert.equal(completedRetry.status, 409);
   assert.equal(generateCalls, 2);
@@ -1461,15 +1814,18 @@ test("an original pending generation cannot erase an authenticated AI retry clai
   const endpoint = `${url}/api/leads/${leadId}/ai-retry`;
   const firstRetryPromise = fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: 1 }),
   });
   await retryStarted;
 
   releaseInitial();
   assert.equal((await createPromise).status, 201);
+  const retryClaimRevision = JSON.parse(await readFile(leadsFilePath, "utf8"))[0].revision;
   const secondRetry = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: retryClaimRevision }),
   });
   releaseRetry();
   const firstRetryResponse = await firstRetryPromise;
@@ -1500,9 +1856,11 @@ test("a rejecting AI retry service persists a safe fallback and never leaks its 
   };
   const { leadsFilePath, url } = await startTestServer(t, { aiReportService });
   const created = await (await postLead(url)).json();
+  const initial = await getAdminLead(url, created.lead.id);
   const response = await fetch(`${url}/api/leads/${created.lead.id}/ai-retry`, {
     method: "POST",
-    headers: { Authorization: adminAuthorization },
+    headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: initial.revision }),
   });
   const body = await response.json();
   const stored = JSON.parse(await readFile(leadsFilePath, "utf8"))[0];
@@ -1594,11 +1952,16 @@ test("authenticated export includes only selected leads and escapes internal tab
   }));
   const selectedPayload = await selectedResponse.json();
   await postLead(url, completeAmazonScPayload({ companyName: "Not Selected Co." }));
+  const selectedAdminLead = await getAdminLead(url, selectedPayload.lead.id);
   const reviewNote = "<img src=x onerror=alert(2)>";
   const reviewResponse = await fetch(`${url}/api/leads/${selectedPayload.lead.id}/review`, {
     method: "PATCH",
     headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "reviewed", note: reviewNote }),
+    body: JSON.stringify({
+      expectedRevision: selectedAdminLead.revision,
+      status: "reviewed",
+      note: reviewNote,
+    }),
   });
   assert.equal(reviewResponse.status, 200);
 
@@ -1667,19 +2030,55 @@ test("POST /api/leads requires application/json", async (t) => {
   assert.deepEqual(await response.json(), { error: "请使用 application/json 提交" });
 });
 
-test("CORS allows same-origin and configured origins while rejecting others", async (t) => {
+test("CORS allows only configured origins and rejects request-derived authority", async (t) => {
   const configuredOrigin = "https://ops.example.test";
   const { url } = await startTestServer(t, { allowedOrigins: [configuredOrigin] });
-  const sameOriginResponse = await fetch(`${url}/api/products`, { headers: { Origin: url } });
+  const unconfiguredServerOriginResponse = await fetch(`${url}/api/products`, {
+    headers: { Origin: url },
+  });
+  const forgedAuthorityResponse = await fetch(`${url}/api/products`, {
+    headers: {
+      Host: "rebound.example.test",
+      Origin: "http://rebound.example.test",
+    },
+  });
   const configuredResponse = await fetch(`${url}/api/products`, { headers: { Origin: configuredOrigin } });
   const rejectedResponse = await fetch(`${url}/api/products`, { headers: { Origin: "https://untrusted.example.test" } });
 
-  assert.equal(sameOriginResponse.status, 200);
-  assert.equal(sameOriginResponse.headers.get("access-control-allow-origin"), url);
+  assert.equal(unconfiguredServerOriginResponse.status, 403);
+  assert.equal(unconfiguredServerOriginResponse.headers.get("access-control-allow-origin"), null);
+  assert.equal(forgedAuthorityResponse.status, 403);
+  assert.equal(forgedAuthorityResponse.headers.get("access-control-allow-origin"), null);
   assert.equal(configuredResponse.status, 200);
   assert.equal(configuredResponse.headers.get("access-control-allow-origin"), configuredOrigin);
   assert.equal(rejectedResponse.status, 403);
   assert.equal(rejectedResponse.headers.get("access-control-allow-origin"), null);
+});
+
+test("configured CORS origins must already be exact serialized HTTP origins", () => {
+  for (const origin of [
+    " https://ops.example.test",
+    "https://ops.example.test/",
+    "https://ops.example.test/path",
+    "https://ops.example.test?query=1",
+    "https://ops.example.test#fragment",
+    "https://user@ops.example.test",
+    "HTTPS://ops.example.test",
+    "https://OPS.example.test",
+    "https://ops.example.test:443",
+    "file:///tmp/admin.html",
+    "null",
+    "not-an-origin",
+  ]) {
+    assert.throws(
+      () => createMeiouServer({ allowedOrigins: [origin] }),
+      /MEIOU_ALLOWED_ORIGINS.*exact serialized HTTP origin/,
+      origin,
+    );
+  }
+
+  const server = createMeiouServer({ allowedOrigins: ["https://ops.example.test"] });
+  server.close();
 });
 
 test("documented loopback Vite origins pass preflight and progressive POST without allowing unrelated origins", async (t) => {
@@ -1861,10 +2260,15 @@ test("authenticated lead filters cover customer, product, institution, currency,
     acceptsAccountControl: false,
     hasCompatibleCollectionAccount: false,
   }));
+  const reviewedAdminLead = await getAdminLead(url, reviewedLead.lead.id);
   const reviewResponse = await fetch(`${url}/api/leads/${reviewedLead.lead.id}/review`, {
     method: "PATCH",
     headers: { Authorization: adminAuthorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "reviewed", note: "筛选测试" }),
+    body: JSON.stringify({
+      expectedRevision: reviewedAdminLead.revision,
+      status: "reviewed",
+      note: "筛选测试",
+    }),
   });
   assert.equal(reviewResponse.status, 200);
 
@@ -2009,6 +2413,8 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
   assert.match(html, /event\.key === "Escape"/);
   assert.match(html, /drawerReturnFocus\.focus\(\)/);
   assert.match(html, /@media \(max-width: 720px\)[\s\S]*\.drawer[^}]*width: 100%/);
+  assert.match(html, /\.drawer-backdrop\s*\{[^}]*top:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0;[^}]*left:\s*0;[^}]*inset:\s*0;/);
+  assert.match(html, /\.drawer\s*\{[^}]*height:\s*100vh;[^}]*height:\s*100dvh;/);
   assert.match(html, /&lt;img src=x onerror=alert\(2\)&gt;/);
   assert.match(html, /&lt;svg onload=alert\(4\)&gt;/);
   assert.doesNotMatch(html, /<img src=x onerror=alert\(2\)>|<svg onload=alert\(4\)>|<script>alert\([135]\)<\/script>/);
@@ -2016,52 +2422,159 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
   const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new Function(script));
+  assert.doesNotMatch(script, /\?\.|\?\?|\basync\b|\bawait\b|\.flatMap\(|Object\.(?:entries|values)\(|\.\.\.[A-Za-z_{[]/);
+});
+
+test("admin list sequencing keeps the newest filtered response when an older load arrives last", async () => {
+  const vm = createAdminScriptVm([adminVmLead("A")]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  await vm.element("load").dispatch("click");
+
+  const firstLoad = createDeferred();
+  const secondLoad = createDeferred();
+  let loadNumber = 0;
+  vm.setFetchHandler(() => {
+    loadNumber += 1;
+    return loadNumber === 1 ? firstLoad.promise : secondLoad.promise;
+  });
+  vm.element("searchFilter").value = "first";
+  const firstPromise = vm.element("applyFilters").dispatch("click");
+  vm.element("searchFilter").value = "second";
+  const secondPromise = vm.element("applyFilters").dispatch("click");
+
+  secondLoad.resolve({ ok: true, json: () => Promise.resolve({ leads: [adminVmLead("B")] }) });
+  await secondPromise;
+  firstLoad.resolve({ ok: true, json: () => Promise.resolve({ leads: [adminVmLead("A")] }) });
+  await firstPromise;
+
+  assert.equal(vm.viewButton("A"), undefined);
+  assert.ok(vm.viewButton("B"));
+  assert.equal(vm.element("count").textContent, 1);
+  assert.match(vm.fetchCalls.at(-1).url, /search=second/);
+});
+
+test("admin refetches authoritative filtered state after a committed mutation loses its response", async () => {
+  const initial = adminVmLead("A");
+  const committed = adminVmLead("A", {
+    revision: 3,
+    advisorReview: {
+      status: "reviewed",
+      note: "server-normalized committed note",
+      updatedAt: "2026-08-27T09:00:00.000Z",
+    },
+  });
+  const vm = createAdminScriptVm([initial]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  vm.element("reviewStatusFilter").value = "reviewed";
+  await vm.element("load").dispatch("click");
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "  client value  ";
+
+  let mutationBody;
+  vm.setFetchHandler((url, options) => {
+    if (url.endsWith("/review")) {
+      mutationBody = JSON.parse(options.body);
+      return Promise.reject(new TypeError("response connection lost after commit"));
+    }
+    assert.match(url, /reviewStatus=reviewed/);
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [committed] }) });
+  });
+  await vm.element("saveReview").dispatch("click");
+
+  assert.deepEqual(mutationBody, {
+    expectedRevision: 2,
+    status: "reviewed",
+    note: "  client value  ",
+  });
+  assert.equal(vm.element("reviewNote").value, "server-normalized committed note");
+  assert.match(vm.element("drawerActionStatus").textContent, /已刷新|最新状态/);
+  assert.ok(vm.viewButton("A"));
+});
+
+test("admin revision conflicts refetch without overwriting newer server data", async () => {
+  const initial = adminVmLead("A");
+  const current = adminVmLead("A", {
+    revision: 4,
+    advisorReview: {
+      status: "in_review",
+      note: "newer server review",
+      updatedAt: "2026-08-27T10:00:00.000Z",
+    },
+  });
+  const vm = createAdminScriptVm([initial]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  await vm.element("load").dispatch("click");
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "stale overwrite";
+
+  let requestCount = 0;
+  vm.setFetchHandler((url) => {
+    requestCount += 1;
+    if (url.endsWith("/review")) {
+      return Promise.resolve({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({
+          error: "客户信息已更新，请刷新后重试",
+          code: "revision_conflict",
+          lead: current,
+        }),
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [current] }) });
+  });
+  await vm.element("saveReview").dispatch("click");
+
+  assert.equal(requestCount, 2);
+  assert.equal(vm.element("reviewStatus").value, "in_review");
+  assert.equal(vm.element("reviewNote").value, "newer server review");
+  assert.match(vm.element("drawerActionStatus").textContent, /已刷新|更新/);
 });
 
 test("admin drawer ignores deferred save and retry responses after switching leads", async () => {
-  const lead = (id, note) => ({
-    id,
-    companyName: `${id} Company`,
-    contactName: `${id} Contact`,
-    phone: `13800138${id === "A" ? "101" : "102"}`,
-    createdAt: "2026-08-27T08:00:00.000Z",
-    profile: { primaryBusinessModel: "amazon_sc", requestedAmount: { amount: 1000000, currency: "USD" } },
-    matchReport: { primary: null, alternatives: [] },
-    advisorVerificationFields: [],
-    aiAnalysis: {
-      status: "fallback",
-      customerReport: {
-        statusMessage: `${id} AI status`,
-        businessSummary: [`${id} summary`],
-        productExplanations: [],
-        preparationActions: [],
-      },
-      advisorFocus: [],
-    },
-    advisorReview: { status: "pending", note, updatedAt: null },
-  });
-  const leadA = lead("A", "A original");
-  const leadB = lead("B", "B original");
+  let leadA = adminVmLead("A");
+  let leadB = adminVmLead("B");
   const vm = createAdminScriptVm([leadA, leadB]);
   vm.element("username").value = "admin";
   vm.element("password").value = "password";
   await vm.element("load").dispatch("click");
 
-  const responseFor = (savedLead) => ({ ok: true, json: async () => ({ lead: savedLead }) });
+  const saveAResponse = createDeferred();
+  const retryAResponse = createDeferred();
+  const saveBResponse = createDeferred();
+  let bSaveBody;
+  vm.setFetchHandler((url, options) => {
+    if (url === "/api/leads") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [leadA, leadB] }) });
+    }
+    if (url === "/api/leads/A/review") return saveAResponse.promise;
+    if (url === "/api/leads/A/ai-retry") return retryAResponse.promise;
+    if (url === "/api/leads/B/review") {
+      bSaveBody = JSON.parse(options.body);
+      return saveBResponse.promise;
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+
   await vm.viewButton("A").dispatch("click");
   vm.element("reviewStatus").value = "reviewed";
   vm.element("reviewNote").value = "A save value";
-  const deferredSaveA = createDeferred();
-  vm.setFetchHandler(() => deferredSaveA.promise);
   const saveAPromise = vm.element("saveReview").dispatch("click");
   await vm.element("closeDrawer").dispatch("click");
   await vm.viewButton("B").dispatch("click");
   const bDisabledWhenOpenedDuringSave = vm.element("saveReview").disabled;
 
-  deferredSaveA.resolve(responseFor({
+  leadA = adminVmLead("A", {
     ...leadA,
+    revision: 3,
     advisorReview: { status: "reviewed", note: "A save value", updatedAt: "2026-08-27T09:00:00.000Z" },
-  }));
+  });
+  saveAResponse.resolve({ ok: true, json: () => Promise.resolve({ lead: leadA }) });
   await saveAPromise;
   const afterStaleSave = {
     title: vm.element("advisorDrawerTitle").textContent,
@@ -2070,22 +2583,8 @@ test("admin drawer ignores deferred save and retry responses after switching lea
     saveDisabled: vm.element("saveReview").disabled,
   };
 
-  vm.element("reviewStatus").value = "in_review";
-  vm.element("reviewNote").value = "B subsequent save";
-  let subsequentSaveBody;
-  vm.setFetchHandler(async (url, options) => {
-    subsequentSaveBody = { url, body: JSON.parse(options.body) };
-    return responseFor({
-      ...leadB,
-      advisorReview: { status: "in_review", note: "B subsequent save", updatedAt: "2026-08-27T10:00:00.000Z" },
-    });
-  });
-  await vm.element("saveReview").dispatch("click");
-
   await vm.element("closeDrawer").dispatch("click");
   await vm.viewButton("A").dispatch("click");
-  const deferredRetryA = createDeferred();
-  vm.setFetchHandler(() => deferredRetryA.promise);
   const retryAPromise = vm.element("retryAi").dispatch("click");
   await vm.element("closeDrawer").dispatch("click");
   await vm.viewButton("B").dispatch("click");
@@ -2093,18 +2592,19 @@ test("admin drawer ignores deferred save and retry responses after switching lea
 
   vm.element("reviewStatus").value = "reviewed";
   vm.element("reviewNote").value = "B save while A retry waits";
-  const deferredSaveB = createDeferred();
-  vm.setFetchHandler(() => deferredSaveB.promise);
   const saveBPromise = vm.element("saveReview").dispatch("click");
-  deferredRetryA.resolve(responseFor({
+  leadA = adminVmLead("A", {
     ...leadA,
+    revision: 4,
     aiAnalysis: {
       ...leadA.aiAnalysis,
       status: "generated",
       retryCount: 1,
       customerReport: { ...leadA.aiAnalysis.customerReport, businessSummary: ["A retry value"] },
     },
-  }));
+    aiRetry: { allowed: false, reason: "retry_used" },
+  });
+  retryAResponse.resolve({ ok: true, json: () => Promise.resolve({ lead: leadA }) });
   await retryAPromise;
   const afterStaleRetry = {
     title: vm.element("advisorDrawerTitle").textContent,
@@ -2114,10 +2614,12 @@ test("admin drawer ignores deferred save and retry responses after switching lea
     retryDisabled: vm.element("retryAi").disabled,
   };
 
-  deferredSaveB.resolve(responseFor({
+  leadB = adminVmLead("B", {
     ...leadB,
+    revision: 3,
     advisorReview: { status: "reviewed", note: "B save while A retry waits", updatedAt: "2026-08-27T11:00:00.000Z" },
-  }));
+  });
+  saveBResponse.resolve({ ok: true, json: () => Promise.resolve({ lead: leadB }) });
   await saveBPromise;
 
   assert.equal(bDisabledWhenOpenedDuringSave, false);
@@ -2127,9 +2629,10 @@ test("admin drawer ignores deferred save and retry responses after switching lea
     status: "",
     saveDisabled: false,
   });
-  assert.deepEqual(subsequentSaveBody, {
-    url: "/api/leads/B/review",
-    body: { status: "in_review", note: "B subsequent save" },
+  assert.deepEqual(bSaveBody, {
+    expectedRevision: 2,
+    status: "reviewed",
+    note: "B save while A retry waits",
   });
   assert.equal(bDisabledWhenOpenedDuringRetry, false);
   assert.deepEqual(afterStaleRetry, {
@@ -2141,42 +2644,25 @@ test("admin drawer ignores deferred save and retry responses after switching lea
   });
   assert.equal(vm.element("advisorDrawerTitle").textContent, "B Company");
   assert.equal(vm.element("reviewNote").value, "B save while A retry waits");
-  assert.equal(vm.element("drawerActionStatus").textContent, "复核已保存。");
+  assert.equal(vm.element("drawerActionStatus").textContent, "复核已保存，已刷新最新状态。");
   assert.equal(vm.element("saveReview").disabled, false);
 });
 
-test("admin drawer cache keeps the newest successful same-lead operation when responses reverse", async () => {
-  const leadA = {
-    id: "A",
-    companyName: "A Company",
-    contactName: "A Contact",
-    phone: "13800138101",
-    createdAt: "2026-08-27T08:00:00.000Z",
-    profile: { primaryBusinessModel: "amazon_sc", requestedAmount: { amount: 1000000, currency: "USD" } },
-    matchReport: { primary: null, alternatives: [] },
-    advisorVerificationFields: [],
-    aiAnalysis: {
-      status: "generated",
-      customerReport: {
-        statusMessage: "A AI status",
-        businessSummary: ["A summary"],
-        productExplanations: [],
-        preparationActions: [],
-      },
-      advisorFocus: [],
-    },
-    advisorReview: { status: "pending", note: "A original", updatedAt: null },
-  };
-  const vm = createAdminScriptVm([leadA]);
+test("admin same-lead operations keep the authoritative revision when responses reverse", async () => {
+  const initialLead = adminVmLead("A");
+  let serverLead = initialLead;
+  const vm = createAdminScriptVm([initialLead]);
   vm.element("username").value = "admin";
   vm.element("password").value = "password";
   await vm.element("load").dispatch("click");
 
-  const responseFor = (lead) => ({ ok: true, json: async () => ({ lead }) });
   const operationOne = createDeferred();
   const operationTwo = createDeferred();
   let saveNumber = 0;
-  vm.setFetchHandler(() => {
+  vm.setFetchHandler((url) => {
+    if (url === "/api/leads") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [serverLead] }) });
+    }
     saveNumber += 1;
     return saveNumber === 1 ? operationOne.promise : operationTwo.promise;
   });
@@ -2191,16 +2677,18 @@ test("admin drawer cache keeps the newest successful same-lead operation when re
   vm.element("reviewNote").value = "operation two";
   const operationTwoPromise = vm.element("saveReview").dispatch("click");
 
-  operationTwo.resolve(responseFor({
-    ...leadA,
+  serverLead = adminVmLead("A", {
+    ...initialLead,
+    revision: 3,
     advisorReview: { status: "reviewed", note: "operation two", updatedAt: "2026-08-27T10:00:00.000Z" },
-  }));
+  });
+  operationTwo.resolve({ ok: true, json: () => Promise.resolve({ lead: serverLead }) });
   await operationTwoPromise;
-  await vm.element("closeDrawer").dispatch("click");
-  operationOne.resolve(responseFor({
-    ...leadA,
-    advisorReview: { status: "in_review", note: "operation one", updatedAt: "2026-08-27T09:00:00.000Z" },
-  }));
+  operationOne.resolve({
+    ok: false,
+    status: 409,
+    json: () => Promise.resolve({ error: "客户信息已更新", code: "revision_conflict", lead: serverLead }),
+  });
   await operationOnePromise;
 
   await vm.viewButton("A").dispatch("click");
@@ -2208,34 +2696,29 @@ test("admin drawer cache keeps the newest successful same-lead operation when re
   assert.equal(vm.element("reviewNote").value, "operation two");
 
   let subsequentSave;
-  vm.setFetchHandler(async (url, options) => {
+  vm.setFetchHandler((url, options) => {
+    if (url === "/api/leads") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [serverLead] }) });
+    }
     subsequentSave = { url, body: JSON.parse(options.body) };
-    return responseFor({
-      ...leadA,
+    serverLead = adminVmLead("A", {
+      ...serverLead,
+      revision: 4,
       advisorReview: { status: "reviewed", note: "operation two", updatedAt: "2026-08-27T11:00:00.000Z" },
     });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ lead: serverLead }) });
   });
   await vm.element("saveReview").dispatch("click");
   assert.deepEqual(subsequentSave, {
     url: "/api/leads/A/review",
-    body: { status: "reviewed", note: "operation two" },
+    body: { expectedRevision: 3, status: "reviewed", note: "operation two" },
   });
 });
 
-test("admin drawer cache allows an older success when the newer same-lead operation fails", async () => {
-  const leadA = {
-    id: "A",
-    companyName: "A Company",
-    contactName: "A Contact",
-    phone: "13800138101",
-    createdAt: "2026-08-27T08:00:00.000Z",
-    profile: {},
-    matchReport: { primary: null, alternatives: [] },
-    advisorVerificationFields: [],
-    aiAnalysis: { status: "generated", customerReport: {}, advisorFocus: [] },
-    advisorReview: { status: "pending", note: "A original", updatedAt: null },
-  };
-  const vm = createAdminScriptVm([leadA]);
+test("admin same-lead refetch retains an older committed success after a newer request fails", async () => {
+  const initialLead = adminVmLead("A");
+  let serverLead = initialLead;
+  const vm = createAdminScriptVm([initialLead]);
   vm.element("username").value = "admin";
   vm.element("password").value = "password";
   await vm.element("load").dispatch("click");
@@ -2243,7 +2726,10 @@ test("admin drawer cache allows an older success when the newer same-lead operat
   const operationOne = createDeferred();
   const operationTwo = createDeferred();
   let saveNumber = 0;
-  vm.setFetchHandler(() => {
+  vm.setFetchHandler((url) => {
+    if (url === "/api/leads") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ leads: [serverLead] }) });
+    }
     saveNumber += 1;
     return saveNumber === 1 ? operationOne.promise : operationTwo.promise;
   });
@@ -2257,17 +2743,17 @@ test("admin drawer cache allows an older success when the newer same-lead operat
   vm.element("reviewNote").value = "newer failure";
   const operationTwoPromise = vm.element("saveReview").dispatch("click");
 
-  operationTwo.resolve({ ok: false, json: async () => ({ error: "save rejected" }) });
+  operationTwo.resolve({ ok: false, json: () => Promise.resolve({ error: "save rejected" }) });
   await operationTwoPromise;
   await vm.element("closeDrawer").dispatch("click");
+  serverLead = adminVmLead("A", {
+    ...initialLead,
+    revision: 3,
+    advisorReview: { status: "in_review", note: "older success", updatedAt: "2026-08-27T09:00:00.000Z" },
+  });
   operationOne.resolve({
     ok: true,
-    json: async () => ({
-      lead: {
-        ...leadA,
-        advisorReview: { status: "in_review", note: "older success", updatedAt: "2026-08-27T09:00:00.000Z" },
-      },
-    }),
+    json: () => Promise.resolve({ lead: serverLead }),
   });
   await operationOnePromise;
 

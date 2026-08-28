@@ -8,6 +8,20 @@ import { getPublicProducts } from "../src/lib/matching/publicProductProjection.j
 import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 import { GOLDEN_PROFILES } from "./fixtures/customerProfiles.js";
 
+const reportWithProductIds = (report, matches) => {
+  const ranked = matches
+    .filter((match) => Number.isInteger(match.rank) && match.rank >= 1 && match.rank <= 3)
+    .sort((left, right) => left.rank - right.rank);
+  return {
+    ...report,
+    primary: report.primary == null ? null : { ...report.primary, productId: ranked[0]?.productId ?? null },
+    alternatives: (report.alternatives ?? []).map((product, index) => ({
+      ...product,
+      productId: ranked[index + 1]?.productId ?? null,
+    })),
+  };
+};
+
 const visiblePayload = (rawProfile) => ({
   ...(rawProfile.intakeVersion == null ? {} : { intakeVersion: rawProfile.intakeVersion }),
   ...Object.fromEntries(
@@ -192,7 +206,8 @@ test("progressive matcher to report to view journeys keep seven directions custo
     const profile = createProfile();
     const matches = matchProducts(profile, { intakeVersion: profile.intakeVersion });
     const report = buildCustomerMatchReport(profile, matches);
-    const view = buildProductMatchView(report, getPublicProducts());
+    const publicReport = reportWithProductIds(report, matches);
+    const view = buildProductMatchView(publicReport, getPublicProducts());
     const serialized = JSON.stringify(view);
 
     assert.equal(matches.find(({ rank }) => rank === 1)?.productId, expectedProductId);
@@ -222,7 +237,7 @@ test("SC store-count amount contract suppresses null and zero while one store yi
     profile.qualifiedStoreCount = qualifiedStoreCount;
     const matches = matchProducts(profile);
     const report = buildCustomerMatchReport(profile, matches);
-    const view = buildProductMatchView(report, getPublicProducts());
+    const view = buildProductMatchView(reportWithProductIds(report, matches), getPublicProducts());
 
     assert.equal(matches.find(({ productId }) => productId === "linklogis-amazon-sc")?.estimatedAmount.kind, "manual");
     assert.equal(report.primary?.estimatedAmount, null);

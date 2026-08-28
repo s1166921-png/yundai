@@ -112,9 +112,9 @@ those boundaries intact when changing persistence or reporting.
 
 Raw submission provenance is persisted once through the intake-field allowlist. The JSON
 lead store remains mode `0600`; updates are queued only within one process, so never point
-multiple writer processes at the same file. Preserve same-origin/configured-origin CORS,
-JSON-only POST handling, no-store admin responses, bounded bodies, and generic public 500
-messages when changing the server.
+multiple writer processes at the same file. Preserve exact configured-origin CORS (the
+request `Host` is never origin authority), JSON-only POST handling, no-store admin
+responses, bounded bodies, and generic public 500 messages when changing the server.
 
 Use synthetic profiles in tests and local verification. Never commit credentials,
 `server/data/leads.json`, browser captures, or real customer information.

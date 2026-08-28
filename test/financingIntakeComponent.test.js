@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 
 async function loadComponent(t) {
   const server = await createServer({
@@ -241,6 +242,7 @@ test("preferred result presents its reference amount once", async (t) => {
   const { ProductMatchCenter } = await server.ssrLoadModule("/src/components/ProductMatchCenter.jsx");
   const report = {
     primary: {
+      productId: "linklogis-amazon-sc",
       institution: "联易融",
       name: "联易融 Amazon SC 卖家融资贷",
       presentationLabel: "优先匹配",
@@ -253,7 +255,7 @@ test("preferred result presents its reference amount once", async (t) => {
     missingDocuments: [],
     nonMatches: [],
   };
-  const markup = renderToStaticMarkup(createElement(ProductMatchCenter, { report, products: [] }));
+  const markup = renderToStaticMarkup(createElement(ProductMatchCenter, { report, products: getPublicProducts() }));
 
   assert.equal((markup.match(/100万-300万美元/g) ?? []).length, 1);
   assert.match(markup, /<dt>币种<\/dt>/);
@@ -261,7 +263,7 @@ test("preferred result presents its reference amount once", async (t) => {
   assert.match(markup, /<dt>参考定价<\/dt>/);
 });
 
-test("match center renders AI evidence and confirmation while empty AI reasons fall back to rules", async (t) => {
+test("match center keeps deterministic evidence and conditions while AI selections stay supplemental", async (t) => {
   const server = await createServer({
     configFile: fileURLToPath(new URL("../vite.config.mjs", import.meta.url)),
     server: { middlewareMode: true, hmr: false, ws: false },
@@ -270,20 +272,22 @@ test("match center renders AI evidence and confirmation while empty AI reasons f
   const { ProductMatchCenter } = await server.ssrLoadModule("/src/components/ProductMatchCenter.jsx");
   const report = {
     primary: {
-      productId: "primary-id",
-      institution: "测试机构",
-      name: "优先产品",
+      productId: "linklogis-amazon-sc",
+      institution: "伪造机构",
+      name: "伪造优先产品",
       presentationLabel: "优先匹配",
       estimatedAmount: null,
       whyMatched: ["规则生成的优先产品依据。"],
+      itemsToConfirm: ["规则生成的优先待确认项。"],
     },
     alternatives: [{
-      productId: "alternative-id",
-      institution: "测试机构",
-      name: "备选产品",
+      productId: "linklogis-amazon-vc",
+      institution: "伪造机构",
+      name: "伪造备选产品",
       presentationLabel: "备选方向",
       estimatedAmount: null,
       whyMatched: ["规则生成的备选产品依据。"],
+      itemsToConfirm: ["规则生成的备选待确认项。"],
     }],
     missingDocuments: [],
     nonMatches: [],
@@ -294,22 +298,26 @@ test("match center renders AI evidence and confirmation while empty AI reasons f
     statusMessage: "AI 初筛完成，专业顾问待复核。",
     businessSummary: ["当前以经营周转为主要资金场景。"],
     productExplanations: [
-      { productId: "primary-id", reasons: ["AI 解释的优先产品依据。"], itemsToConfirm: ["确认优先产品资料。"] },
-      { productId: "alternative-id", reasons: [], itemsToConfirm: ["确认备选产品资料。"] },
+      { productId: "linklogis-amazon-sc", reasons: ["AI 解释的优先产品依据。"], itemsToConfirm: ["AI 选择的优先核验重点。"] },
+      { productId: "linklogis-amazon-vc", reasons: [], itemsToConfirm: ["AI 选择的备选核验重点。"] },
     ],
     preparationActions: ["准备经营资料。"],
     privacyNotice: "AI 仅分析脱敏经营字段。",
   };
   const markup = renderToStaticMarkup(createElement(ProductMatchCenter, {
     report,
-    products: [],
+    products: getPublicProducts(),
     aiReport,
   }));
 
+  assert.match(markup, /联易融 Amazon SC 卖家融资贷/);
+  assert.doesNotMatch(markup, /伪造优先产品|伪造备选产品|伪造机构/);
+  assert.match(markup, /规则生成的优先产品依据。/);
+  assert.match(markup, /规则生成的优先待确认项。/);
   assert.match(markup, /AI 解释的优先产品依据。/);
-  assert.match(markup, /确认优先产品资料。/);
   assert.match(markup, /规则生成的备选产品依据。/);
-  assert.match(markup, /确认备选产品资料。/);
+  assert.match(markup, /规则生成的备选待确认项。/);
+  assert.equal((markup.match(/AI 解释的优先产品依据。/g) ?? []).length, 1);
 });
 
 test("intake copy states the third-party AI boundary and honest combined states", async () => {
@@ -320,7 +328,7 @@ test("intake copy states the third-party AI boundary and honest combined states"
 
   assert.equal(
     INTAKE_INFORMATION_USE_NOTICE,
-    "为生成初步报告，脱敏后的企业经营字段将发送至第三方 AI 服务；企业身份信息、联系人和联系电话不会发送。",
+    "您提交的联系方式和经营信息将由美鸥保存，用于产品匹配和融资顾问跟进；仅脱敏经营字段会发送至第三方 AI 辅助分析，企业身份与联系方式不会发送。结果仅供融资准备参考，不构成授信、审批或放款承诺。",
   );
   assert.deepEqual(INTAKE_SUBMISSION_COPY, {
     loading: "正在整理经营信息、核对产品规则并生成初步分析…",

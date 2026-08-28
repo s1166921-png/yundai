@@ -1,91 +1,191 @@
-export const AI_PROMPT_VERSION = "meiou-ai-advisor-v1";
+import {
+  resolveAdvisorFocusCode,
+  resolveConfirmationCode,
+  resolvePreparationActionCode,
+  resolveReasonCode,
+  resolveSummaryCode,
+} from "./aiReportReferences.js";
+
+export const AI_PROMPT_VERSION = "meiou-ai-advisor-v2";
+export const AI_NARRATIVE_SCHEMA_VERSION = "meiou-ai-narrative-v2";
 
 const MAX_SUMMARY_ITEMS = 3;
 const MAX_REASONS = 3;
 const MAX_CONFIRMATIONS = 3;
 const MAX_ACTIONS = 5;
 const MAX_ADVISOR_FOCUS = 5;
-const MAX_TEXT_LENGTH = 200;
-const FORBIDDEN_CLAIMS = /(保证获批|百分百|已获批|已经获批|保证通过|一定通过|放款承诺)/;
-const AMOUNT_VALUE = /(?:[$¥￥]\s*\d[\d,]*(?:\.\d+)?|(?:\d[\d,]*(?:\.\d+)?|[零〇一二三四五六七八九十百千万亿]+)\s*(?:万(?:元)?|亿(?:元)?|千(?:元)?|元|美元|人民币|RMB|USD|[kKmMbB]))/i;
-const DETERMINISTIC_CLAIMS = [
-  /(?:额度|金额|融资额|借款额|授信额|贷款额|上限|下限|范围|区间|amount|limit|credit|financ(?:ing|e))[^\n。！？!?;；]{0,40}\d/i,
-  /(?:额度|金额|融资额|借款额|授信额|贷款额|上限|下限|范围|区间|amount|limit|credit|financ(?:ing|e))[^\n。！？!?;；]{0,40}(?:万|亿|元|美元|人民币|RMB|USD|千|[kKmMbB])/i,
-  AMOUNT_VALUE,
-  /\d[\d,]*(?:\.\d+)?\s*[%％]/,
-  /(?:年化|利率|费率|融资成本|apr|interest\s*rate|rate\b)/i,
-  /(?:期限|还款期限|最长|最短|term|tenor|可循环|随借随还|revolving)/i,
-  /(?:不符合|不满足|未通过|不具备|不合格|通过|符合|满足|具备|可申请|可以申请|已获|approved|eligible|qualified|compliant|ineligible|disqualified|passes?)[^\n。！？!?;；]{0,30}(?:准入|资格|资质|产品要求|申请条件|条件|要求|审核|审批|合规|风险|风控|eligib(?:ility|le)|qualification|compliance|approval)/i,
-  /(?:准入|资格|资质|产品要求|申请条件|条件|要求|审核|审批|合规|风险|风控|eligib(?:ility|le)|qualification|compliance|approval)[^\n。！？!?;；]{0,30}(?:不符合|不满足|未通过|不具备|不合格|通过|符合|满足|具备|可申请|可以申请|已|合格|可控|approved|eligible|qualified|compliant|ineligible|disqualified|passes?)/i,
-  /(?:无|没有|不存在|不涉及)[^\n。！？!?;；]{0,20}(?:风险|合规|逾期|不良)/i,
-  /(?:获批|获准|有资格|approved|eligible|qualified|compliant|ineligible|disqualified|passes?)/i,
-  /(?:排名|排位|第\s*(?:[一二三四五六七八九十]|\d+)\s*(?:名|位)?|优先(?:推荐|匹配)?|首选|top(?:[-\s]ranked|\s*\d)|rank(?:ed)?|first\s+(?:choice|rank)|匹配度|推荐(?:该|此)?(?:产品|方向)|best\s+match)/i,
-  /(?:评分|分数|置信度|置信分|fit\s*score|confidence|规则|rules?|提示词|prompt|系统指令|内部(?:备注|判断)|顾问(?:内部)?备注|advisor\s+(?:note|focus))/i,
-];
-
+const MAX_CODE_LENGTH = 160;
 const PRIVACY_NOTICE = "AI 仅分析脱敏经营字段，企业名称、联系人和手机号未发送给模型。";
 const GENERATED_STATUS_MESSAGE = "AI 初筛完成，专业顾问待复核。";
 const FALLBACK_STATUS_MESSAGE = "智能匹配结果已生成，AI 扩展分析暂不可用，专业顾问待复核。";
 const REVIEW_STATUSES = new Set(["pending", "in_review", "reviewed", "needs_information"]);
+const TOP_LEVEL_FIELDS = Object.freeze([
+  "schemaVersion",
+  "businessSummaryCodes",
+  "productExplanations",
+  "preparationActionCodes",
+  "advisorFocusCodes",
+]);
+const PRODUCT_FIELDS = Object.freeze([
+  "productId",
+  "reasonCodes",
+  "confirmationCodes",
+]);
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const copyCodes = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === "string").slice() : []);
 
-const normalizeDecisionText = (value) => value.replace(/[\s\u200B-\u200D\uFEFF\u2060]/g, "");
-const hasForbiddenClaim = (value) => FORBIDDEN_CLAIMS.test(normalizeDecisionText(value));
-const hasDeterministicClaim = (value) => DETERMINISTIC_CLAIMS.some((pattern) => pattern.test(normalizeDecisionText(value)));
+const validateExactFields = (value, expectedFields, path, errors) => {
+  if (!isObject(value)) {
+    errors.push(`${path} must be an object.`);
+    return false;
+  }
+  const expected = new Set(expectedFields);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) errors.push(`${path}.${key} is an unexpected field.`);
+  }
+  for (const key of expectedFields) {
+    if (!Object.hasOwn(value, key)) errors.push(`${path}.${key} is required.`);
+  }
+  return true;
+};
 
-const validateStringList = (value, path, minimum, maximum, errors) => {
+const isUniqueOrderedSubset = (selected, allowed) => {
+  const selectedSet = new Set(selected);
+  if (selectedSet.size !== selected.length) return false;
+  let previousIndex = -1;
+  for (const code of selected) {
+    const index = allowed.indexOf(code);
+    if (index <= previousIndex) return false;
+    previousIndex = index;
+  }
+  return true;
+};
+
+const validateCodeSelection = (value, allowed, path, minimum, maximum, errors) => {
   if (!Array.isArray(value)) {
     errors.push(`${path} must be an array.`);
     return false;
   }
-  if (value.length < minimum || value.length > maximum) {
-    errors.push(`${path} must contain between ${minimum} and ${maximum} items.`);
+  if (!Array.isArray(allowed) || allowed.some((item) => typeof item !== "string")) {
+    errors.push(`${path} has no valid server allowlist.`);
+    return false;
   }
-
+  if (value.length < minimum || value.length > maximum) {
+    errors.push(`${path} must contain between ${minimum} and ${maximum} codes.`);
+  }
   let valid = true;
   value.forEach((item, index) => {
-    if (typeof item !== "string") {
-      errors.push(`${path}[${index}] must be a string.`);
-      valid = false;
-      return;
-    }
-    if (item.trim().length === 0) {
-      errors.push(`${path}[${index}] must not be blank.`);
-      valid = false;
-    }
-    if (item.length > MAX_TEXT_LENGTH) {
-      errors.push(`${path}[${index}] exceeds ${MAX_TEXT_LENGTH} characters.`);
-      valid = false;
-    }
-    if (hasForbiddenClaim(item)) {
-      errors.push(`${path}[${index}] contains a forbidden approval promise (承诺).`);
-      valid = false;
-    }
-    if (hasDeterministicClaim(item)) {
-      errors.push(`${path}[${index}] contains a deterministic decision claim.`);
+    if (typeof item !== "string" || item.length === 0 || item.length > MAX_CODE_LENGTH) {
+      errors.push(`${path}[${index}] must be a bounded non-empty code string.`);
       valid = false;
     }
   });
+  if (valid && !isUniqueOrderedSubset(value, allowed)) {
+    errors.push(`${path} must be a unique ordered subset of supplied codes.`);
+    valid = false;
+  }
   return valid;
 };
 
-const copyStringList = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === "string").slice() : []);
+const validContractInput = (input) => (
+  isObject(input)
+  && Array.isArray(input.summaryCodes)
+  && input.summaryCodes.length >= 1
+  && Array.isArray(input.products)
+  && Array.isArray(input.preparationActionCodes)
+  && input.preparationActionCodes.length >= 1
+  && Array.isArray(input.advisorFocusCodes)
+  && input.products.every((product) => (
+    isObject(product)
+    && typeof product.productId === "string"
+    && Array.isArray(product.reasonCodes)
+    && Array.isArray(product.confirmationCodes)
+  ))
+);
 
-const copyProductExplanations = (products) => products.map((product) => ({
-  productId: product.productId,
-  reasons: copyStringList(product.reasons),
-  itemsToConfirm: copyStringList(product.itemsToConfirm),
-}));
-
-const copyCustomerReport = (customerReport = {}) => ({
-  statusMessage: typeof customerReport.statusMessage === "string" ? customerReport.statusMessage : "",
-  businessSummary: copyStringList(customerReport.businessSummary),
-  productExplanations: Array.isArray(customerReport.productExplanations)
-    ? copyProductExplanations(customerReport.productExplanations.filter(isObject))
-    : [],
-  preparationActions: copyStringList(customerReport.preparationActions),
+const copyNarrative = (raw) => ({
+  schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+  businessSummaryCodes: copyCodes(raw.businessSummaryCodes),
+  productExplanations: raw.productExplanations.map((product) => ({
+    productId: product.productId,
+    reasonCodes: copyCodes(product.reasonCodes),
+    confirmationCodes: copyCodes(product.confirmationCodes),
+  })),
+  preparationActionCodes: copyCodes(raw.preparationActionCodes),
+  advisorFocusCodes: copyCodes(raw.advisorFocusCodes),
 });
+
+export function validateAiNarrative(raw, analysisInput) {
+  const errors = [];
+  if (!validContractInput(analysisInput)) {
+    return { ok: false, errors: ["analysis input does not contain a valid server allowlist."] };
+  }
+  if (!validateExactFields(raw, TOP_LEVEL_FIELDS, "narrative", errors)) {
+    return { ok: false, errors };
+  }
+  if (raw.schemaVersion !== AI_NARRATIVE_SCHEMA_VERSION) {
+    errors.push(`schemaVersion must be exactly ${AI_NARRATIVE_SCHEMA_VERSION}.`);
+  }
+  validateCodeSelection(
+    raw.businessSummaryCodes,
+    analysisInput.summaryCodes,
+    "businessSummaryCodes",
+    1,
+    MAX_SUMMARY_ITEMS,
+    errors,
+  );
+  validateCodeSelection(
+    raw.preparationActionCodes,
+    analysisInput.preparationActionCodes,
+    "preparationActionCodes",
+    1,
+    MAX_ACTIONS,
+    errors,
+  );
+  validateCodeSelection(
+    raw.advisorFocusCodes,
+    analysisInput.advisorFocusCodes,
+    "advisorFocusCodes",
+    0,
+    MAX_ADVISOR_FOCUS,
+    errors,
+  );
+
+  if (!Array.isArray(raw.productExplanations)) {
+    errors.push("productExplanations must be an array.");
+  } else {
+    if (raw.productExplanations.length !== analysisInput.products.length) {
+      errors.push("productExplanations must contain the exact supplied products.");
+    }
+    analysisInput.products.forEach((expectedProduct, index) => {
+      const product = raw.productExplanations[index];
+      if (!validateExactFields(product, PRODUCT_FIELDS, `productExplanations[${index}]`, errors)) return;
+      if (product.productId !== expectedProduct.productId) {
+        errors.push("product ids and order must exactly match the supplied products.");
+      }
+      validateCodeSelection(
+        product.reasonCodes,
+        expectedProduct.reasonCodes,
+        `productExplanations[${index}].reasonCodes`,
+        0,
+        MAX_REASONS,
+        errors,
+      );
+      validateCodeSelection(
+        product.confirmationCodes,
+        expectedProduct.confirmationCodes,
+        `productExplanations[${index}].confirmationCodes`,
+        0,
+        MAX_CONFIRMATIONS,
+        errors,
+      );
+    });
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: copyNarrative(raw), errors: [] };
+}
 
 const normalizedUsage = (usage) => {
   if (!isObject(usage)) return null;
@@ -95,65 +195,6 @@ const normalizedUsage = (usage) => {
   };
 };
 
-export function validateAiNarrative(raw, expectedProductIds) {
-  const errors = [];
-  if (!isObject(raw)) {
-    return { ok: false, errors: ["narrative must be an object."] };
-  }
-  if (!Array.isArray(expectedProductIds) || expectedProductIds.some((id) => typeof id !== "string")) {
-    return { ok: false, errors: ["expectedProductIds must be an array of strings."] };
-  }
-
-  validateStringList(raw.businessSummary, "businessSummary", 1, MAX_SUMMARY_ITEMS, errors);
-  validateStringList(raw.preparationActions, "preparationActions", 1, MAX_ACTIONS, errors);
-  validateStringList(raw.advisorFocus, "advisorFocus", 0, MAX_ADVISOR_FOCUS, errors);
-
-  if (!Array.isArray(raw.productExplanations)) {
-    errors.push("productExplanations must be an array.");
-  } else {
-    if (raw.productExplanations.length !== expectedProductIds.length) {
-      errors.push("productIds must exactly match the expected ranked products.");
-    }
-    expectedProductIds.forEach((expectedProductId, index) => {
-      const product = raw.productExplanations[index];
-      if (!isObject(product)) {
-        errors.push(`productExplanations[${index}] must be an object.`);
-        return;
-      }
-      if (product.productId !== expectedProductId) {
-        errors.push("productIds must exactly match the expected order.");
-      }
-      validateStringList(product.reasons, `productExplanations[${index}].reasons`, 1, MAX_REASONS, errors);
-      validateStringList(product.itemsToConfirm, `productExplanations[${index}].itemsToConfirm`, 0, MAX_CONFIRMATIONS, errors);
-    });
-  }
-
-  const narrativeText = [
-    raw.businessSummary,
-    raw.preparationActions,
-    raw.advisorFocus,
-    ...(Array.isArray(raw.productExplanations)
-      ? raw.productExplanations.map((product) => [product?.reasons, product?.itemsToConfirm])
-      : []),
-  ].flat(Infinity).filter((item) => typeof item === "string").join("");
-  if (hasDeterministicClaim(narrativeText)) {
-    errors.push("narrative contains a deterministic decision claim.");
-  }
-
-  if (errors.length > 0) return { ok: false, errors };
-
-  return {
-    ok: true,
-    value: {
-      businessSummary: copyStringList(raw.businessSummary),
-      productExplanations: copyProductExplanations(raw.productExplanations),
-      preparationActions: copyStringList(raw.preparationActions),
-      advisorFocus: copyStringList(raw.advisorFocus),
-    },
-    errors: [],
-  };
-}
-
 export function buildPersistedAiAnalysis({
   narrative,
   provider,
@@ -162,20 +203,25 @@ export function buildPersistedAiAnalysis({
   generatedAt,
   durationMs,
   usage,
+  providerAttempted = true,
 } = {}) {
   const generatedAtValue = generatedAt instanceof Date ? generatedAt.toISOString() : generatedAt;
-  const copiedNarrative = isObject(narrative) ? narrative : {};
+  const copiedNarrative = copyNarrative(isObject(narrative) ? narrative : {
+    businessSummaryCodes: [],
+    productExplanations: [],
+    preparationActionCodes: [],
+    advisorFocusCodes: [],
+  });
   return {
     status: "generated",
     customerReport: {
-      statusMessage: GENERATED_STATUS_MESSAGE,
-      businessSummary: copyStringList(copiedNarrative.businessSummary),
-      productExplanations: Array.isArray(copiedNarrative.productExplanations)
-        ? copyProductExplanations(copiedNarrative.productExplanations.filter(isObject))
-        : [],
-      preparationActions: copyStringList(copiedNarrative.preparationActions),
+      schemaVersion: copiedNarrative.schemaVersion,
+      businessSummaryCodes: copiedNarrative.businessSummaryCodes,
+      productExplanations: copiedNarrative.productExplanations,
+      preparationActionCodes: copiedNarrative.preparationActionCodes,
     },
-    advisorFocus: copyStringList(copiedNarrative.advisorFocus),
+    advisorFocusCodes: copiedNarrative.advisorFocusCodes,
+    advisorFocus: copiedNarrative.advisorFocusCodes.map(resolveAdvisorFocusCode).filter(Boolean),
     meta: {
       provider,
       model,
@@ -184,18 +230,66 @@ export function buildPersistedAiAnalysis({
       durationMs,
       usage: normalizedUsage(usage),
       errorCategory: null,
+      providerAttempted: providerAttempted === true,
     },
   };
 }
 
-export function publicAiReport(analysis, advisorReview) {
-  const status = analysis?.status;
-  const customerReport = copyCustomerReport(analysis?.customerReport);
-  const fallback = status !== "generated";
+const deterministicNarrative = (analysisInput) => ({
+  schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+  businessSummaryCodes: analysisInput.summaryCodes.slice(0, MAX_SUMMARY_ITEMS),
+  productExplanations: analysisInput.products.map((product) => ({
+    productId: product.productId,
+    reasonCodes: product.reasonCodes.slice(0, MAX_REASONS),
+    confirmationCodes: product.confirmationCodes.slice(0, MAX_CONFIRMATIONS),
+  })),
+  preparationActionCodes: analysisInput.preparationActionCodes.slice(0, MAX_ACTIONS),
+  advisorFocusCodes: [],
+});
+
+const storedNarrative = (analysis) => ({
+  ...(isObject(analysis?.customerReport) ? analysis.customerReport : {}),
+  advisorFocusCodes: analysis?.advisorFocusCodes,
+});
+
+const resolveCodes = (codes, resolver) => {
+  const result = [];
+  for (const code of codes) {
+    const text = resolver(code);
+    if (text == null || result.includes(text)) continue;
+    result.push(text);
+  }
+  return result;
+};
+
+const resolvePublicNarrative = (narrative) => ({
+  businessSummary: resolveCodes(narrative.businessSummaryCodes, resolveSummaryCode),
+  productExplanations: narrative.productExplanations.map((product) => ({
+    productId: product.productId,
+    reasons: resolveCodes(product.reasonCodes, resolveReasonCode),
+    itemsToConfirm: resolveCodes(product.confirmationCodes, resolveConfirmationCode),
+  })),
+  preparationActions: resolveCodes(narrative.preparationActionCodes, resolvePreparationActionCode),
+});
+
+export function publicAiReport(analysis, advisorReview, analysisInput) {
+  const safeInput = validContractInput(analysisInput) ? analysisInput : {
+    summaryCodes: ["summary:profile-submitted"],
+    products: [],
+    preparationActionCodes: ["action:prepare-verifiable-business-materials"],
+    advisorFocusCodes: [],
+  };
+  const storedValidation = analysis?.status === "generated"
+    ? validateAiNarrative(storedNarrative(analysis), safeInput)
+    : { ok: false };
+  const generated = storedValidation.ok === true;
+  const narrative = generated ? storedValidation.value : deterministicNarrative(safeInput);
+  const customerReport = resolvePublicNarrative(narrative);
+
   return {
-    source: fallback ? "rules_fallback" : "ai",
+    source: generated ? "ai" : "rules_fallback",
     reviewStatus: REVIEW_STATUSES.has(advisorReview?.status) ? advisorReview.status : "pending",
-    statusMessage: customerReport.statusMessage || (fallback ? FALLBACK_STATUS_MESSAGE : GENERATED_STATUS_MESSAGE),
+    statusMessage: generated ? GENERATED_STATUS_MESSAGE : FALLBACK_STATUS_MESSAGE,
     businessSummary: customerReport.businessSummary,
     productExplanations: customerReport.productExplanations,
     preparationActions: customerReport.preparationActions,

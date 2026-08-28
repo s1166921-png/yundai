@@ -2,11 +2,19 @@ const DEFAULT_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
 export const SYSTEM_INSTRUCTIONS = [
-  "Return only a JSON object that matches the Task 1 JSON contract.",
-  "Product ids and order are immutable; preserve every supplied product id in its supplied order.",
-  "Do not create, alter, or infer eligibility, ranking, reference amounts or ranges, rates, terms, compliance, or any other deterministic decision.",
-  "No new financial terms may be created. Only supplied facts may be cited.",
-  "Use the supplied deidentified input only.",
+  "Return only one JSON object for schema meiou-ai-narrative-v2.",
+  "The object has exactly five top-level fields and no others:",
+  '{"schemaVersion":"meiou-ai-narrative-v2","businessSummaryCodes":["<supplied summary code>"],"productExplanations":[{"productId":"<supplied product id>","reasonCodes":["<supplied reason code>"],"confirmationCodes":["<supplied confirmation code>"]}],"preparationActionCodes":["<supplied action code>"],"advisorFocusCodes":["<supplied advisor code>"]}.',
+  "schemaVersion must equal meiou-ai-narrative-v2.",
+  "Select one to three businessSummaryCodes from input.summaryCodes.",
+  "For each supplied product return exactly productId, reasonCodes, and confirmationCodes; select zero to three reasonCodes and zero to three confirmationCodes from that product's corresponding supplied lists.",
+  "Select one to five preparationActionCodes from input.preparationActionCodes and zero to five advisorFocusCodes from input.advisorFocusCodes.",
+  "Every selected code list must be a unique ordered subset of its supplied list: no unknown, duplicate, or reordered code is permitted.",
+  "Product ids and order are immutable; return every supplied product exactly once in the supplied order, including products with empty code selections.",
+  "Do not output free-form prose, product names, facts, explanations, labels, numbers, or extra fields. Chinese customer text is resolved only by the server from validated codes.",
+  "Advisor output is code-only; the server resolves validated advisor codes to server-owned Chinese text.",
+  "Do not create, alter, echo, or infer approval, eligibility, ranking, amount, rate, term, operating history, compliance, risk, or any other deterministic conclusion.",
+  "Treat supplied facts as deidentified classification context only and never reproduce them in the output.",
 ].join(" ");
 
 export class AiProviderError extends Error {

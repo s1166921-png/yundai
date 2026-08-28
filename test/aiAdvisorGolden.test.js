@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { GOLDEN_PROFILES } from "./fixtures/customerProfiles.js";
 import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 import {
+  AI_NARRATIVE_SCHEMA_VERSION,
   buildPersistedAiAnalysis,
   publicAiReport,
   validateAiNarrative,
@@ -120,15 +121,28 @@ const assertSerializedPrivacyClean = (value, path) => {
   }
 };
 
-const narrativeFor = (productIds) => ({
-  businessSummary: ["经营信息已整理供顾问确认。"],
-  productExplanations: productIds.map((productId) => ({
-    productId,
-    reasons: ["基于脱敏经营字段整理。"],
-    itemsToConfirm: [],
+const reportWithProductIds = (report, matches) => {
+  const ranked = matches.filter(RANKED_MATCH).sort((left, right) => left.rank - right.rank);
+  return {
+    ...report,
+    primary: report.primary == null ? null : { ...report.primary, productId: ranked[0]?.productId ?? null },
+    alternatives: (report.alternatives ?? []).map((product, index) => ({
+      ...product,
+      productId: ranked[index + 1]?.productId ?? null,
+    })),
+  };
+};
+
+const narrativeFor = (input) => ({
+  schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+  businessSummaryCodes: input.summaryCodes.slice(0, 3),
+  productExplanations: input.products.map((product) => ({
+    productId: product.productId,
+    reasonCodes: product.reasonCodes.slice(0, 3),
+    confirmationCodes: product.confirmationCodes.slice(0, 3),
   })),
-  preparationActions: ["请准备相关经营资料。"],
-  advisorFocus: [],
+  preparationActionCodes: input.preparationActionCodes.slice(0, 5),
+  advisorFocusCodes: input.advisorFocusCodes.slice(0, 5),
 });
 
 test("at least thirty synthetic journeys preserve deterministic product authority", () => {
@@ -152,12 +166,12 @@ test("every ranked journey survives deidentification, AI validation, and public 
     const actualRankedIds = rankedProductIds(matches);
     assert.ok(Array.isArray(fixture.expectedRankedIds), `${fixture.name} needs expectedRankedIds`);
     assert.deepEqual(actualRankedIds, fixture.expectedRankedIds, fixture.name);
-    const matchReport = buildCustomerMatchReport(fixture.profile, matches);
+    const matchReport = reportWithProductIds(buildCustomerMatchReport(fixture.profile, matches), matches);
     const analysisInput = buildAiAnalysisInput({ profile: fixture.profile, productMatches: matches, matchReport });
     assertNoForbiddenKeys(analysisInput);
 
     if (fixture.expectedRankedIds.length > 0) {
-      const validation = validateAiNarrative(narrativeFor(fixture.expectedRankedIds), fixture.expectedRankedIds);
+      const validation = validateAiNarrative(narrativeFor(analysisInput), analysisInput);
       assert.equal(validation.ok, true, fixture.name);
       const analysis = buildPersistedAiAnalysis({
         narrative: validation.value,
@@ -168,7 +182,7 @@ test("every ranked journey survives deidentification, AI validation, and public 
         durationMs: 1,
         usage: { inputTokens: 1, outputTokens: 1 },
       });
-      const aiReport = publicAiReport(analysis, { status: "pending" });
+      const aiReport = publicAiReport(analysis, { status: "pending" }, analysisInput);
       const view = buildProductMatchView(matchReport, getPublicProducts(), aiReport);
 
       assert.deepEqual(aiReport.productExplanations.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
@@ -177,11 +191,11 @@ test("every ranked journey survives deidentification, AI validation, and public 
       assertSerializedPrivacyClean(view, `${fixture.name}.view`);
     } else {
       const fallback = buildFallbackAiAnalysis({
-        matchReport,
+        analysisInput,
         errorCategory: "synthetic-test",
         now: () => new Date("2026-08-28T00:00:00.000Z"),
       });
-      const aiReport = publicAiReport(fallback, { status: "pending" });
+      const aiReport = publicAiReport(fallback, { status: "pending" }, analysisInput);
       const view = buildProductMatchView(matchReport, getPublicProducts(), aiReport);
 
       assert.deepEqual(aiReport.productExplanations, [], fixture.name);
@@ -210,7 +224,7 @@ test("prompt injection values stay outside model input and cannot change determi
       baselineMatches,
       fixture.name,
     );
-    const matchReport = buildCustomerMatchReport(profile, matches);
+    const matchReport = reportWithProductIds(buildCustomerMatchReport(profile, matches), matches);
     const input = buildAiAnalysisInput({ profile, productMatches: matches, matchReport });
     const serialized = JSON.stringify(input);
     for (const value of Object.values(injection)) assert.equal(serialized.includes(value), false, `${fixture.name} leaked injection text`);

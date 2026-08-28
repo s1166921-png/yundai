@@ -31,7 +31,6 @@ const catalogProduct = (product) => ({
 
 const catalogProductFor = (reportProduct, products) => products.find((product) => (
   product.id === reportProduct?.productId
-  || (product.name === reportProduct?.name && product.institution === reportProduct?.institution)
 ));
 
 const SAFE_PRESENTATION_LABELS = new Set([
@@ -76,6 +75,16 @@ const safeExplanationList = (value) => (
     : []
 );
 
+const deterministicEvidenceList = (value) => (
+  Array.isArray(value)
+    ? value
+      .filter((item) => typeof item === "string")
+      .map((item) => item.trim().slice(0, 200))
+      .filter(Boolean)
+      .slice(0, 3)
+    : []
+);
+
 const explanationMapFrom = (aiReport) => {
   const explanations = new Map();
   if (!Array.isArray(aiReport?.productExplanations)) return explanations;
@@ -83,7 +92,7 @@ const explanationMapFrom = (aiReport) => {
     if (typeof explanation?.productId !== "string" || explanations.has(explanation.productId)) continue;
     explanations.set(explanation.productId, {
       aiReasons: safeExplanationList(explanation.reasons),
-      itemsToConfirm: safeExplanationList(explanation.itemsToConfirm),
+      aiItemsToConfirm: safeExplanationList(explanation.itemsToConfirm),
     });
   }
   return explanations;
@@ -92,12 +101,13 @@ const explanationMapFrom = (aiReport) => {
 const safeReportProduct = (reportProduct, products, explanations) => {
   if (reportProduct == null || typeof reportProduct !== "object") return null;
   const catalog = catalogProductFor(reportProduct, products);
-  const productId = reportProduct.productId ?? catalog?.id ?? null;
+  if (catalog == null) return null;
+  const productId = catalog.id;
   const explanation = typeof reportProduct.productId === "string"
     ? explanations.get(reportProduct.productId)
     : null;
-  const limit = reportProduct.limit ?? catalog?.limit ?? null;
-  const currency = reportProduct.estimatedAmount?.currency ?? reportProduct.currency ?? catalog?.currency ?? "";
+  const limit = catalog.limit ?? null;
+  const currency = reportProduct.estimatedAmount?.currency ?? catalog.currency ?? "";
   const presentationLabel = SAFE_PRESENTATION_LABELS.has(reportProduct.presentationLabel)
     ? reportProduct.presentationLabel
     : "待补关键信息";
@@ -109,18 +119,17 @@ const safeReportProduct = (reportProduct, products, explanations) => {
 
   return {
     productId,
-    institution: reportProduct.institution ?? catalog?.institution ?? "",
-    name: reportProduct.name ?? catalog?.name ?? "",
-    whyMatched: Array.isArray(reportProduct.whyMatched)
-      ? reportProduct.whyMatched.filter((reason) => typeof reason === "string").slice(0, 3)
-      : [],
+    institution: catalog.institution ?? "",
+    name: catalog.name ?? "",
+    whyMatched: deterministicEvidenceList(reportProduct.whyMatched),
+    itemsToConfirm: deterministicEvidenceList(reportProduct.itemsToConfirm),
     aiReasons: explanation?.aiReasons ?? [],
-    itemsToConfirm: explanation?.itemsToConfirm ?? [],
+    aiItemsToConfirm: explanation?.aiItemsToConfirm ?? [],
     presentationLabel,
     ...amountPresentation,
     currency,
-    term: reportProduct.term ?? catalog?.term ?? "目录暂未提供",
-    pricing: reportProduct.pricing ?? catalog?.pricing ?? "目录暂未提供",
+    term: catalog.term ?? "目录暂未提供",
+    pricing: catalog.pricing ?? "目录暂未提供",
     limit,
     scenario: catalog?.scenario ?? null,
     keyPrerequisite: catalog?.keyPrerequisite ?? null,

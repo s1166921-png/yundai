@@ -60,7 +60,12 @@ this repository workflow.
 `http://localhost:5173` for the documented local Vite workflow. Direct server
 construction and `pnpm start` keep that local-origin mode off by default. Other origins
 remain denied unless set in comma-separated `MEIOU_ALLOWED_ORIGINS` values for explicitly
-approved frontends. Lead submissions must use `Content-Type: application/json`.
+approved frontends. Every configured value must already be an exact serialized `http` or
+`https` origin; startup rejects whitespace, userinfo, paths, queries, fragments, default-
+port normalization, and malformed values. Request `Host`/authority is never trusted for
+CORS. A production frontend, including one served from the same public origin, must set
+that exact public origin in `MEIOU_ALLOWED_ORIGINS`. Lead submissions must use
+`Content-Type: application/json`.
 
 For a local frontend on a different port, use an exact origin:
 
@@ -114,8 +119,9 @@ changes are outside this repository workflow.
 - `src/lib/matching/productCatalog.js` owns the seven versioned product definitions, sourced facts, rules, estimator metadata, six-dimension fit profiles, ranking weights, and customer/advisor collection stages.
 - `src/lib/matching/ruleEvaluator.js`, `amountEstimators.js`, and `productMatcher.js` produce deterministic eligibility, traceable amount estimates, and at most three ranks.
 - `src/lib/matching/reportBuilder.js` creates constrained customer-safe report copy; `src/components/ProductMatchCenter.jsx` renders it.
+- `src/lib/ai/analysisInputBuilder.js` exposes only stable deidentified facts and server-owned reference codes. The provider may select ordered allowlisted codes and immutable product IDs only; `src/lib/ai/aiReportContract.js` resolves customer text on the server after validation.
 - `src/lib/matching/publicProductProjection.js` and the public serializers in `server/index.mjs` keep internal catalog and match evidence out of the customer browser.
-- `server/index.mjs` validates JSON submissions, persists allowlisted input and estimator provenance, serves authenticated filtered admin data, and exports selected records.
+- `server/index.mjs` validates JSON submissions, persists allowlisted input and estimator provenance, serves authenticated filtered admin data, enforces per-lead revisions for mutations, and exports selected records.
 
 Lead-file updates are serialized by an in-memory queue within one Node process. Run one
 writer process per lead store; this queue is not a cross-process or distributed lock.
@@ -143,6 +149,10 @@ Full evidence is available only through authenticated internal paths:
 - The unlinked `/admin` UI filters by customer, product, institution, currency, status,
   financing amount, and date; it enables export only after one or more visible customer
   IDs are explicitly selected.
+- Review and AI-retry mutations include the lead's current revision. Ambiguous transport
+  failures and revision conflicts trigger a filtered refetch before the UI presents the
+  latest server state. No-key and exhausted-day states do not consume the one provider
+  retry or display an actionable retry control.
 
 Do not weaken those checks or place internal evidence in public projections. Use
 placeholder local credentials and synthetic profiles in development and tests.

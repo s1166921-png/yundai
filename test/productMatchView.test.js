@@ -21,6 +21,7 @@ const customerReport = {
     presentationLabel: "优先匹配",
     estimatedAmount: { currency: "USD", min: 1000000, max: 3000000 },
     whyMatched: ["需为 Amazon 店铺。"],
+    itemsToConfirm: ["回款账户安排需由规则核验。"],
     fitScore: 98,
     confidence: 96,
     failedRules: ["internal"],
@@ -37,6 +38,7 @@ const customerReport = {
       presentationLabel: "备选方向",
       estimatedAmount: { currency: "USD", note: "额度不设固定上限。" },
       whyMatched: ["申请主体需为 Amazon VC 主体。"],
+      itemsToConfirm: ["VC 结算文件需由规则核验。"],
       priority: "high",
     },
     {
@@ -50,6 +52,7 @@ const customerReport = {
       presentationLabel: "备选方向",
       estimatedAmount: { currency: "USD", note: "按交易应收数据评估" },
       whyMatched: ["与买方交易历史需超过 12 个月。"],
+      itemsToConfirm: ["买方交易记录需由规则核验。"],
     },
     {
       productId: "pingan-orange-tax-loan",
@@ -126,7 +129,7 @@ test("submitted view keeps one dominant result, two alternatives, and customer-s
   assert.doesNotMatch(serialized, /fitScore|confidence|failedRules|priority|unsafe replacement/);
 });
 
-test("AI explanations merge only by immutable product id and preserve rule fallbacks", () => {
+test("AI explanations merge only by immutable product id without replacing deterministic evidence", () => {
   const aiReport = {
     productExplanations: [
       {
@@ -152,14 +155,42 @@ test("AI explanations merge only by immutable product id and preserve rule fallb
   const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS, aiReport);
 
   assert.deepEqual(view.primary.aiReasons, ["Amazon SC 经营场景与该方向一致。"]);
-  assert.deepEqual(view.primary.itemsToConfirm, ["需确认单店铺 GMV 证明。"]);
+  assert.deepEqual(view.primary.whyMatched, ["需为 Amazon 店铺。"]);
+  assert.deepEqual(view.primary.itemsToConfirm, ["回款账户安排需由规则核验。"]);
+  assert.deepEqual(view.primary.aiItemsToConfirm, ["需确认单店铺 GMV 证明。"]);
   assert.deepEqual(view.alternatives[0].aiReasons, ["VC 发货后应收场景与该方向一致。"]);
+  assert.deepEqual(view.alternatives[0].itemsToConfirm, ["VC 结算文件需由规则核验。"]);
+  assert.deepEqual(view.alternatives[0].aiItemsToConfirm, ["需确认 VC 结算文件。"]);
   assert.deepEqual(view.alternatives[1].aiReasons, []);
   assert.deepEqual(view.alternatives[1].whyMatched, ["与买方交易历史需超过 12 个月。"]);
-  assert.deepEqual(view.alternatives[1].itemsToConfirm, ["需确认买方交易记录。"]);
+  assert.deepEqual(view.alternatives[1].itemsToConfirm, ["买方交易记录需由规则核验。"]);
+  assert.deepEqual(view.alternatives[1].aiItemsToConfirm, ["需确认买方交易记录。"]);
 });
 
-test("AI explanations never attach through a same-name catalog fallback when product id is absent", () => {
+test("browser AI filtering never removes server-owned deterministic evidence", () => {
+  const report = {
+    ...customerReport,
+    primary: {
+      ...customerReport.primary,
+      whyMatched: ["正常使用系统核对回款记录。"],
+      itemsToConfirm: ["系统"],
+    },
+  };
+  const view = buildProductMatchView(report, PUBLIC_PRODUCTS, {
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: ["systemMessage"],
+      itemsToConfirm: ["系统"],
+    }],
+  });
+
+  assert.deepEqual(view.primary.whyMatched, ["正常使用系统核对回款记录。"]);
+  assert.deepEqual(view.primary.itemsToConfirm, ["系统"]);
+  assert.deepEqual(view.primary.aiReasons, []);
+  assert.deepEqual(view.primary.aiItemsToConfirm, []);
+});
+
+test("report products never attach through a same-name catalog fallback when product id is absent", () => {
   const reportWithoutProductId = {
     ...customerReport,
     primary: {
@@ -177,11 +208,7 @@ test("AI explanations never attach through a same-name catalog fallback when pro
 
   const view = buildProductMatchView(reportWithoutProductId, PUBLIC_PRODUCTS, aiReport);
 
-  assert.equal(view.primary.productId, "linklogis-amazon-sc");
-  assert.equal(view.primary.name, "联易融 Amazon SC 卖家融资贷");
-  assert.deepEqual(view.primary.aiReasons, []);
-  assert.deepEqual(view.primary.itemsToConfirm, []);
-  assert.deepEqual(view.primary.whyMatched, ["需为 Amazon 店铺。"]);
+  assert.equal(view.primary, null);
 });
 
 test("match-card AI strings are normalized and capped at 200 characters", () => {
@@ -196,7 +223,7 @@ test("match-card AI strings are normalized and capped at 200 characters", () => 
   });
 
   assert.equal(view.primary.aiReasons[0], "A".repeat(200));
-  assert.equal(view.primary.itemsToConfirm[0], "B".repeat(200));
+  assert.equal(view.primary.aiItemsToConfirm[0], "B".repeat(200));
 });
 
 test("match-card AI strings keep customer prose and reject structured system labels", () => {
@@ -210,7 +237,7 @@ test("match-card AI strings keep customer prose and reject structured system lab
   });
 
   assert.deepEqual(view.primary.aiReasons, [legitimateErrorSentence]);
-  assert.deepEqual(view.primary.itemsToConfirm, ["正常使用系统核对回款记录。"]);
+  assert.deepEqual(view.primary.aiItemsToConfirm, ["正常使用系统核对回款记录。"]);
 });
 
 test("scroll uses smooth options and switches to auto for reduced motion", () => {

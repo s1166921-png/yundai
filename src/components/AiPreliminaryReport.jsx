@@ -27,22 +27,6 @@ export function AiPreliminaryReport({ report }) {
         </div>
       </section>
 
-      <section className="ai-report-products" aria-label="产品解释">
-        {view.productExplanations.map((explanation, index) => (
-          <article className="ai-report-product" key={explanation.productId}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <section>
-              <h3>为什么匹配</h3>
-              <ReportList items={explanation.reasons} emptyText="当前采用产品规则匹配依据。" />
-            </section>
-            <section>
-              <h3>仍需确认</h3>
-              <ReportList items={explanation.itemsToConfirm} emptyText="暂无额外待确认项。" />
-            </section>
-          </article>
-        ))}
-      </section>
-
       <section className="ai-report-actions" aria-labelledby="ai-actions-title">
         <span>02</span>
         <div>

@@ -14,6 +14,7 @@ import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
 import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
+import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
@@ -139,6 +140,19 @@ class LeadLifecycleInvariantError extends Error {}
 class LeadNotFoundError extends Error {}
 class AiRetryConflictError extends Error {}
 class InvalidLeadIdError extends Error {}
+class LeadRevisionConflictError extends Error {
+  constructor(lead) {
+    super("lead revision is stale");
+    this.lead = lead;
+  }
+}
+class AiRetryUnavailableError extends Error {
+  constructor(reason, lead) {
+    super("AI retry is currently unavailable");
+    this.reason = reason;
+    this.lead = lead;
+  }
+}
 
 function decodeLeadId(value) {
   try {
@@ -300,13 +314,13 @@ function normalizeAllowedOrigins(origins) {
   const values = origins == null
     ? String(process.env.MEIOU_ALLOWED_ORIGINS ?? "").split(",")
     : typeof origins === "string" ? origins.split(",") : [...origins];
-  return new Set(values.map((value) => String(value).trim()).filter(Boolean).map((value) => {
-    try {
-      return new URL(value).origin;
-    } catch {
-      return "";
+  return new Set(values.filter((value) => value !== "").map((value) => {
+    const origin = parseSerializedHttpOrigin(value);
+    if (origin == null) {
+      throw new Error("MEIOU_ALLOWED_ORIGINS entries must be exact serialized HTTP origins");
     }
-  }).filter(Boolean));
+    return origin;
+  }));
 }
 
 function parseSerializedHttpOrigin(value) {
@@ -321,7 +335,7 @@ function parseSerializedHttpOrigin(value) {
   }
 }
 
-function applyCorsHeaders(request, response, url, allowedOrigins, allowLocalDevelopmentOrigins) {
+function applyCorsHeaders(request, response, allowedOrigins, allowLocalDevelopmentOrigins) {
   const origin = request.headers.origin;
   if (!origin) return true;
 
@@ -329,7 +343,7 @@ function applyCorsHeaders(request, response, url, allowedOrigins, allowLocalDeve
   if (normalizedOrigin == null) return false;
   const isDocumentedLocalDevelopmentOrigin = allowLocalDevelopmentOrigins
     && localDevelopmentOrigins.has(normalizedOrigin);
-  if (normalizedOrigin !== url.origin && !isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
+  if (!isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
 
   response.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
   response.setHeader("Access-Control-Allow-Credentials", "true");
@@ -514,6 +528,26 @@ function normalizeLead(input, now = () => new Date()) {
   };
 }
 
+function storedLeadRevision(lead) {
+  return Number.isInteger(lead?.revision) && lead.revision >= 0 ? lead.revision : 0;
+}
+
+function expectedLeadRevision(input) {
+  if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 0) {
+    throw new PublicInputError([{
+      field: "expectedRevision",
+      message: "must be a non-negative integer",
+    }]);
+  }
+  return input.expectedRevision;
+}
+
+function assertLeadRevision(lead, expectedRevision) {
+  if (storedLeadRevision(lead) !== expectedRevision) {
+    throw new LeadRevisionConflictError(lead);
+  }
+}
+
 function publicEstimatedAmount(estimatedAmount) {
   if (!estimatedAmount || typeof estimatedAmount !== "object") return null;
   const { kind, currency, min, max, note } = estimatedAmount;
@@ -533,6 +567,7 @@ function publicReportProduct(product) {
     presentationLabel: product.presentationLabel,
     estimatedAmount: publicEstimatedAmount(product.estimatedAmount),
     whyMatched: Array.isArray(product.whyMatched) ? [...product.whyMatched] : [],
+    itemsToConfirm: Array.isArray(product.itemsToConfirm) ? [...product.itemsToConfirm] : [],
   };
 }
 
@@ -560,13 +595,37 @@ function publicMatchReport(report) {
   };
 }
 
+function canonicalMatchReportForLead(lead) {
+  if (lead?.profile && Array.isArray(lead?.productMatches)) {
+    try {
+      return addProductIdsToReport(
+        buildCustomerMatchReport(lead.profile, lead.productMatches),
+        lead.productMatches,
+      );
+    } catch {
+      // Historical records without a complete canonical profile use the stored projection below.
+    }
+  }
+  return lead?.matchReport ?? {};
+}
+
+function projectedAiReportForLead(lead, matchReport = canonicalMatchReportForLead(lead)) {
+  const analysisInput = buildAiAnalysisInput({
+    profile: lead?.profile,
+    productMatches: lead?.productMatches,
+    matchReport,
+  });
+  return publicAiReport(lead?.aiAnalysis, lead?.advisorReview, analysisInput);
+}
+
 function publicLead(lead) {
+  const matchReport = canonicalMatchReportForLead(lead);
   return {
     id: lead.id,
     createdAt: lead.createdAt,
     estimationMode: lead.estimationMode,
-    matchReport: publicMatchReport(lead.matchReport),
-    aiReport: publicAiReport(lead.aiAnalysis, lead.advisorReview),
+    matchReport: publicMatchReport(matchReport),
+    aiReport: projectedAiReportForLead(lead, matchReport),
   };
 }
 
@@ -665,9 +724,49 @@ function formatLeadValue(lead, key) {
   return value || (key.startsWith("estimate.") ? "-" : "");
 }
 
-function adminLead(lead) {
+function serviceRetryCapability(aiReportService) {
+  if (typeof aiReportService?.getRetryCapability !== "function") {
+    return { allowed: true, reason: null };
+  }
+  try {
+    const capability = aiReportService.getRetryCapability();
+    if (capability?.allowed === true) return { allowed: true, reason: null };
+    const reason = new Set(["not_configured", "daily_limit", "service_unavailable"])
+      .has(capability?.reason)
+      ? capability.reason
+      : "service_unavailable";
+    return { allowed: false, reason };
+  } catch {
+    return { allowed: false, reason: "service_unavailable" };
+  }
+}
+
+function retryCapabilityForLead(lead, aiReportService) {
+  const analysis = lead?.aiAnalysis;
+  const retryCount = Number.isInteger(analysis?.retryCount) && analysis.retryCount >= 0
+    ? analysis.retryCount
+    : 0;
+  if (retryCount >= 1) return { allowed: false, reason: "retry_used" };
+  if (!new Set(["pending", "fallback"]).has(analysis?.status)) {
+    return { allowed: false, reason: "analysis_complete" };
+  }
+  if (analysis?.operationKind === "retry") {
+    return { allowed: false, reason: "retry_in_progress" };
+  }
+  return serviceRetryCapability(aiReportService);
+}
+
+function adminLead(lead, aiReportService = null) {
+  const { operationId: _operationId, operationKind: _operationKind, ...analysis } = lead?.aiAnalysis ?? {};
+  const retryCount = Number.isInteger(analysis.retryCount) && analysis.retryCount >= 0
+    ? analysis.retryCount
+    : 0;
   return {
     ...lead,
+    revision: storedLeadRevision(lead),
+    aiAnalysis: { ...analysis, retryCount },
+    aiReport: projectedAiReportForLead(lead),
+    aiRetry: retryCapabilityForLead(lead, aiReportService),
     advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
   };
 }
@@ -830,7 +929,7 @@ async function handleRequest(request, response, {
     response.setHeader("Cache-Control", "no-store");
   }
 
-  if (!applyCorsHeaders(request, response, url, allowedOrigins, allowLocalDevelopmentOrigins)) {
+  if (!applyCorsHeaders(request, response, allowedOrigins, allowLocalDevelopmentOrigins)) {
     sendJson(response, 403, { error: "请求来源不被允许" });
     return;
   }
@@ -872,15 +971,25 @@ async function handleRequest(request, response, {
       const normalizedLead = normalizeLead(parseJsonBody(body), now);
       let lead;
       await updateLeads(leadsFilePath, (leads) => {
-        lead = { ...normalizedLead, id: uniqueLeadId(leads, idFactory) };
+        lead = {
+          ...normalizedLead,
+          id: uniqueLeadId(leads, idFactory),
+          revision: 1,
+          aiAnalysis: {
+            ...normalizedLead.aiAnalysis,
+            operationId: randomUUID(),
+            operationKind: "initial",
+          },
+        };
         return [lead, ...leads];
       });
       let aiAnalysis;
       try {
         aiAnalysis = await aiReportService.generate(lead);
       } catch {
+        const analysisInput = buildAiAnalysisInput(lead);
         aiAnalysis = buildFallbackAiAnalysis({
-          matchReport: lead.matchReport,
+          analysisInput,
           errorCategory: "provider_error",
           now,
         });
@@ -891,11 +1000,15 @@ async function handleRequest(request, response, {
         const updatedLeads = leads.map((item) => {
           if (item.id !== lead.id) return item;
           matchedLeadCount += 1;
-          if (Number.isInteger(item.aiAnalysis?.retryCount) && item.aiAnalysis.retryCount >= 1) {
+          if (item.aiAnalysis?.operationId !== lead.aiAnalysis.operationId) {
             completedLead = item;
             return item;
           }
-          completedLead = { ...item, aiAnalysis };
+          completedLead = {
+            ...item,
+            revision: storedLeadRevision(item) + 1,
+            aiAnalysis,
+          };
           return completedLead;
         });
         if (matchedLeadCount !== 1) throw new LeadLifecycleInvariantError("lead completion target must exist exactly once");
@@ -911,7 +1024,9 @@ async function handleRequest(request, response, {
         return;
       }
       const leads = await readLeads(leadsFilePath);
-      sendJson(response, 200, { leads: filterLeads(url, leads).map(adminLead) });
+      sendJson(response, 200, {
+        leads: filterLeads(url, leads).map((lead) => adminLead(lead, aiReportService)),
+      });
       return;
     }
 
@@ -919,10 +1034,12 @@ async function handleRequest(request, response, {
       const leadId = decodeLeadId(advisorRoute[1]);
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const input = parseJsonBody(await readBody(request));
+      const expectedRevision = expectedLeadRevision(input);
       let updatedLead;
       await updateLeads(leadsFilePath, (leads) => {
         const leadIndex = leads.findIndex((lead) => lead.id === leadId);
         if (leadIndex === -1) throw new LeadNotFoundError("lead does not exist");
+        assertLeadRevision(leads[leadIndex], expectedRevision);
 
         let advisorReview;
         try {
@@ -933,36 +1050,55 @@ async function handleRequest(request, response, {
           throw new PublicInputError([{ field, message: error.message }]);
         }
 
-        updatedLead = { ...leads[leadIndex], advisorReview };
+        updatedLead = {
+          ...leads[leadIndex],
+          revision: storedLeadRevision(leads[leadIndex]) + 1,
+          advisorReview,
+        };
         const updatedLeads = [...leads];
         updatedLeads[leadIndex] = updatedLead;
         return updatedLeads;
       });
-      sendJson(response, 200, { ok: true, lead: adminLead(updatedLead) });
+      sendJson(response, 200, { ok: true, lead: adminLead(updatedLead, aiReportService) });
       return;
     }
 
     if (advisorRoute?.[2] === "ai-retry" && request.method === "POST") {
       const leadId = decodeLeadId(advisorRoute[1]);
+      if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
+      const input = parseJsonBody(await readBody(request));
+      const expectedRevision = expectedLeadRevision(input);
       let retryLead;
-      let retryCount;
+      let previousRetryCount;
+      const retryOperationId = randomUUID();
       await updateLeads(leadsFilePath, (leads) => {
         const leadIndex = leads.findIndex((lead) => lead.id === leadId);
         if (leadIndex === -1) throw new LeadNotFoundError("lead does not exist");
+        assertLeadRevision(leads[leadIndex], expectedRevision);
 
         const currentAnalysis = leads[leadIndex].aiAnalysis;
-        const previousRetryCount = Number.isInteger(currentAnalysis?.retryCount)
+        previousRetryCount = Number.isInteger(currentAnalysis?.retryCount)
           && currentAnalysis.retryCount >= 0
           ? currentAnalysis.retryCount
           : 0;
-        if (!new Set(["pending", "fallback"]).has(currentAnalysis?.status) || previousRetryCount >= 1) {
+        const capability = retryCapabilityForLead(leads[leadIndex], aiReportService);
+        if (!capability.allowed && new Set(["not_configured", "daily_limit", "service_unavailable"])
+          .has(capability.reason)) {
+          throw new AiRetryUnavailableError(capability.reason, leads[leadIndex]);
+        }
+        if (!capability.allowed) {
           throw new AiRetryConflictError("AI analysis cannot be retried");
         }
 
-        retryCount = previousRetryCount + 1;
         retryLead = {
           ...leads[leadIndex],
-          aiAnalysis: { status: "pending", retryCount },
+          revision: storedLeadRevision(leads[leadIndex]) + 1,
+          aiAnalysis: {
+            status: "pending",
+            retryCount: previousRetryCount,
+            operationId: retryOperationId,
+            operationKind: "retry",
+          },
         };
         const updatedLeads = [...leads];
         updatedLeads[leadIndex] = retryLead;
@@ -973,10 +1109,12 @@ async function handleRequest(request, response, {
       try {
         aiAnalysis = await aiReportService.generate(retryLead);
       } catch {
+        const analysisInput = buildAiAnalysisInput(retryLead);
         aiAnalysis = buildFallbackAiAnalysis({
-          matchReport: retryLead.matchReport,
+          analysisInput,
           errorCategory: "provider_error",
           now,
+          providerAttempted: true,
         });
       }
 
@@ -984,15 +1122,22 @@ async function handleRequest(request, response, {
       await updateLeads(leadsFilePath, (leads) => {
         const leadIndex = leads.findIndex((lead) => lead.id === leadId);
         if (leadIndex === -1) throw new LeadLifecycleInvariantError("AI retry target must still exist");
+        if (leads[leadIndex].aiAnalysis?.operationId !== retryOperationId) {
+          completedLead = leads[leadIndex];
+          return leads;
+        }
+        const providerAttempted = aiAnalysis?.meta?.providerAttempted !== false;
+        const retryCount = previousRetryCount + (providerAttempted ? 1 : 0);
         completedLead = {
           ...leads[leadIndex],
+          revision: storedLeadRevision(leads[leadIndex]) + 1,
           aiAnalysis: { ...aiAnalysis, retryCount },
         };
         const updatedLeads = [...leads];
         updatedLeads[leadIndex] = completedLead;
         return updatedLeads;
       });
-      sendJson(response, 200, { ok: true, lead: adminLead(completedLead) });
+      sendJson(response, 200, { ok: true, lead: adminLead(completedLead, aiReportService) });
       return;
     }
 
@@ -1039,6 +1184,23 @@ async function handleRequest(request, response, {
     }
     if (error instanceof LeadNotFoundError) {
       sendJson(response, 404, { error: "客户信息不存在" });
+      return;
+    }
+    if (error instanceof LeadRevisionConflictError) {
+      sendJson(response, 409, {
+        error: "客户信息已更新，请刷新后重试",
+        code: "revision_conflict",
+        lead: adminLead(error.lead, aiReportService),
+      });
+      return;
+    }
+    if (error instanceof AiRetryUnavailableError) {
+      sendJson(response, 409, {
+        error: "AI 分析当前不可重试",
+        code: "ai_retry_unavailable",
+        reason: error.reason,
+        lead: adminLead(error.lead, aiReportService),
+      });
       return;
     }
     if (error instanceof AiRetryConflictError) {

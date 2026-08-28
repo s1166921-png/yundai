@@ -29,7 +29,6 @@ test("AI report and trust module keep Flexbox fallbacks before stable Grid track
     ".ai-example dl",
     ".ai-report-status",
     ".ai-report-business",
-    ".ai-report-product",
     ".ai-report-actions",
   ];
 
@@ -49,6 +48,8 @@ test("AI report and trust module keep Flexbox fallbacks before stable Grid track
     const rule = styles.slice(start, end);
     assert.match(rule, /flex-wrap:\s*wrap/, `${selector} needs a wrapping legacy fallback`);
   }
+
+  assert.equal(styles.includes(".ai-report-product"), false, "removed anonymous AI cards must stay removed");
 });
 
 test("trust module legacy fallback stacks at mobile widths and long result strings can wrap", async () => {

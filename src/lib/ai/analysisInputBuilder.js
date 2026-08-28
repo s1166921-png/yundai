@@ -1,6 +1,12 @@
-import { PRODUCT_CATALOG, PRODUCT_IDS } from "../matching/productCatalog.js";
+import { PRODUCT_IDS } from "../matching/productCatalog.js";
+import {
+  buildAdvisorFocusCodes,
+  buildPreparationActionCodes,
+  buildProductReferenceCodes,
+  buildSummaryCodes,
+} from "./aiReportReferences.js";
 
-export const AI_ANALYSIS_SCHEMA_VERSION = "meiou-analysis-v1";
+export const AI_ANALYSIS_SCHEMA_VERSION = "meiou-analysis-v2";
 
 const PRIMARY_BUSINESS_MODELS = new Set([
   "tax_operations",
@@ -25,73 +31,6 @@ const FUND_USES = new Set([
 ]);
 const PRODUCT_STATUSES = new Set(["eligible", "needs_information"]);
 const PRODUCT_ID_SET = new Set(PRODUCT_IDS);
-const PRODUCT_BY_ID = new Map(PRODUCT_CATALOG.map((product) => [product.id, product]));
-
-const SAFE_DOCUMENT_NAMES = new Set([
-  "企业主体登记证明",
-  "企业注册地证明",
-  "企业登记及持续经营证明",
-  "法人身份证明",
-  "实控人从业经历说明",
-  "主营业务及行业经营说明",
-  "主营业务及平台经营证明",
-  "平台店铺或核心买方合作证明",
-  "主要经营站点证明",
-  "平台交易历史证明",
-  "买方交易历史证明",
-  "平台店铺经营证明",
-  "平台经营数据证明",
-  "Amazon 近 12 个月 GMV 证明",
-  "近 12 个月销售数据证明",
-  "近 12 个月回款记录",
-  "近一年财务报表或纳税申报摘要",
-  "近一年 B2B 交易流水或合同",
-  "近 12 个月进出口数据证明",
-  "13-24 个月进出口数据证明",
-  "近 12 个月进出口记录",
-  "进出口业务营收占比说明",
-  "最近一次进出口记录",
-  "自营进出口经营说明",
-  "进出口经营权证明",
-  "外汇管理分类证明",
-  "海关信用分类证明",
-  "主营商品及营收结构说明",
-  "近两年销售收入资料",
-  "近期财务报表及负债资料",
-  "核心资产负债资料",
-  "本次融资用途及金额说明",
-  "纳税及发票资料",
-  "近 3 个月退款率数据",
-  "Amazon 店铺状态证明",
-  "Amazon AHR 数据",
-  "FBA 库存周转数据",
-  "借款主体与收款主体关系证明",
-  "回款账户安排确认",
-  "兼容收款账户证明",
-  "应收账款转让安排确认",
-  "NOA 及回款账户安排确认",
-  "应收账款明细",
-  "买方所在地及准入证明",
-  "买方平台类型证明",
-  "买方国家准入核验资料",
-  "现有银行授信情况说明",
-  "企业还款状态核验资料",
-  "企业信用与司法信息核验资料",
-  "企业及个人信用与司法信息核验资料",
-  "企业公开信息核验资料",
-  "结算账户开户证明",
-  "申请人身份说明",
-  "结算账户流水",
-  "企业信用评级资料",
-  "授信敞口及净资产资料",
-  "企业风险状态核验资料",
-  "企业合规状态核验资料",
-  "企业信用状态核验资料",
-  "连续财务报表",
-  "实控人状态核验资料",
-  "参与核额店铺经营记录",
-  "Amazon 首笔订单记录",
-]);
 
 const monthBand = (value) => {
   if (!Number.isFinite(value) || value < 0) return null;
@@ -126,32 +65,6 @@ const addBucketFact = (facts, key, value, bucket) => {
   if (mapped != null) facts[key] = mapped;
 };
 
-const customerSafeMessages = (productId, rules, expectedStatus) => {
-  const product = PRODUCT_BY_ID.get(productId);
-  if (product == null) return [];
-  const messages = [];
-  for (const rule of Array.isArray(rules) ? rules : []) {
-    if (
-      rule == null
-      || typeof rule !== "object"
-      || Array.isArray(rule)
-      || !Object.hasOwn(rule, "id")
-      || !Object.hasOwn(rule, "status")
-      || typeof rule.id !== "string"
-      || rule.status !== expectedStatus
-    ) continue;
-    const definition = product.ruleSet.find((candidate) => (
-      candidate.id === rule.id
-      && candidate.internalReason == null
-      && typeof candidate.message === "string"
-    ));
-    if (definition == null || messages.includes(definition.message)) continue;
-    messages.push(definition.message);
-    if (messages.length === 3) break;
-  }
-  return messages;
-};
-
 const rankedProducts = (productMatches) => {
   const candidates = (Array.isArray(productMatches) ? productMatches : [])
     .filter((match) => (
@@ -176,21 +89,11 @@ const rankedProducts = (productMatches) => {
 
   return candidates
     .filter((match) => rankCounts.get(match.rank) === 1 && productCounts.get(match.productId) === 1)
-  .sort((left, right) => left.rank - right.rank)
-  .map((match) => ({
-    productId: match.productId,
-    status: match.status,
-    satisfiedConditions: customerSafeMessages(match.productId, match.passedRules, "passed"),
-    itemsToConfirm: customerSafeMessages(match.productId, match.unknownRules, "unknown"),
-  }));
-};
-
-const preparationDocuments = (matchReport) => {
-  const documents = [];
-  for (const document of Array.isArray(matchReport?.missingDocuments) ? matchReport.missingDocuments : []) {
-    if (SAFE_DOCUMENT_NAMES.has(document) && !documents.includes(document)) documents.push(document);
-  }
-  return documents;
+    .sort((left, right) => left.rank - right.rank)
+    .map((match) => ({
+      productId: match.productId,
+      ...buildProductReferenceCodes(match.productId, match.passedRules, match.unknownRules),
+    }));
 };
 
 export const buildAiAnalysisInput = ({ profile = {}, productMatches = [], matchReport = {} } = {}) => {
@@ -205,11 +108,17 @@ export const buildAiAnalysisInput = ({ profile = {}, productMatches = [], matchR
     facts.acceptsAccountControl = profile.acceptsAccountControl;
   }
 
+  const products = rankedProducts(productMatches);
   return {
     schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
     scenario: PRIMARY_BUSINESS_MODELS.has(profile.primaryBusinessModel) ? profile.primaryBusinessModel : null,
     facts,
-    products: rankedProducts(productMatches),
-    preparationDocuments: preparationDocuments(matchReport),
+    summaryCodes: buildSummaryCodes({
+      scenario: PRIMARY_BUSINESS_MODELS.has(profile.primaryBusinessModel) ? profile.primaryBusinessModel : null,
+      facts,
+    }),
+    products,
+    preparationActionCodes: buildPreparationActionCodes(matchReport),
+    advisorFocusCodes: buildAdvisorFocusCodes(products),
   };
 };

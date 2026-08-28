@@ -73,8 +73,8 @@ export function buildAdminPage({ leadColumns, products }) {
     input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
     [hidden] { display: none !important; }
     body.drawer-open { overflow: hidden; }
-    .drawer-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(15,23,42,.42); }
-    .drawer { position: fixed; inset: 0 0 0 auto; z-index: 21; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(620px, 100%); height: 100dvh; border-left: 1px solid #cbd6e5; background: #fff; box-shadow: -12px 0 32px rgba(15,23,42,.16); }
+    .drawer-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; z-index: 20; background: rgba(15,23,42,.42); }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; left: auto; inset: 0 0 0 auto; z-index: 21; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(620px, 100%); height: 100vh; height: 100dvh; border-left: 1px solid #cbd6e5; background: #fff; box-shadow: -12px 0 32px rgba(15,23,42,.16); }
     .drawer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; background: #fff; }
     .drawer-header h2 { margin: 0; font-size: 19px; line-height: 1.3; }
     .icon-button { width: 40px; min-width: 40px; padding: 0; font-size: 24px; font-weight: 400; }
@@ -231,7 +231,8 @@ export function buildAdminPage({ leadColumns, products }) {
     let drawerGeneration = 0;
     let drawerOperationSequence = 0;
     let activeDrawerOperation = null;
-    const highestCachedOperationTokenByLead = new Map();
+    let loadSequence = 0;
+    let activeLoadController = null;
     const selectedIds = new Set();
     const getAuthHeaders = () => {
       const username = usernameInput.value.trim();
@@ -240,7 +241,8 @@ export function buildAdminPage({ leadColumns, products }) {
     };
     const getFilterQuery = () => {
       const params = new URLSearchParams();
-      Object.entries(filterInputs).forEach(([key, input]) => {
+      Object.keys(filterInputs).forEach((key) => {
+        const input = filterInputs[key];
         const value = input.value.trim();
         if (value) params.set(key, value);
       });
@@ -279,7 +281,7 @@ export function buildAdminPage({ leadColumns, products }) {
       if (key === "matching.amountRange") return formatAmountRange(primaryMatch && primaryMatch.estimatedAmount);
       if (key === "matching.currency") return (primaryMatch && primaryMatch.estimatedAmount && primaryMatch.estimatedAmount.currency) || (lead.matchReport && lead.matchReport.primary && lead.matchReport.primary.currency) || "";
       if (key === "matching.missingFields") return primaryMatch ? (primaryMatch.missingFields || []).join("；") : "";
-      if (key === "matching.failedRules") return (lead.productMatches || []).flatMap((match) => (match.failedRules || []).map((rule) => productNameFor(lead, match.productId) + "：" + (rule.internalReason || rule.message || rule.id || "未通过"))).join("；");
+      if (key === "matching.failedRules") return (lead.productMatches || []).reduce((reasons, match) => reasons.concat((match.failedRules || []).map((rule) => productNameFor(lead, match.productId) + "：" + (rule.internalReason || rule.message || rule.id || "未通过"))), []).join("；");
       if (key === "matching.advisorNextStep") return (lead.aiInsight && lead.aiInsight.nextStep) || "";
       return "";
     };
@@ -334,7 +336,7 @@ export function buildAdminPage({ leadColumns, products }) {
         : '<p class="empty-copy">暂无推荐产品</p>';
 
       const analysis = lead.aiAnalysis || {};
-      const customerReport = analysis.customerReport || {};
+      const customerReport = lead.aiReport || analysis.customerReport || {};
       const explanations = asArray(customerReport.productExplanations);
       drawerAiContent.innerHTML = \`
         <p><strong>\${escapeHtml(customerReport.statusMessage || "AI 报告生成中")}</strong></p>
@@ -357,8 +359,8 @@ export function buildAdminPage({ leadColumns, products }) {
       reviewNoteInput.value = review.note || "";
       reviewUpdatedAtNode.textContent = formatDateTime(review.updatedAt);
       reviewNoteCountNode.textContent = reviewNoteInput.value.length + " / 2000";
-      const retryCount = Number.isInteger(analysis.retryCount) ? analysis.retryCount : 0;
-      retryAiButton.hidden = !(["pending", "fallback"].includes(analysis.status) && retryCount < 1);
+      const retryCapability = lead.aiRetry || { allowed: false };
+      retryAiButton.hidden = retryCapability.allowed !== true;
       drawerActionStatus.textContent = "";
     };
     const openDrawer = (lead, trigger) => {
@@ -404,21 +406,6 @@ export function buildAdminPage({ leadColumns, products }) {
         && operation.leadId === activeLeadId
         && !advisorDrawer.hidden
     );
-    const cacheLoadedLead = (operation, lead) => {
-      if (lead?.id !== operation.leadId) return false;
-      const highestCachedToken = highestCachedOperationTokenByLead.get(operation.leadId);
-      if (highestCachedToken !== undefined && operation.token < highestCachedToken) return false;
-      const leadIndex = loadedLeads.findIndex((item) => item.id === operation.leadId);
-      if (leadIndex === -1) return false;
-      loadedLeads[leadIndex] = lead;
-      highestCachedOperationTokenByLead.set(operation.leadId, operation.token);
-      return true;
-    };
-    const renderOperationLead = (operation, lead) => {
-      if (!cacheLoadedLead(operation, lead) || !isCurrentDrawerOperation(operation)) return false;
-      renderDrawer(lead);
-      return true;
-    };
     const finishDrawerOperation = (operation) => {
       if (!isCurrentDrawerOperation(operation)) return;
       saveReviewButton.disabled = false;
@@ -426,7 +413,7 @@ export function buildAdminPage({ leadColumns, products }) {
       activeDrawerOperation = null;
     };
     const syncExport = () => {
-      const ids = [...selectedIds];
+      const ids = Array.from(selectedIds);
       const credentials = getAuthHeaders();
       exportLink.disabled = !credentials || ids.length === 0;
       selectedCountNode.textContent = ids.length;
@@ -481,7 +468,7 @@ export function buildAdminPage({ leadColumns, products }) {
         return;
       }
       if (event.key !== "Tab") return;
-      const focusable = [...advisorDrawer.querySelectorAll('button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      const focusable = Array.prototype.slice.call(advisorDrawer.querySelectorAll('button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
         .filter((element) => !element.hidden && element.offsetParent !== null);
       if (focusable.length === 0) return;
       const first = focusable[0];
@@ -494,116 +481,170 @@ export function buildAdminPage({ leadColumns, products }) {
         first.focus();
       }
     });
-    saveReviewButton.addEventListener("click", async () => {
-      const headers = getAuthHeaders();
-      if (!headers || !activeLeadId) return;
-      const requestLeadId = activeLeadId;
-      const operation = beginDrawerOperation(requestLeadId);
-      saveReviewButton.disabled = true;
-      retryAiButton.disabled = true;
-      drawerActionStatus.textContent = "正在保存复核...";
-      try {
-        const response = await fetch("/api/leads/" + encodeURIComponent(requestLeadId) + "/review", {
-          method: "PATCH",
-          headers: { ...headers, "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify({ status: reviewStatusInput.value, note: reviewNoteInput.value }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "保存失败");
-        if (renderOperationLead(operation, payload.lead)) {
-          drawerActionStatus.textContent = "复核已保存。";
-        }
-      } catch (error) {
-        if (isCurrentDrawerOperation(operation)) {
-          drawerActionStatus.textContent = error.message || "保存失败";
-        }
-      } finally {
-        finishDrawerOperation(operation);
-      }
-    });
-    retryAiButton.addEventListener("click", async () => {
-      const headers = getAuthHeaders();
-      if (!headers || !activeLeadId) return;
-      const requestLeadId = activeLeadId;
-      const operation = beginDrawerOperation(requestLeadId);
-      saveReviewButton.disabled = true;
-      retryAiButton.disabled = true;
-      drawerActionStatus.textContent = "正在重试 AI 分析...";
-      try {
-        const response = await fetch("/api/leads/" + encodeURIComponent(requestLeadId) + "/ai-retry", {
-          method: "POST",
-          headers,
-          cache: "no-store",
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "重试失败");
-        if (renderOperationLead(operation, payload.lead)) {
-          drawerActionStatus.textContent = "AI 分析已更新。";
-        }
-      } catch (error) {
-        if (isCurrentDrawerOperation(operation)) {
-          drawerActionStatus.textContent = error.message || "重试失败";
-        }
-      } finally {
-        finishDrawerOperation(operation);
-      }
-    });
-    const loadLeads = async () => {
+    const loadLeads = (options = {}) => {
       const headers = getAuthHeaders();
       if (!headers) {
         statusNode.textContent = "请输入管理员账户和密码。";
-        return;
+        return Promise.resolve(false);
       }
+      loadSequence += 1;
+      const requestSequence = loadSequence;
+      if (activeLoadController) activeLoadController.abort();
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      activeLoadController = controller;
+      const requestOptions = { headers, cache: "no-store" };
+      if (controller) requestOptions.signal = controller.signal;
+      const preserveLeadId = options.preserveLeadId || null;
       syncExport();
       statusNode.textContent = "正在读取客户信息...";
-      try {
-        const response = await fetch("/api/leads" + getFilterQuery(), { headers, cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "读取失败");
-        closeDrawer();
-        loadedLeads = payload.leads;
-        selectedIds.clear();
-        statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
-        countNode.textContent = payload.leads.length;
-        renderRows();
-      } catch (error) {
-        statusNode.textContent = error.message || "读取失败";
-        countNode.textContent = "0";
-        selectedIds.clear();
-        syncExport();
-      }
+      return fetch("/api/leads" + getFilterQuery(), requestOptions)
+        .then((response) => response.json().then((payload) => ({ response, payload })))
+        .then(({ response, payload }) => {
+          if (requestSequence !== loadSequence) return false;
+          if (!response.ok) throw new Error(payload.error || "读取失败");
+          if (!Array.isArray(payload.leads)) throw new Error("读取结果格式不正确");
+          if (activeLoadController === controller) activeLoadController = null;
+          loadedLeads = payload.leads;
+          Array.from(selectedIds).forEach((id) => {
+            if (!loadedLeads.some((lead) => lead.id === id)) selectedIds.delete(id);
+          });
+          statusNode.textContent = "已读取 " + payload.leads.length + " 条客户信息";
+          countNode.textContent = payload.leads.length;
+          renderRows();
+          if (preserveLeadId && !advisorDrawer.hidden) {
+            const refreshedLead = loadedLeads.find((lead) => lead.id === preserveLeadId);
+            if (refreshedLead) {
+              const drawerOperation = options.drawerOperation || null;
+              const mayRenderDrawer = activeDrawerOperation === null || (
+                drawerOperation !== null
+                  && activeDrawerOperation.token === drawerOperation.token
+                  && activeDrawerOperation.generation === drawerOperation.generation
+                  && activeDrawerOperation.leadId === drawerOperation.leadId
+              );
+              if (mayRenderDrawer) renderDrawer(refreshedLead);
+            } else {
+              closeDrawer();
+            }
+          } else if (options.closeDrawer !== false) {
+            closeDrawer();
+          }
+          return true;
+        })
+        .catch((error) => {
+          if (requestSequence !== loadSequence || error.name === "AbortError") return false;
+          if (activeLoadController === controller) activeLoadController = null;
+          statusNode.textContent = error.message || "读取失败";
+          syncExport();
+          return false;
+        });
     };
-    loadButton.addEventListener("click", loadLeads);
-    applyFiltersButton.addEventListener("click", loadLeads);
-    clearFiltersButton.addEventListener("click", () => {
-      Object.values(filterInputs).forEach((input) => { input.value = ""; });
-      loadLeads();
-    });
-    exportLink.addEventListener("click", async () => {
+    const refreshAfterMutation = (operation, message) => {
+      const preserveLeadId = activeLeadId;
+      return loadLeads({ preserveLeadId, closeDrawer: false, drawerOperation: operation }).then((refreshed) => {
+        if (refreshed && isCurrentDrawerOperation(operation)) {
+          drawerActionStatus.textContent = message;
+        }
+        return refreshed;
+      });
+    };
+    const performMutation = ({ pathSuffix, method, pendingText, successText, body }) => {
       const headers = getAuthHeaders();
-      const ids = [...selectedIds];
-      if (!headers || ids.length === 0) return;
+      if (!headers || !activeLeadId) return Promise.resolve(false);
+      const requestLeadId = activeLeadId;
+      const requestLead = loadedLeads.find((lead) => lead.id === requestLeadId);
+      if (!requestLead) return Promise.resolve(false);
+      const expectedRevision = Number.isInteger(requestLead.revision) ? requestLead.revision : 0;
+      const operation = beginDrawerOperation(requestLeadId);
+      const requestHeaders = {
+        Authorization: headers.Authorization,
+        "Content-Type": "application/json",
+      };
+      saveReviewButton.disabled = true;
+      retryAiButton.disabled = true;
+      drawerActionStatus.textContent = pendingText;
+      const requestBody = { expectedRevision };
+      Object.keys(body || {}).forEach((key) => { requestBody[key] = body[key]; });
+      const request = fetch("/api/leads/" + encodeURIComponent(requestLeadId) + pathSuffix, {
+        method,
+        headers: requestHeaders,
+        cache: "no-store",
+        body: JSON.stringify(requestBody),
+      }).then((response) => response.json().then((payload) => ({ response, payload })));
+
+      return request.then(
+        ({ response, payload }) => {
+          const message = response.ok
+            ? successText + "，已刷新最新状态。"
+            : (payload.error || "操作未完成") + "，已刷新最新状态。";
+          return refreshAfterMutation(operation, message);
+        },
+        () => refreshAfterMutation(operation, "服务器响应不确定，已刷新最新状态。"),
+      ).then((result) => {
+        finishDrawerOperation(operation);
+        return result;
+      }, (error) => {
+        if (isCurrentDrawerOperation(operation)) {
+          drawerActionStatus.textContent = error.message || "刷新失败";
+        }
+        finishDrawerOperation(operation);
+        return false;
+      });
+    };
+    saveReviewButton.addEventListener("click", () => performMutation({
+      pathSuffix: "/review",
+      method: "PATCH",
+      pendingText: "正在保存复核...",
+      successText: "复核已保存",
+      body: { status: reviewStatusInput.value, note: reviewNoteInput.value },
+    }));
+    retryAiButton.addEventListener("click", () => {
+      if (retryAiButton.hidden) return Promise.resolve(false);
+      return performMutation({
+        pathSuffix: "/ai-retry",
+        method: "POST",
+        pendingText: "正在重试 AI 分析...",
+        successText: "AI 分析已更新",
+        body: {},
+      });
+    });
+    const loadFromControls = () => {
+      closeDrawer();
+      return loadLeads({ closeDrawer: false });
+    };
+    loadButton.addEventListener("click", loadFromControls);
+    applyFiltersButton.addEventListener("click", loadFromControls);
+    clearFiltersButton.addEventListener("click", () => {
+      Object.keys(filterInputs).forEach((key) => { filterInputs[key].value = ""; });
+      return loadFromControls();
+    });
+    exportLink.addEventListener("click", () => {
+      const headers = getAuthHeaders();
+      const ids = Array.from(selectedIds);
+      if (!headers || ids.length === 0) return Promise.resolve(false);
       const params = new URLSearchParams();
       ids.forEach((id) => params.append("ids", id));
       statusNode.textContent = "正在生成 Excel...";
-      try {
-        const response = await fetch("/api/leads/export?" + params.toString(), { headers });
-        if (!response.ok) {
-          const payload = await response.json();
-          throw new Error(payload.error || "导出失败");
-        }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "meiou-leads.xls";
-        link.click();
-        URL.revokeObjectURL(url);
-        statusNode.textContent = "Excel 已开始下载。";
-      } catch (error) {
-        statusNode.textContent = error.message || "导出失败";
-      }
+      return fetch("/api/leads/export?" + params.toString(), { headers })
+        .then((response) => {
+          if (response.ok) return response.blob();
+          return response.json().then((payload) => {
+            throw new Error(payload.error || "导出失败");
+          });
+        })
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "meiou-leads.xls";
+          link.click();
+          URL.revokeObjectURL(url);
+          statusNode.textContent = "Excel 已开始下载。";
+          return true;
+        })
+        .catch((error) => {
+          statusNode.textContent = error.message || "导出失败";
+          return false;
+        });
     });
   </script>
 </body>

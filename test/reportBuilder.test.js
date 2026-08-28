@@ -158,6 +158,7 @@ test("report copies customer product facts from the versioned catalog", () => {
       note: "单店最高300万美元，最终额度以机构评估为准。",
     },
     whyMatched: ["需为 Amazon 店铺。"],
+    itemsToConfirm: [],
   });
   assert.equal(report.disclaimer, "仍需资金方及融资顾问核验完整资料，本结果不构成授信或放款承诺。");
   assert.equal(report.ruleVersion, undefined);

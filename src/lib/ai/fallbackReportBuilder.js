@@ -1,34 +1,44 @@
 import {
+  AI_NARRATIVE_SCHEMA_VERSION,
   AI_PROMPT_VERSION,
-  FALLBACK_STATUS_MESSAGE,
 } from "./aiReportContract.js";
 
-const copyStrings = (value, maximum) => (
-  Array.isArray(value)
-    ? value.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, maximum)
-    : []
-);
+const safeInput = (analysisInput) => {
+  if (
+    analysisInput != null
+    && typeof analysisInput === "object"
+    && !Array.isArray(analysisInput)
+    && Array.isArray(analysisInput.summaryCodes)
+    && Array.isArray(analysisInput.products)
+    && Array.isArray(analysisInput.preparationActionCodes)
+  ) return analysisInput;
+  return {
+    summaryCodes: ["summary:profile-submitted"],
+    products: [],
+    preparationActionCodes: ["action:prepare-verifiable-business-materials"],
+  };
+};
 
-export function buildFallbackAiAnalysis({ matchReport, errorCategory, now = () => new Date() } = {}) {
-  const report = matchReport ?? {};
-  const rankedProducts = [report.primary, ...(Array.isArray(report.alternatives) ? report.alternatives : [])]
-    .filter((product) => typeof product?.productId === "string");
-  const missingDocuments = copyStrings(report.missingDocuments, 5);
-
+export function buildFallbackAiAnalysis({
+  analysisInput,
+  errorCategory,
+  now = () => new Date(),
+  providerAttempted = false,
+} = {}) {
+  const input = safeInput(analysisInput);
   return {
     status: "fallback",
     customerReport: {
-      statusMessage: FALLBACK_STATUS_MESSAGE,
-      businessSummary: typeof report.summary === "string" && report.summary.trim().length > 0
-        ? [report.summary]
-        : [],
-      productExplanations: rankedProducts.map((product) => ({
+      schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+      businessSummaryCodes: input.summaryCodes.slice(0, 3),
+      productExplanations: input.products.map((product) => ({
         productId: product.productId,
-        reasons: copyStrings(product.whyMatched, 3),
-        itemsToConfirm: [],
+        reasonCodes: Array.isArray(product.reasonCodes) ? product.reasonCodes.slice(0, 3) : [],
+        confirmationCodes: Array.isArray(product.confirmationCodes) ? product.confirmationCodes.slice(0, 3) : [],
       })),
-      preparationActions: missingDocuments,
+      preparationActionCodes: input.preparationActionCodes.slice(0, 5),
     },
+    advisorFocusCodes: [],
     advisorFocus: [],
     meta: {
       provider: "local",
@@ -36,6 +46,7 @@ export function buildFallbackAiAnalysis({ matchReport, errorCategory, now = () =
       promptVersion: AI_PROMPT_VERSION,
       errorCategory,
       generatedAt: now().toISOString(),
+      providerAttempted: providerAttempted === true,
     },
   };
 }

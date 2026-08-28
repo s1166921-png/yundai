@@ -34,11 +34,12 @@ export function createAiReportService({ client, limiter, logger, now = () => new
   const configuredLimiter = limiter ?? createDailyLimiter({ now });
   const reportModel = typeof client?.model === "string" ? client.model : null;
 
-  const fallback = (lead, category, durationMs) => {
+  const fallback = (lead, input, category, durationMs, providerAttempted = false) => {
     const analysis = buildFallbackAiAnalysis({
-      matchReport: lead?.matchReport,
+      analysisInput: input,
       errorCategory: category,
       now,
+      providerAttempted,
     });
     try {
       logger?.warn?.({
@@ -54,34 +55,42 @@ export function createAiReportService({ client, limiter, logger, now = () => new
   };
 
   return {
+    getRetryCapability() {
+      if (client?.isConfigured === false) return { allowed: false, reason: "not_configured" };
+      if (typeof configuredLimiter.canAcquire !== "function") return { allowed: true, reason: null };
+      try {
+        return configuredLimiter.canAcquire()
+          ? { allowed: true, reason: null }
+          : { allowed: false, reason: "daily_limit" };
+      } catch {
+        return { allowed: false, reason: "service_unavailable" };
+      }
+    },
     async generate(lead) {
       let input;
       try {
         input = buildAiAnalysisInput(lead);
       } catch (error) {
-        return fallback(lead, "provider_error", error?.durationMs);
+        return fallback(lead, null, "provider_error", error?.durationMs, false);
       }
 
-      if (client?.isConfigured === false) return fallback(lead, "not_configured", null);
+      if (client?.isConfigured === false) return fallback(lead, input, "not_configured", null, false);
 
       try {
-        if (!configuredLimiter.tryAcquire()) return fallback(lead, "daily_limit", null);
+        if (!configuredLimiter.tryAcquire()) return fallback(lead, input, "daily_limit", null, false);
       } catch (error) {
-        return fallback(lead, "provider_error", error?.durationMs);
+        return fallback(lead, input, "provider_error", error?.durationMs, false);
       }
 
       let generated;
       try {
         generated = await client?.generateNarrative(input);
       } catch (error) {
-        return fallback(lead, failureCategory(error), error?.durationMs);
+        return fallback(lead, input, failureCategory(error), error?.durationMs, true);
       }
 
-      const validation = validateAiNarrative(
-        generated?.narrative,
-        input.products.map(({ productId }) => productId),
-      );
-      if (!validation.ok) return fallback(lead, "contract_violation", generated?.durationMs);
+      const validation = validateAiNarrative(generated?.narrative, input);
+      if (!validation.ok) return fallback(lead, input, "contract_violation", generated?.durationMs, true);
 
       return buildPersistedAiAnalysis({
         narrative: validation.value,
@@ -91,6 +100,7 @@ export function createAiReportService({ client, limiter, logger, now = () => new
         generatedAt: now(),
         durationMs: numericDuration(generated?.durationMs),
         usage: numericUsage(generated?.usage),
+        providerAttempted: true,
       });
     },
   };

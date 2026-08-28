@@ -44,7 +44,7 @@ test("analysis input contains business buckets and excludes direct identifiers a
     assert.doesNotMatch(serialized, new RegExp(forbidden));
   }
   assert.deepEqual(input, {
-    schemaVersion: "meiou-analysis-v1",
+    schemaVersion: "meiou-analysis-v2",
     scenario: "amazon_sc",
     facts: {
       entityRegion: "mainland",
@@ -55,13 +55,18 @@ test("analysis input contains business buckets and excludes direct identifiers a
       fundUse: "inventory_procurement",
       acceptsAccountControl: true,
     },
+    summaryCodes: [
+      "summary:profile-submitted",
+      "summary:scenario:amazon_sc",
+      "summary:fund-use:inventory_procurement",
+    ],
     products: [{
       productId: "linklogis-amazon-sc",
-      status: "eligible",
-      satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
-      itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
+      reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
+      confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],
     }],
-    preparationDocuments: ["近 12 个月销售数据证明"],
+    preparationActionCodes: ["action:document:sales-data-last-12-months"],
+    advisorFocusCodes: ["advisor:linklogis-amazon-sc:collection-account-arrangement"],
   });
 });
 
@@ -147,28 +152,26 @@ test("analysis input caps ranked products and keeps only safe evidence", () => {
   assert.deepEqual(input.products, [
     {
       productId: "linklogis-b2b-factoring",
-      status: "needs_information",
-      satisfiedConditions: ["与买方交易历史需超过 12 个月。"],
-      itemsToConfirm: [],
+      reasonCodes: ["evidence:linklogis-b2b-factoring:buyer-trading-history"],
+      confirmationCodes: [],
     },
     {
       productId: "linklogis-amazon-sc",
-      status: "eligible",
-      satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
-      itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
+      reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
+      confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],
     },
     {
       productId: "webank-cross-border-data-loan",
-      status: "eligible",
-      satisfiedConditions: ["企业需在境内注册。"],
-      itemsToConfirm: [],
+      reasonCodes: ["evidence:webank-cross-border-data-loan:domestic-registration"],
+      confirmationCodes: [],
     },
   ]);
-  assert.deepEqual(input.preparationDocuments, ["近 12 个月销售数据证明"]);
+  assert.deepEqual(input.preparationActionCodes, ["action:document:sales-data-last-12-months"]);
+  assert.deepEqual(input.advisorFocusCodes, ["advisor:linklogis-amazon-sc:collection-account-arrangement"]);
   assert.doesNotMatch(JSON.stringify(input), /failed|internal|secret|不可发送|ignored/);
 });
 
-test("analysis input derives rule messages from own catalog identity and status", () => {
+test("analysis input derives stable references from own catalog identity and status", () => {
   const inheritedRule = Object.create({ message: "inherited secret" });
   inheritedRule.id = "single-store-annual-gmv";
   inheritedRule.status = "passed";
@@ -190,9 +193,8 @@ test("analysis input derives rule messages from own catalog identity and status"
 
   assert.deepEqual(input.products, [{
     productId: "linklogis-amazon-sc",
-    status: "eligible",
-    satisfiedConditions: ["Amazon 单店铺年 GMV 需大于 500 万美元。"],
-    itemsToConfirm: ["需接受将回款账户切换至合作支付公司或银行；已有兼容账户可免切换。"],
+    reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
+    confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],
   }]);
   assert.doesNotMatch(JSON.stringify(input), /inherited secret|own secret|unknown secret|wrong status|injected secret/);
 });

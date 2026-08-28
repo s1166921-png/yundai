@@ -1,9 +1,10 @@
 import { buildProductMatchView } from "../lib/productMatchView.js";
 import { AiPreliminaryReport } from "./AiPreliminaryReport.jsx";
 
-const productReasons = (product) => (
-  product.aiReasons.length > 0 ? product.aiReasons : product.whyMatched
-);
+const aiHighlights = (product) => [...new Set([
+  ...product.aiReasons,
+  ...product.aiItemsToConfirm,
+])];
 
 function CatalogProductCard({ product }) {
   return (
@@ -53,7 +54,7 @@ function ProductCatalog({ groups }) {
 }
 
 function PrimaryResult({ product }) {
-  const reasons = productReasons(product);
+  const supplemental = aiHighlights(product);
   return (
     <article className="match-primary-result">
       <header className="primary-result-heading">
@@ -86,8 +87,8 @@ function PrimaryResult({ product }) {
       <div className="primary-result-reasons">
         <section>
           <h4>为什么匹配</h4>
-          {reasons.length > 0 ? (
-            <ul>{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+          {product.whyMatched.length > 0 ? (
+            <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
           ) : (
             <p>{product.presentationLabel === "优先匹配"
               ? "当前已提交信息支持优先评估该产品方向。"
@@ -102,13 +103,19 @@ function PrimaryResult({ product }) {
             <p>{product.keyPrerequisite || "待资金方进一步核验"}</p>
           )}
         </section>
+        {supplemental.length > 0 && (
+          <section className="ai-product-supplement">
+            <h4>AI 梳理重点</h4>
+            <ul>{supplemental.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+        )}
       </div>
     </article>
   );
 }
 
 function AlternativeResult({ product }) {
-  const reasons = productReasons(product);
+  const supplemental = aiHighlights(product);
   const confirmations = product.itemsToConfirm.length > 0
     ? product.itemsToConfirm
     : product.missingInformation;
@@ -131,8 +138,8 @@ function AlternativeResult({ product }) {
       </dl>
       <section>
         <h5>为什么匹配</h5>
-        {reasons.length > 0 ? (
-          <ul>{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        {product.whyMatched.length > 0 ? (
+          <ul>{product.whyMatched.map((reason) => <li key={reason}>{reason}</li>)}</ul>
         ) : (
           <p>当前资料支持将该产品作为进一步核验方向。</p>
         )}
@@ -145,6 +152,12 @@ function AlternativeResult({ product }) {
           <p>暂无额外资料提示。</p>
         )}
       </section>
+      {supplemental.length > 0 && (
+        <section className="ai-product-supplement">
+          <h5>AI 梳理重点</h5>
+          <ul>{supplemental.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
+      )}
     </article>
   );
 }
