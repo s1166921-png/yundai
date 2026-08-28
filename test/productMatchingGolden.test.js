@@ -6,6 +6,7 @@ import { buildProductMatchView } from "../src/lib/productMatchView.js";
 import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 import { getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
+import { GOLDEN_PROFILES } from "./fixtures/customerProfiles.js";
 
 const visiblePayload = (rawProfile) => ({
   ...(rawProfile.intakeVersion == null ? {} : { intakeVersion: rawProfile.intakeVersion }),
@@ -138,6 +139,19 @@ const nonGuangdongTaxProfile = () => progressive({
   preferredCurrency: "rmb",
   requestedAmount: 400000,
   fundUse: "tax_business_operations",
+});
+
+test("golden corpus exposes at least thirty explicit product status outcomes", () => {
+  assert.ok(GOLDEN_PROFILES.length >= 30);
+  assert.ok(GOLDEN_PROFILES.every(({ expectedStatuses }) => expectedStatuses && typeof expectedStatuses === "object"));
+
+  for (const fixture of GOLDEN_PROFILES) {
+    const matches = matchProducts(fixture.profile);
+    assert.equal(matches.find(({ rank }) => rank === 1)?.productId ?? null, fixture.expectedPrimary, fixture.name);
+    for (const [productId, expectedStatus] of Object.entries(fixture.expectedStatuses)) {
+      assert.equal(matches.find((match) => match.productId === productId)?.status, expectedStatus, fixture.name);
+    }
+  }
 });
 
 const REPRESENTATIVE_PROFILES = Object.freeze([
