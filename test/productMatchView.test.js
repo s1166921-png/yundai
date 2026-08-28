@@ -199,6 +199,20 @@ test("match-card AI strings are normalized and capped at 200 characters", () => 
   assert.equal(view.primary.itemsToConfirm[0], "B".repeat(200));
 });
 
+test("match-card AI strings keep customer prose and reject structured system labels", () => {
+  const legitimateErrorSentence = "请确认报表中的错误信息是否已更正。";
+  const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS, {
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: [legitimateErrorSentence, "system_message"],
+      itemsToConfirm: ["正常使用系统核对回款记录。", "systemMessage"],
+    }],
+  });
+
+  assert.deepEqual(view.primary.aiReasons, [legitimateErrorSentence]);
+  assert.deepEqual(view.primary.itemsToConfirm, ["正常使用系统核对回款记录。"]);
+});
+
 test("scroll uses smooth options and switches to auto for reduced motion", () => {
   const calls = [];
   const element = { scrollIntoView: (options) => calls.push(options) };

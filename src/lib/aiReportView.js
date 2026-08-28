@@ -55,9 +55,11 @@ const INTERNAL_AI_WORDS = [
   [114, 101, 97, 115, 111, 110],
 ].map((codes) => String.fromCharCode(...codes));
 
-const INTERNAL_AI_TERM_PATTERNS = [
-  [0],
+const INTERNAL_AI_KEY_TERMS = [
+  [1],
   [1, 2],
+  [3],
+  [3, 16],
   [3, 4],
   [3, 1],
   [5, 7],
@@ -70,6 +72,7 @@ const INTERNAL_AI_TERM_PATTERNS = [
   [6, 7, 10],
   [7, 9],
   [7, 10],
+  [9],
   [11, 8],
   [1, 8],
   [12, 8],
@@ -78,25 +81,106 @@ const INTERNAL_AI_TERM_PATTERNS = [
   [13, 16],
   [17, 13],
   [18, 19],
+  [19],
   [20],
   [21, 22],
+  [22],
   [23, 24],
   [23, 25],
+  [26],
+  [27],
+  [28],
   [28, 2],
   [28, 29],
   [30, 31],
-].map((indexes) => new RegExp(
-  `(^|[^a-z0-9])${indexes.map((index) => INTERNAL_AI_WORDS[index]).join("[\\s_-]*")}(?=$|[^a-z0-9])`,
-  "i",
-));
+];
 
-const INTERNAL_AI_LABEL_PATTERNS = [1, 9, 19, 22, 26, 27, 28].map((index) => new RegExp(
-  `(^|[^a-z0-9])${INTERNAL_AI_WORDS[index]}(?=["']?\\s*[:：=])`,
-  "i",
-));
+const INTERNAL_AI_KEY_PATTERNS = [];
+for (const indexes of INTERNAL_AI_KEY_TERMS) {
+  const words = indexes.map((index) => INTERNAL_AI_WORDS[index]);
+  const flexibleKey = words.join("[\\s_-]*");
+  INTERNAL_AI_KEY_PATTERNS.push(new RegExp(
+    `(^|[^a-z0-9])["']?${flexibleKey}["']?\\s*[:：=]`,
+    "i",
+  ));
+  INTERNAL_AI_KEY_PATTERNS.push(new RegExp(
+    `^\\s*["']?${flexibleKey}["']?\\s*$`,
+    "i",
+  ));
 
-const INTERNAL_AI_TEXT = /(?:评分|分数|置信(?:度|分)|内部(?:规则|备注|判断)|顾问(?:内部)?备注|提示词版本|系统(?:指令|提示词)|输入(?:令牌|标记)(?:数|量|用量)?|输出(?:令牌|标记)(?:数|量|用量)?|令牌(?:使用)?量|错误(?:类别|分类|代码|编码|消息|信息)|原始错误)/;
-const INTERNAL_AI_LABEL = /(?:提示词|供应商|模型|用量)\s*(?=["']?\s*[:：=])/;
+  if (words.length > 1) {
+    const snakeKey = words.join("[_-]+");
+    const camelKey = words[0] + words.slice(1)
+      .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+      .join("");
+    const pascalKey = `${camelKey.charAt(0).toUpperCase()}${camelKey.slice(1)}`;
+    INTERNAL_AI_KEY_PATTERNS.push(new RegExp(
+      `(^|[^a-z0-9])${snakeKey}(?=$|[^a-z0-9])`,
+      "i",
+    ));
+    INTERNAL_AI_KEY_PATTERNS.push(new RegExp(
+      `(^|[^A-Za-z0-9])(?:${camelKey}|${pascalKey})(?=$|[^A-Za-z0-9])`,
+    ));
+  }
+}
+
+const INTERNAL_AI_BRAND_PATTERN = new RegExp(
+  `(^|[^a-z0-9])${INTERNAL_AI_WORDS[0]}(?=$|[^a-z0-9])`,
+  "i",
+);
+
+const INTERNAL_AI_CHINESE_KEYS = [
+  "评分",
+  "分数",
+  "置信度",
+  "置信分",
+  "内部规则",
+  "内部备注",
+  "内部判断",
+  "顾问备注",
+  "顾问内部备注",
+  "提示词",
+  "提示词版本",
+  "系统",
+  "系统指令",
+  "系统提示词",
+  "系统消息",
+  "输入令牌",
+  "输入标记",
+  "输入令牌数",
+  "输入标记数",
+  "输入令牌用量",
+  "输入标记用量",
+  "输出令牌",
+  "输出标记",
+  "输出令牌数",
+  "输出标记数",
+  "输出令牌用量",
+  "输出标记用量",
+  "令牌用量",
+  "令牌使用量",
+  "错误类别",
+  "错误分类",
+  "错误代码",
+  "错误编码",
+  "错误消息",
+  "错误信息",
+  "原始错误",
+  "供应商",
+  "模型",
+  "用量",
+];
+
+const INTERNAL_AI_CHINESE_KEY_PATTERNS = INTERNAL_AI_CHINESE_KEYS.map((key) => {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    new RegExp(`(^|[\\s"'{}\\[\\](),，。;；])${escapedKey}(?=["']?\\s*[:：=]|[_-])`),
+    new RegExp(`^\\s*["']?${escapedKey}["']?\\s*$`),
+  ];
+});
+
+const hasChineseMetadataKey = (value) => INTERNAL_AI_CHINESE_KEY_PATTERNS
+  .some(([labelPattern, exactPattern]) => labelPattern.test(value) || exactPattern.test(value));
 
 const normalizedText = (value) => (
   typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : ""
@@ -104,10 +188,9 @@ const normalizedText = (value) => (
 
 export const isCustomerSafeAiText = (value) => (
   typeof value === "string"
-  && !INTERNAL_AI_TEXT.test(value)
-  && !INTERNAL_AI_LABEL.test(value)
-  && !INTERNAL_AI_TERM_PATTERNS.some((pattern) => pattern.test(value))
-  && !INTERNAL_AI_LABEL_PATTERNS.some((pattern) => pattern.test(value))
+  && !INTERNAL_AI_BRAND_PATTERN.test(value)
+  && !INTERNAL_AI_KEY_PATTERNS.some((pattern) => pattern.test(value))
+  && !hasChineseMetadataKey(value)
 );
 
 export const normalizeCustomerAiText = (value) => {

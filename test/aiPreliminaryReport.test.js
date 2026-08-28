@@ -104,6 +104,29 @@ test("customer AI view rejects metadata labels from every rendered string field"
   assert.doesNotMatch(serialized, /prompt(?:Version)?|system instructions|input_tokens|outputTokens|output token usage|token usage|errorCategory|error_message|rawError|error code|provider|usage|fit score|failed rules|advisor[ _](?:notes|focus)/i);
 });
 
+test("customer AI view rejects system metadata shapes while preserving natural-language prose", () => {
+  const legitimateErrorSentence = "请确认报表中的错误信息是否已更正。";
+  const view = buildAiReportView({
+    ...customerAiReport,
+    statusMessage: "system: private instructions",
+    businessSummary: ["系统会根据已提交的经营信息生成建议。", "system_message"],
+    productExplanations: [{
+      productId: "linklogis-amazon-sc",
+      reasons: [legitimateErrorSentence, "systemMessage"],
+      itemsToConfirm: ["正常使用系统核对回款记录。", "\"system\": \"private instructions\""],
+    }],
+    preparationActions: ["请检查系统中的经营字段是否完整。", "SYSTEM_MESSAGE=private instructions"],
+    privacyNotice: "system：private instructions",
+  });
+
+  assert.equal(view.statusMessage, "");
+  assert.deepEqual(view.businessSummary, ["系统会根据已提交的经营信息生成建议。"]);
+  assert.deepEqual(view.productExplanations[0].reasons, [legitimateErrorSentence]);
+  assert.deepEqual(view.productExplanations[0].itemsToConfirm, ["正常使用系统核对回款记录。"]);
+  assert.deepEqual(view.preparationActions, ["请检查系统中的经营字段是否完整。"]);
+  assert.equal(view.privacyNotice, "");
+});
+
 test("customer report renders transparent sections in order without internal metadata", async (t) => {
   const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
   const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report: customerAiReport }));
