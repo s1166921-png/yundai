@@ -33,6 +33,9 @@ test("modern and legacy production browser bundles exclude matching internals", 
   const serializedBundle = (await Promise.all(browserFiles.map((file) => readFile(file, "utf8")))).join("\n");
 
   assert.match(serializedBundle, /index-legacy-/);
+  for (const forbidden of ["DEEPSEEK_API_KEY", "api.deepseek.com/chat/completions", "advisorFocus", "SYSTEM_INSTRUCTIONS"]) {
+    assert.doesNotMatch(serializedBundle, new RegExp(forbidden));
+  }
   assert.doesNotMatch(
     serializedBundle,
     /ruleSet|ruleVersion|internalReason|fitScore|fitDimensions|confidence|failedRules|inputSnapshot|formulaKey|advisorVerificationFields|advisorPriority|companyCreditRating|internalBankRating|isOnAmlBlacklist|MEIOU_ADMIN_USER|MEIOU_ADMIN_PASSWORD|needs_information|反洗钱黑名单|预警信息|两个年度销售收入下滑超过 30%/,

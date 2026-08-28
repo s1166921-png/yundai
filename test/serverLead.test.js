@@ -365,6 +365,87 @@ test("POST /api/leads matches a complete Amazon SC profile and persists audit ev
   assert.ok(persistedLeads[0].productMatches.every((match) => /^2026-/.test(match.ruleVersion)));
 });
 
+test("POST persists the lead before AI generation and returns a customer-safe initial report", async (t) => {
+  let leadsFilePath;
+  let sawPersistedPending = false;
+  let pendingStoreMode = null;
+  let generatedCount = 0;
+  const generatedAnalysis = {
+    status: "generated",
+    customerReport: {
+      statusMessage: "AI 初筛完成，专业顾问待复核。",
+      businessSummary: ["当前为 Amazon SC 经营场景。"],
+      productExplanations: [{
+        productId: "linklogis-amazon-sc",
+        reasons: ["当前经营场景与产品方向一致。"],
+        itemsToConfirm: ["需核验销售数据。"],
+      }],
+      preparationActions: ["准备近 12 个月销售数据。"],
+    },
+    advisorFocus: ["确认回款账户安排。"],
+    meta: {
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      promptVersion: "meiou-ai-advisor-v1",
+      generatedAt: "2026-08-27T00:00:00.000Z",
+      durationMs: 50,
+      usage: { inputTokens: 40, outputTokens: 20 },
+      errorCategory: null,
+    },
+  };
+  const aiReportService = {
+    generate: async (lead) => {
+      generatedCount += 1;
+      const stored = JSON.parse(await readFile(leadsFilePath, "utf8"));
+      sawPersistedPending = stored.some((item) => item.id === lead.id && item.aiAnalysis.status === "pending");
+      pendingStoreMode = (await stat(leadsFilePath)).mode & 0o777;
+      return generatedAnalysis;
+    },
+  };
+  const started = await startTestServer(t, { aiReportService });
+  leadsFilePath = started.leadsFilePath;
+  const response = await postLead(started.url, completeProgressiveAmazonScPayload());
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(sawPersistedPending, true);
+  assert.equal(pendingStoreMode, 0o600);
+  assert.equal(generatedCount, 1);
+  assert.equal(body.lead.aiReport.source, "ai");
+  assert.equal(body.lead.aiReport.reviewStatus, "pending");
+  assert.equal("advisorFocus" in body.lead.aiReport, false);
+  assert.equal("meta" in body.lead.aiReport, false);
+
+  const [stored] = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  assert.deepEqual(stored.aiAnalysis, generatedAnalysis);
+  assert.deepEqual(stored.advisorReview, {
+    status: "pending",
+    note: "",
+    updatedAt: null,
+  });
+  assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
+  assert.equal(stored.rawInput.aiAnalysis, undefined);
+  assert.equal(stored.rawInput.advisorReview, undefined);
+  assert.doesNotMatch(
+    JSON.stringify(body),
+    /advisorFocus|"meta"|"provider"|"model"|promptVersion|"usage"|errorCategory|fitScore|confidence|ruleVersion|advisorReview/,
+  );
+});
+
+test("POST without an injected service returns and persists a deterministic local fallback", async (t) => {
+  const now = () => new Date("2026-08-27T00:00:00.000Z");
+  const { leadsFilePath, url } = await startTestServer(t, { now });
+  const response = await postLead(url, completeProgressiveAmazonScPayload());
+  const body = await response.json();
+  const [stored] = JSON.parse(await readFile(leadsFilePath, "utf8"));
+
+  assert.equal(response.status, 201);
+  assert.equal(body.lead.aiReport.source, "rules_fallback");
+  assert.equal(stored.aiAnalysis.status, "fallback");
+  assert.equal(stored.aiAnalysis.meta.provider, "local");
+  assert.equal(stored.aiAnalysis.meta.generatedAt, "2026-08-27T00:00:00.000Z");
+});
+
 test("POST /api/leads enforces the raw progressive version and mode envelope", async (t) => {
   const { url } = await startTestServer(t);
   const progressiveEnvelope = (overrides = {}) => ({
@@ -690,12 +771,14 @@ test("POST /api/leads keeps internal matching and advisor evidence out of the pu
 
   assert.equal(response.status, 201);
   assert.deepEqual(Object.keys(payload.lead).sort(), [
+    "aiReport",
     "createdAt",
     "estimationMode",
     "id",
     "matchReport",
   ]);
   assert.doesNotMatch(serialized, /"(?:status|score|rawScore|debtPenalty|breakdown|estimate|fitScore|confidence|failedRules|internalReason|inputSnapshot|formulaKey|priority|ruleVersion)"/);
+  assert.doesNotMatch(serialized, /advisorFocus|"meta"|"provider"|"model"|promptVersion|"usage"|errorCategory|advisorReview/);
   assert.equal(payload.lead.matchReport.ruleVersion, undefined);
 });
 
@@ -713,8 +796,25 @@ test("POST /api/leads exposes only customer-safe non-match summaries", async (t)
   assert.doesNotMatch(JSON.stringify(payload.lead.matchReport.nonMatches), /fitScore|confidence|failedRules|internalReason|priority/);
 });
 
-test("concurrent POST /api/leads requests persist every accepted lead exactly once", async (t) => {
-  const { leadsFilePath, url } = await startTestServer(t);
+test("concurrent POST /api/leads atomically preserve every generated AI analysis", async (t) => {
+  const aiReportService = {
+    generate: async (lead) => ({
+      status: "generated",
+      customerReport: {
+        statusMessage: "AI 初筛完成，专业顾问待复核。",
+        businessSummary: [lead.profile.companyName],
+        productExplanations: [lead.matchReport.primary, ...lead.matchReport.alternatives].map((product) => ({
+          productId: product.productId,
+          reasons: ["需要由顾问复核经营资料。"],
+          itemsToConfirm: [],
+        })),
+        preparationActions: ["准备经营资料。"],
+      },
+      advisorFocus: ["内部顾问跟进。"],
+      meta: { provider: "test", model: "test-model", promptVersion: "test", generatedAt: "2026-08-27T00:00:00.000Z" },
+    }),
+  };
+  const { leadsFilePath, url } = await startTestServer(t, { aiReportService });
   const expectedCompanyNames = Array.from(
     { length: 12 },
     (_, index) => `Concurrent Amazon SC ${String(index).padStart(2, "0")}`,
@@ -735,18 +835,79 @@ test("concurrent POST /api/leads requests persist every accepted lead exactly on
   assert.equal(response.status, 200);
   assert.deepEqual(persistedNames, expectedCompanyNames);
   assert.equal(persistedIds.size, expectedCompanyNames.length);
+  const storedLeads = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  assert.equal(storedLeads.length, expectedCompanyNames.length);
+  assert.deepEqual(
+    storedLeads.map((lead) => lead.aiAnalysis.customerReport.businessSummary[0]).sort(),
+    expectedCompanyNames,
+  );
+  assert.ok(storedLeads.every((lead) => lead.aiAnalysis.status === "generated"));
+  assert.ok(storedLeads.every((lead) => lead.advisorReview.status === "pending"));
   assert.deepEqual(
     (await readdir(path.dirname(leadsFilePath))).filter((entry) => entry.endsWith(".tmp")),
     [],
   );
 });
 
-test("successful lead store creation and replacement preserve mode 0600", async (t) => {
+test("client disconnect after pending persistence does not remove the lead", async (t) => {
+  let releaseGeneration;
+  let signalGenerationStarted;
+  const generationStarted = new Promise((resolve) => {
+    signalGenerationStarted = resolve;
+  });
+  const aiReportService = {
+    generate: async (lead) => {
+      signalGenerationStarted(lead.id);
+      await new Promise((resolve) => {
+        releaseGeneration = resolve;
+      });
+      return {
+        status: "generated",
+        customerReport: {
+          statusMessage: "AI 初筛完成，专业顾问待复核。",
+          businessSummary: ["经营资料已进入顾问复核。"],
+          productExplanations: [{
+            productId: "linklogis-amazon-sc",
+            reasons: ["当前经营场景需要顾问复核。"],
+            itemsToConfirm: [],
+          }],
+          preparationActions: ["准备经营资料。"],
+        },
+        advisorFocus: [],
+        meta: { provider: "test", model: "test-model", promptVersion: "test", generatedAt: "2026-08-27T00:00:00.000Z" },
+      };
+    },
+  };
+  const { leadsFilePath, url } = await startTestServer(t, { aiReportService });
+  const controller = new AbortController();
+  const response = fetch(`${url}/api/leads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(completeProgressiveAmazonScPayload()),
+    signal: controller.signal,
+  });
+
+  const leadId = await generationStarted;
+  controller.abort();
+  await assert.rejects(response, { name: "AbortError" });
+  assert.ok(JSON.parse(await readFile(leadsFilePath, "utf8")).some((lead) => lead.id === leadId));
+
+  releaseGeneration();
+  for (let attempts = 0; attempts < 50; attempts += 1) {
+    const stored = JSON.parse(await readFile(leadsFilePath, "utf8"));
+    if (stored.some((lead) => lead.id === leadId && lead.aiAnalysis.status === "generated")) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail("lead was not retained and completed after the client disconnected");
+});
+
+test("both pending and completed lead writes preserve mode 0600", async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
   const createdResponse = await postLead(url);
 
   assert.equal(createdResponse.status, 201);
   assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
+  assert.equal(JSON.parse(await readFile(leadsFilePath, "utf8"))[0].aiAnalysis.status, "fallback");
 
   await chmod(leadsFilePath, 0o400);
   const replacedResponse = await postLead(url, completeAmazonScPayload({

@@ -13,6 +13,8 @@ import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
+import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
+import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -367,7 +369,7 @@ function collectAdvisorVerificationFields(productMatches) {
     .flatMap((match) => match.advisorVerificationFields ?? []))];
 }
 
-function normalizeLead(input) {
+function normalizeLead(input, now = () => new Date()) {
   const hasSuppliedIntakeVersion = Object.hasOwn(input, "intakeVersion");
   const hasProgressiveVersion = input.intakeVersion === INTAKE_VERSION;
   const rawEstimationMode = input.estimationMode;
@@ -424,10 +426,16 @@ function normalizeLead(input) {
     intakeVersion: profile.intakeVersion,
     ruleVersion: productMatches.find((match) => typeof match.ruleVersion === "string")?.ruleVersion ?? null,
     consentToDataUse: profile.consentToDataUse,
+    aiAnalysis: { status: "pending" },
+    advisorReview: {
+      status: "pending",
+      note: "",
+      updatedAt: null,
+    },
   };
   const identity = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: new Date().toISOString(),
+    createdAt: now().toISOString(),
     estimationMode,
     companyName: profile.companyName,
     contactName: profile.contactName,
@@ -506,6 +514,7 @@ function publicLead(lead) {
     createdAt: lead.createdAt,
     estimationMode: lead.estimationMode,
     matchReport: publicMatchReport(lead.matchReport),
+    aiReport: publicAiReport(lead.aiAnalysis, lead.advisorReview),
   };
 }
 
@@ -1017,6 +1026,8 @@ async function handleRequest(request, response, {
   adminCredentials,
   allowedOrigins,
   logger,
+  aiReportService,
+  now,
 }) {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
@@ -1058,9 +1069,16 @@ async function handleRequest(request, response, {
     if (url.pathname === "/api/leads" && request.method === "POST") {
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const body = await readBody(request);
-      const lead = normalizeLead(parseJsonBody(body));
+      const lead = normalizeLead(parseJsonBody(body), now);
       await updateLeads(leadsFilePath, (leads) => [lead, ...leads]);
-      sendJson(response, 201, { ok: true, lead: publicLead(lead) });
+      const aiAnalysis = await aiReportService.generate(lead);
+      let completedLead;
+      await updateLeads(leadsFilePath, (leads) => leads.map((item) => {
+        if (item.id !== lead.id) return item;
+        completedLead = { ...item, aiAnalysis };
+        return completedLead;
+      }));
+      sendJson(response, 201, { ok: true, lead: publicLead(completedLead) });
       return;
     }
 
@@ -1124,23 +1142,37 @@ export function createMeiouServer({
   adminCredentials = null,
   allowedOrigins = null,
   logger = console,
+  aiReportService = null,
+  now = () => new Date(),
 } = {}) {
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
   const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
   const safeLogger = logger && typeof logger.error === "function" ? logger : console;
+  const safeNow = typeof now === "function" ? now : () => new Date();
+  const localAiReportService = createAiReportService({
+    client: { isConfigured: false },
+    logger: safeLogger,
+    now: safeNow,
+  });
+  const configuredAiReportService = aiReportService && typeof aiReportService.generate === "function"
+    ? aiReportService
+    : localAiReportService;
   return createServer((request, response) => handleRequest(request, response, {
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,
     logger: safeLogger,
+    aiReportService: configuredAiReportService,
+    now: safeNow,
   }));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const adminCredentials = requiredStartupAdminCredentials();
+  const aiReportService = createAiReportServiceFromEnvironment();
   await ensureStore(leadsFile);
-  createMeiouServer({ adminCredentials }).listen(port, "127.0.0.1", () => {
+  createMeiouServer({ adminCredentials, aiReportService }).listen(port, "127.0.0.1", () => {
     console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
   });
 }
