@@ -231,6 +231,7 @@ export function buildAdminPage({ leadColumns, products }) {
     let drawerGeneration = 0;
     let drawerOperationSequence = 0;
     let activeDrawerOperation = null;
+    const highestCachedOperationTokenByLead = new Map();
     const selectedIds = new Set();
     const getAuthHeaders = () => {
       const username = usernameInput.value.trim();
@@ -403,13 +404,18 @@ export function buildAdminPage({ leadColumns, products }) {
         && operation.leadId === activeLeadId
         && !advisorDrawer.hidden
     );
-    const cacheLoadedLead = (lead) => {
-      const leadIndex = loadedLeads.findIndex((item) => item.id === lead?.id);
-      if (leadIndex !== -1) loadedLeads[leadIndex] = lead;
+    const cacheLoadedLead = (operation, lead) => {
+      if (lead?.id !== operation.leadId) return false;
+      const highestCachedToken = highestCachedOperationTokenByLead.get(operation.leadId);
+      if (highestCachedToken !== undefined && operation.token < highestCachedToken) return false;
+      const leadIndex = loadedLeads.findIndex((item) => item.id === operation.leadId);
+      if (leadIndex === -1) return false;
+      loadedLeads[leadIndex] = lead;
+      highestCachedOperationTokenByLead.set(operation.leadId, operation.token);
+      return true;
     };
     const renderOperationLead = (operation, lead) => {
-      cacheLoadedLead(lead);
-      if (!isCurrentDrawerOperation(operation) || lead?.id !== operation.leadId) return false;
+      if (!cacheLoadedLead(operation, lead) || !isCurrentDrawerOperation(operation)) return false;
       renderDrawer(lead);
       return true;
     };

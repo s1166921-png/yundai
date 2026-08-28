@@ -2059,3 +2059,134 @@ test("admin drawer ignores deferred save and retry responses after switching lea
   assert.equal(vm.element("drawerActionStatus").textContent, "复核已保存。");
   assert.equal(vm.element("saveReview").disabled, false);
 });
+
+test("admin drawer cache keeps the newest successful same-lead operation when responses reverse", async () => {
+  const leadA = {
+    id: "A",
+    companyName: "A Company",
+    contactName: "A Contact",
+    phone: "13800138101",
+    createdAt: "2026-08-27T08:00:00.000Z",
+    profile: { primaryBusinessModel: "amazon_sc", requestedAmount: { amount: 1000000, currency: "USD" } },
+    matchReport: { primary: null, alternatives: [] },
+    advisorVerificationFields: [],
+    aiAnalysis: {
+      status: "generated",
+      customerReport: {
+        statusMessage: "A AI status",
+        businessSummary: ["A summary"],
+        productExplanations: [],
+        preparationActions: [],
+      },
+      advisorFocus: [],
+    },
+    advisorReview: { status: "pending", note: "A original", updatedAt: null },
+  };
+  const vm = createAdminScriptVm([leadA]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  await vm.element("load").dispatch("click");
+
+  const responseFor = (lead) => ({ ok: true, json: async () => ({ lead }) });
+  const operationOne = createDeferred();
+  const operationTwo = createDeferred();
+  let saveNumber = 0;
+  vm.setFetchHandler(() => {
+    saveNumber += 1;
+    return saveNumber === 1 ? operationOne.promise : operationTwo.promise;
+  });
+
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "in_review";
+  vm.element("reviewNote").value = "operation one";
+  const operationOnePromise = vm.element("saveReview").dispatch("click");
+  await vm.element("closeDrawer").dispatch("click");
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "operation two";
+  const operationTwoPromise = vm.element("saveReview").dispatch("click");
+
+  operationTwo.resolve(responseFor({
+    ...leadA,
+    advisorReview: { status: "reviewed", note: "operation two", updatedAt: "2026-08-27T10:00:00.000Z" },
+  }));
+  await operationTwoPromise;
+  await vm.element("closeDrawer").dispatch("click");
+  operationOne.resolve(responseFor({
+    ...leadA,
+    advisorReview: { status: "in_review", note: "operation one", updatedAt: "2026-08-27T09:00:00.000Z" },
+  }));
+  await operationOnePromise;
+
+  await vm.viewButton("A").dispatch("click");
+  assert.equal(vm.element("reviewStatus").value, "reviewed");
+  assert.equal(vm.element("reviewNote").value, "operation two");
+
+  let subsequentSave;
+  vm.setFetchHandler(async (url, options) => {
+    subsequentSave = { url, body: JSON.parse(options.body) };
+    return responseFor({
+      ...leadA,
+      advisorReview: { status: "reviewed", note: "operation two", updatedAt: "2026-08-27T11:00:00.000Z" },
+    });
+  });
+  await vm.element("saveReview").dispatch("click");
+  assert.deepEqual(subsequentSave, {
+    url: "/api/leads/A/review",
+    body: { status: "reviewed", note: "operation two" },
+  });
+});
+
+test("admin drawer cache allows an older success when the newer same-lead operation fails", async () => {
+  const leadA = {
+    id: "A",
+    companyName: "A Company",
+    contactName: "A Contact",
+    phone: "13800138101",
+    createdAt: "2026-08-27T08:00:00.000Z",
+    profile: {},
+    matchReport: { primary: null, alternatives: [] },
+    advisorVerificationFields: [],
+    aiAnalysis: { status: "generated", customerReport: {}, advisorFocus: [] },
+    advisorReview: { status: "pending", note: "A original", updatedAt: null },
+  };
+  const vm = createAdminScriptVm([leadA]);
+  vm.element("username").value = "admin";
+  vm.element("password").value = "password";
+  await vm.element("load").dispatch("click");
+
+  const operationOne = createDeferred();
+  const operationTwo = createDeferred();
+  let saveNumber = 0;
+  vm.setFetchHandler(() => {
+    saveNumber += 1;
+    return saveNumber === 1 ? operationOne.promise : operationTwo.promise;
+  });
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "in_review";
+  vm.element("reviewNote").value = "older success";
+  const operationOnePromise = vm.element("saveReview").dispatch("click");
+  await vm.element("closeDrawer").dispatch("click");
+  await vm.viewButton("A").dispatch("click");
+  vm.element("reviewStatus").value = "reviewed";
+  vm.element("reviewNote").value = "newer failure";
+  const operationTwoPromise = vm.element("saveReview").dispatch("click");
+
+  operationTwo.resolve({ ok: false, json: async () => ({ error: "save rejected" }) });
+  await operationTwoPromise;
+  await vm.element("closeDrawer").dispatch("click");
+  operationOne.resolve({
+    ok: true,
+    json: async () => ({
+      lead: {
+        ...leadA,
+        advisorReview: { status: "in_review", note: "older success", updatedAt: "2026-08-27T09:00:00.000Z" },
+      },
+    }),
+  });
+  await operationOnePromise;
+
+  await vm.viewButton("A").dispatch("click");
+  assert.equal(vm.element("reviewStatus").value, "in_review");
+  assert.equal(vm.element("reviewNote").value, "older success");
+});
