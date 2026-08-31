@@ -246,7 +246,7 @@ const journey = (primaryBusinessModel) => {
   assert.equal(normalized.intakeVersion, "progressive-v1");
   assert.equal(normalized.primaryBusinessModel, primaryBusinessModel);
   const standardProfile = { ...profile, includeWebankAssessment: false };
-  assert.ok(getVisibleIntakeFields(standardProfile).length <= 23, `${primaryBusinessModel} exceeds the standard budget`);
+  assert.ok(getVisibleIntakeFields(standardProfile).length <= 26, `${primaryBusinessModel} exceeds the standard budget`);
   assert.ok(INTAKE_STEPS.every(({ id }) => getVisibleIntakeFields(profile).some(({ step }) => step === id)));
   for (const key of scenario.submissionKeys) assert.equal(Object.hasOwn(payload, key), true, `${primaryBusinessModel} submits ${key}`);
   scenario.canonical(normalized);

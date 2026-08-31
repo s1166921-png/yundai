@@ -16,10 +16,10 @@ test("progressive intake has three stable stages and one primary scenario", () =
   assert.equal(fields.some(({ key }) => key === "businessModels"), false);
 });
 
-test("every standard scenario stays within the 23-field budget", () => {
+test("every standard scenario stays within the 26-field budget", () => {
   for (const primaryBusinessModel of PRIMARY_BUSINESS_MODELS) {
     const fields = getVisibleIntakeFields({ primaryBusinessModel, entityRegion: "mainland" });
-    assert.ok(fields.length <= 23, `${primaryBusinessModel}: ${fields.length}`);
+    assert.ok(fields.length <= 26, `${primaryBusinessModel}: ${fields.length}`);
   }
 });
 
@@ -52,9 +52,19 @@ test("foreign-trade scenarios collect company age but never show CMB-only provin
     assert.ok(keys.includes("companyAgeMonths"), `${primaryBusinessModel} needs company age for customer-stage matching`);
     assert.ok(keys.includes("assetLiabilityRatioPercent"), `${primaryBusinessModel} needs asset-liability ratio for customer-stage matching`);
     assert.equal(keys.includes("registeredProvince"), false);
-    assert.ok(keys.length <= 23, `${primaryBusinessModel} exceeds field budget`);
+    assert.ok(keys.length <= 26, `${primaryBusinessModel} exceeds field budget`);
   }
   assert.ok(fieldKeys({ primaryBusinessModel: "tax_operations", entityRegion: "mainland" }).includes("registeredProvince"));
+});
+
+test("logistics intake exposes optional revenue, invoice and debt fields", () => {
+  const fields = getVisibleIntakeFields({ primaryBusinessModel: "general_import_export" });
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+
+  assert.equal(byKey.has("annualRevenueRmb"), true);
+  assert.equal(byKey.has("taxInvoiceAmountRmb"), true);
+  assert.equal(byKey.has("currentLoanBalanceRmb"), true);
+  assert.equal(byKey.get("currentLoanBalanceRmb").requiredFor.length, 0);
 });
 
 test("progressive fields only expose the approved raw field contract", () => {
@@ -73,7 +83,7 @@ test("progressive fields only expose the approved raw field contract", () => {
     "platformRepaymentsLast12MonthsRmb", "refundRatePercent", "amazonAhrScore", "amazonAccountStatus",
     "fbaInventoryTurnoverCount", "borrowerMatchesCollectionEntity", "participatingStoreOperatingDays",
     "amazonAnnualGmvUsd", "acceptsReceivablesArrangement", "accountsReceivableBalanceUsd", "buyerName",
-    "buyerCountry", "buyerTradingHistoryMonths", "annualB2bTradeUsd",
+    "buyerCountry", "buyerTradingHistoryMonths", "annualB2bTradeUsd", "currentLoanBalanceRmb",
   ]);
 
   for (const primaryBusinessModel of PRIMARY_BUSINESS_MODELS) {
@@ -112,7 +122,7 @@ test("representative progressive journeys retain values and discard switched hid
     const fields = getVisibleIntakeFields(profile);
     const stageOne = fields.filter(({ step }) => step === 1);
 
-    assert.ok(fields.length <= 23, `${primaryBusinessModel} exceeds desktop/mobile field budget`);
+    assert.ok(fields.length <= 26, `${primaryBusinessModel} exceeds desktop/mobile field budget`);
     assert.deepEqual([...new Set(fields.map(({ step }) => step))], [1, 2, 3]);
     assert.ok(INTAKE_STEPS.every(({ id }) => fields.some(({ step }) => step === id)), `${primaryBusinessModel} has an empty stage`);
     assert.deepEqual(validateIntakeStep(profile, "progressive", 1), []);

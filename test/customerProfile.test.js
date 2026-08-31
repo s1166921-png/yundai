@@ -30,6 +30,17 @@ test("normalizes progressive fields into legacy-compatible canonical facts", () 
   assert.equal(profile.acceptsReceivablesAssignment, true);
 });
 
+test("normalizes optional progressive debt balance as RMB money", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "tax_operations",
+    currentLoanBalanceRmb: "2800000",
+  });
+
+  assert.deepEqual(profile.currentLoanBalance, { amount: 2800000, currency: "RMB" });
+  assert.equal(validateCustomerProfile(profile, "progressive").valid, true);
+});
+
 test("progressive validation is accepted and still rejects invalid canonical data", () => {
   const profile = normalizeCustomerProfile({
     intakeVersion: "progressive-v1",

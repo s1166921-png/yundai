@@ -5,8 +5,10 @@ import {
   buildProductReferenceCodes,
   buildSummaryCodes,
 } from "./aiReportReferences.js";
+import { buildFinancingScenarioInput } from "../matching/financingScenarioEngine.js";
+import { buildRiskCodes, buildSensitivityCodes } from "./loanAnalystReferences.js";
 
-export const AI_ANALYSIS_SCHEMA_VERSION = "meiou-analysis-v2";
+export const AI_ANALYSIS_SCHEMA_VERSION = "meiou-analysis-v3";
 
 const PRIMARY_BUSINESS_MODELS = new Set([
   "tax_operations",
@@ -108,9 +110,26 @@ export const buildAiAnalysisInput = ({ profile = {}, productMatches = [], matchR
     facts.acceptsAccountControl = profile.acceptsAccountControl;
   }
 
-  const products = rankedProducts(productMatches);
+  const safeProductMatches = Array.isArray(productMatches) ? productMatches : [];
+  const financing = buildFinancingScenarioInput({ profile, productMatches: safeProductMatches });
+  const scenarioByProduct = new Map(financing.products.map((item) => [item.productId, item]));
+  const products = rankedProducts(safeProductMatches).map((product) => {
+    const scenario = scenarioByProduct.get(product.productId);
+    const amountScenarios = scenario?.amountScenarios ?? [];
+    return {
+      ...product,
+      quantificationStatus: scenario?.quantificationStatus ?? "needs_evidence",
+      amountScenarios,
+      amountScenarioCodes: amountScenarios.map(({ scenarioCode }) => scenarioCode),
+      termCodes: scenario?.termOptions ?? [],
+      riskCodes: buildRiskCodes({ profile, productId: product.productId }),
+      sensitivityCodes: buildSensitivityCodes({ profile, productId: product.productId }),
+      confidenceCodes: ["low", "medium", "high"],
+    };
+  });
   return {
     schemaVersion: AI_ANALYSIS_SCHEMA_VERSION,
+    policyVersion: financing.policyVersion,
     scenario: PRIMARY_BUSINESS_MODELS.has(profile.primaryBusinessModel) ? profile.primaryBusinessModel : null,
     facts,
     summaryCodes: buildSummaryCodes({

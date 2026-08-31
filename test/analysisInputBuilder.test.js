@@ -44,7 +44,8 @@ test("analysis input contains business buckets and excludes direct identifiers a
     assert.doesNotMatch(serialized, new RegExp(forbidden));
   }
   assert.deepEqual(input, {
-    schemaVersion: "meiou-analysis-v2",
+    schemaVersion: "meiou-analysis-v3",
+    policyVersion: "meiou-financing-scenarios-v1",
     scenario: "amazon_sc",
     facts: {
       entityRegion: "mainland",
@@ -64,10 +65,68 @@ test("analysis input contains business buckets and excludes direct identifiers a
       productId: "linklogis-amazon-sc",
       reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
       confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],
+      quantificationStatus: "needs_evidence",
+      amountScenarios: [],
+      amountScenarioCodes: [],
+      termCodes: ["sc_90_days", "sc_revolving"],
+      riskCodes: [
+        "risk:collections-unverified",
+        "risk:current-debt-unverified",
+        "risk:store-status-unverified",
+      ],
+      sensitivityCodes: [
+        "sensitivity:higher-stable-collections-may-increase",
+        "sensitivity:higher-current-debt-may-decrease",
+        "sensitivity:complete-evidence-may-narrow-range",
+        "sensitivity:term-matches-collection-cycle",
+      ],
+      confidenceCodes: ["low", "medium", "high"],
     }],
     preparationActionCodes: ["action:document:sales-data-last-12-months"],
     advisorFocusCodes: ["advisor:linklogis-amazon-sc:collection-account-arrangement"],
   });
+});
+
+test("v3 input contains selectable scenarios without customer identity", () => {
+  const input = buildAiAnalysisInput({
+    profile: {
+      companyName: "不应发送的企业",
+      contactName: "张三",
+      phone: "13800000000",
+      primaryBusinessModel: "amazon_sc",
+      qualifiedStoreCount: 1,
+      requestedAmount: { amount: 2000000, currency: "USD" },
+      singleStoreGmv: { amount: 6500000, currency: "USD" },
+      platformHistoryMonths: 18,
+    },
+    productMatches: [{
+      productId: "linklogis-amazon-sc", rank: 1, status: "eligible",
+      passedRules: [], unknownRules: [],
+    }],
+    matchReport: { missingDocuments: ["Amazon 近 12 个月 GMV 证明"] },
+  });
+
+  assert.equal(input.schemaVersion, "meiou-analysis-v3");
+  assert.equal(JSON.stringify(input).includes("不应发送的企业"), false);
+  assert.equal(JSON.stringify(input).includes("13800000000"), false);
+  assert.deepEqual(input.products[0].amountScenarioCodes, ["conservative", "balanced", "growth"]);
+  assert.deepEqual(input.products[0].amountScenarios.map(({ scenarioCode }) => scenarioCode), [
+    "conservative", "balanced", "growth",
+  ]);
+  assert.deepEqual(input.products[0].termCodes, ["sc_90_days", "sc_revolving"]);
+});
+
+test("loan analyst code resolvers return only server-owned Chinese text", async () => {
+  const {
+    resolveConfidenceCode,
+    resolveLoanAnalystCode,
+    resolveTermCode,
+  } = await import("../src/lib/ai/loanAnalystReferences.js");
+  assert.equal(resolveLoanAnalystCode("risk:collections-unverified"), "近 12 个月回款仍需核验。");
+  assert.equal(resolveLoanAnalystCode("sensitivity:complete-evidence-may-narrow-range"), "补齐关键资料后，参考区间可能进一步缩窄。");
+  assert.equal(resolveTermCode("sc_90_days"), "90天");
+  assert.equal(resolveConfidenceCode("medium"), "中等可信度");
+  assert.equal(resolveLoanAnalystCode("ignored:customer-text"), null);
 });
 
 test("analysis input recursively rejects identity and internal evidence keys", () => {
@@ -149,7 +208,9 @@ test("analysis input caps ranked products and keeps only safe evidence", () => {
     },
   });
 
-  assert.deepEqual(input.products, [
+  assert.deepEqual(input.products.map(({ productId, reasonCodes, confirmationCodes }) => ({
+    productId, reasonCodes, confirmationCodes,
+  })), [
     {
       productId: "linklogis-b2b-factoring",
       reasonCodes: ["evidence:linklogis-b2b-factoring:buyer-trading-history"],
@@ -191,7 +252,9 @@ test("analysis input derives stable references from own catalog identity and sta
     }],
   });
 
-  assert.deepEqual(input.products, [{
+  assert.deepEqual(input.products.map(({ productId, reasonCodes, confirmationCodes }) => ({
+    productId, reasonCodes, confirmationCodes,
+  })), [{
     productId: "linklogis-amazon-sc",
     reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
     confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],

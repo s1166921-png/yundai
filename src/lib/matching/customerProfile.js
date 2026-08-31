@@ -78,6 +78,7 @@ const MONEY_CURRENCIES = Object.freeze({
   collectionsLast12Months: "RMB",
   totalApprovedCredit: "RMB",
   loanBalance: "RMB",
+  currentLoanBalance: "RMB",
   requestedAmount: Object.freeze({ rmb: "RMB", usd: "USD", default: "RMB" }),
 });
 
@@ -144,6 +145,7 @@ export const PROGRESSIVE_CUSTOMER_PROFILE_FIELDS = Object.freeze([
   "registeredProvince",
   "companyAgeMonths",
   "annualRevenue",
+  "currentLoanBalance",
   "assetLiabilityRatioPercent",
   "creditBankCount",
   "settlementAccountOpenedMonths",
@@ -402,6 +404,7 @@ export function normalizeCustomerProfile(input = {}) {
     creditBankCount: asNumber(source.creditBankCount),
     totalApprovedCredit: asMoney(source.totalApprovedCreditRmb, "RMB"),
     loanBalance: asMoney(source.loanBalanceRmb, "RMB"),
+    currentLoanBalance: asMoney(source.currentLoanBalanceRmb, "RMB"),
     hasCurrentOverdue: asBoolean(source.hasCurrentOverdue),
     hasDishonestyRecord: asBoolean(source.hasDishonestyRecord),
     hasMajorLitigation: asBoolean(source.hasMajorLitigation),

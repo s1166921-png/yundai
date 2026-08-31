@@ -97,7 +97,7 @@ const INTAKE_FIELDS = Object.freeze([
     { value: "other", label: "其他经营用途" },
   ], required),
   numberField("annualRevenueRmb", 2, "年营业收入", "人民币元", {
-    visibleWhen: primaryIs("tax_operations", "other"),
+    visibleWhen: primaryIs("tax_operations", "general_import_export", "processing_manufacturing", "wholesale_retail"),
   }),
   numberField("assetLiabilityRatioPercent", 2, "资产负债率", "%", {
     min: 0, max: 100, visibleWhen: primaryIs(
@@ -111,7 +111,10 @@ const INTAKE_FIELDS = Object.freeze([
     { value: "法人", label: "法人" }, { value: "第一大自然人股东", label: "第一大自然人股东" },
     { value: "个体工商户负责人", label: "个体工商户负责人" },
   ], { visibleWhen: primaryIs("tax_operations") }),
-  numberField("taxInvoiceAmountRmb", 2, "近 12 个月开票金额", "人民币元", { visibleWhen: primaryIs("tax_operations") }),
+  numberField("taxInvoiceAmountRmb", 2, "近 12 个月开票金额", "人民币元", {
+    visibleWhen: primaryIs("tax_operations", "general_import_export", "processing_manufacturing", "wholesale_retail"),
+  }),
+  numberField("currentLoanBalanceRmb", 2, "现有贷款余额", "人民币元", { visibleWhen: hasPrimary }),
   booleanField("supportsHighAmountAuthorization", 2, "可提供大额融资所需授权", { visibleWhen: primaryIs("tax_operations") }),
   numberField("controllerIndustryExperienceYears", 2, "实控人从业年限", "年", {
     visibleWhen: primaryIs("general_import_export", "processing_manufacturing", "wholesale_retail"),
