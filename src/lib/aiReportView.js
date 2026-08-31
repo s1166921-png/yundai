@@ -223,6 +223,9 @@ const safeFinancingAssessment = (value) => {
     .filter((item) => item != null && typeof item === "object" && !Array.isArray(item))
     .map((item) => ({
       productId: normalizedText(item.productId),
+      institution: normalizeCustomerAiText(item.institution),
+      name: normalizeCustomerAiText(item.name),
+      roleLabel: normalizeCustomerAiText(item.roleLabel),
       amountLabel: normalizeCustomerAiText(item.amountLabel),
       termLabel: normalizeCustomerAiText(item.termLabel),
       pricingLabel: normalizeCustomerAiText(item.pricingLabel),
@@ -232,7 +235,15 @@ const safeFinancingAssessment = (value) => {
       sensitivities: safeList(item.sensitivities, 3),
       itemsToConfirm: safeList(item.itemsToConfirm, 3),
     }))
-    .filter((item) => item.productId && item.amountLabel && item.termLabel && item.pricingLabel)
+    .filter((item) => (
+      item.productId
+      && item.institution
+      && item.name
+      && item.roleLabel
+      && item.amountLabel
+      && item.termLabel
+      && item.pricingLabel
+    ))
     .slice(0, 3);
 };
 

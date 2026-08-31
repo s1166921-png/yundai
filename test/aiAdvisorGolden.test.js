@@ -193,6 +193,9 @@ test("every ranked journey survives deidentification, AI validation, and public 
       assert.deepEqual(aiReport.productExplanations.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
       assert.deepEqual(aiReport.financingAssessment.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
       for (const item of aiReport.financingAssessment) {
+        assert.ok(item.institution.length > 0, fixture.name);
+        assert.ok(item.name.length > 0, fixture.name);
+        assert.equal(item.roleLabel, item.productId === fixture.expectedRankedIds[0] ? "优先产品" : "备选产品", fixture.name);
         assert.ok(item.amountLabel.length > 0, fixture.name);
         assert.ok(item.termLabel.length > 0, fixture.name);
         assert.ok(item.pricingLabel.length > 0, fixture.name);

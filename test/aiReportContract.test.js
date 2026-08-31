@@ -260,6 +260,20 @@ test("generated v3 report resolves server-owned Chinese text from validated code
     reasons: ["已提交的平台经营规模信息已纳入该产品方向分析。"],
     itemsToConfirm: ["回款账户安排仍需结合材料进一步核验。"],
   }]);
+  assert.deepEqual(publicReport.financingAssessment, [{
+    productId: "linklogis-amazon-sc",
+    institution: "联易融",
+    name: "联易融 Amazon SC 卖家融资贷",
+    roleLabel: "优先产品",
+    amountLabel: "120万-160万美元",
+    termLabel: "90天",
+    pricingLabel: "年化9%-11%",
+    confidenceLabel: "中等可信度",
+    reasons: ["已提交的平台经营规模信息已纳入该产品方向分析。"],
+    risks: ["近 12 个月回款仍需核验。"],
+    sensitivities: ["稳定回款提高后，参考区间可能上调。"],
+    itemsToConfirm: ["回款账户安排仍需结合材料进一步核验。"],
+  }]);
   assert.deepEqual(publicReport.preparationActions, ["准备近 12 个月销售数据证明。"]);
   assertPublicProjectionClean(publicReport);
 });
@@ -291,6 +305,7 @@ test("public report keeps a valid stored v2 report readable", () => {
     reasons: ["已提交的平台经营规模信息已纳入该产品方向分析。"],
     itemsToConfirm: ["回款账户安排仍需结合材料进一步核验。"],
   }]);
+  assert.deepEqual(publicReport.financingAssessment, []);
 });
 
 test("fallback selections are deterministic v3 choices", () => {

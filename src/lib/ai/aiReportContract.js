@@ -469,11 +469,14 @@ const resolveSelectedScenario = (productInput, analysis) => {
 
 const resolveFinancingAssessment = (narrative, analysisInput) => {
   const productsById = new Map(analysisInput.products.map((product) => [product.productId, product]));
-  return narrative.productAnalyses.map((analysis) => {
+  return narrative.productAnalyses.map((analysis, index) => {
     const productInput = productsById.get(analysis.productId);
     const product = getProductById(analysis.productId);
     return {
       productId: analysis.productId,
+      institution: product?.institution ?? "",
+      name: product?.name ?? "",
+      roleLabel: index === 0 ? "优先产品" : "备选产品",
       amountLabel: formatSelectedAmount(resolveSelectedScenario(productInput, analysis)),
       termLabel: resolveTermCode(analysis.selectedTermCode) ?? "待银行最终核定",
       pricingLabel: formatPricing(product?.pricing),

@@ -8,6 +8,11 @@ function ReportList({ items, emptyText }) {
 function FinancingAssessment({ item }) {
   return (
     <article className="ai-financing-card">
+      <header className="ai-financing-card-header">
+        <span>{item.roleLabel}</span>
+        <p>{item.institution}</p>
+        <h4>{item.name}</h4>
+      </header>
       <dl className="ai-financing-metrics">
         <div><dt>参考额度</dt><dd>{item.amountLabel}</dd></div>
         <div><dt>参考期限</dt><dd>{item.termLabel}</dd></div>
@@ -15,15 +20,15 @@ function FinancingAssessment({ item }) {
         <div><dt>判断参考</dt><dd>{item.confidenceLabel}</dd></div>
       </dl>
       <section>
-        <h4>区间形成原因</h4>
+        <h5>区间形成原因</h5>
         <ReportList items={item.reasons} emptyText="当前资料支持进一步评估该融资方向。" />
       </section>
       <section>
-        <h4>需关注风险</h4>
+        <h5>需关注风险</h5>
         <ReportList items={item.risks} emptyText="暂无额外风险提示。" />
       </section>
       <section>
-        <h4>仍需确认</h4>
+        <h5>仍需确认</h5>
         <ReportList items={item.itemsToConfirm} emptyText="暂无额外确认事项。" />
       </section>
     </article>

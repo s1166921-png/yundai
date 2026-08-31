@@ -18,6 +18,9 @@ const customerAiReport = {
   }],
   financingAssessment: [{
     productId: "linklogis-amazon-sc",
+    institution: "联易融",
+    name: "联易融 Amazon SC 卖家融资贷",
+    roleLabel: "优先产品",
     amountLabel: "160-200万美元",
     termLabel: "90天",
     pricingLabel: "年化9%-11%",
@@ -50,7 +53,50 @@ test("customer AI view keeps bounded explanations and the review state", () => {
   assert.equal(view.reviewLabel, "专业顾问待复核");
   assert.equal(view.productExplanations[0].reasons.length, 1);
   assert.equal(view.productExplanations[0].itemsToConfirm.length, 1);
+  assert.equal(view.financingAssessment[0].name, "联易融 Amazon SC 卖家融资贷");
+  assert.equal(view.financingAssessment[0].roleLabel, "优先产品");
   assert.doesNotMatch(JSON.stringify(view), /"confidence"|advisorNotes|provider|model|DeepSeek|internal-model/);
+});
+
+test("multi-product financing assessment keeps each identity and role with its own terms", async (t) => {
+  const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
+  const report = {
+    ...customerAiReport,
+    financingAssessment: [
+      customerAiReport.financingAssessment[0],
+      {
+        productId: "linklogis-amazon-vc",
+        institution: "联易融",
+        name: "联易融 Amazon VC 发货后融资贷",
+        roleLabel: "备选产品",
+        amountLabel: "补充资料后可量化",
+        termLabel: "最长120天",
+        pricingLabel: "年化8%-10%",
+        confidenceLabel: "较低可信度",
+        reasons: ["当前资料支持进一步评估该产品方向。"],
+        risks: ["近 12 个月回款仍需核验。"],
+        sensitivities: ["补齐关键资料后，参考区间可能进一步缩窄。"],
+        itemsToConfirm: ["回款账户安排确认。"],
+      },
+    ],
+  };
+  const view = buildAiReportView(report);
+  const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report }));
+  const primaryCard = markup.slice(markup.indexOf("优先产品"), markup.indexOf("备选产品"));
+  const alternativeCard = markup.slice(markup.indexOf("备选产品"));
+
+  assert.deepEqual(view.financingAssessment.map(({ name, roleLabel, amountLabel, termLabel }) => ({
+    name, roleLabel, amountLabel, termLabel,
+  })), [
+    {
+      name: "联易融 Amazon SC 卖家融资贷", roleLabel: "优先产品", amountLabel: "160-200万美元", termLabel: "90天",
+    },
+    {
+      name: "联易融 Amazon VC 发货后融资贷", roleLabel: "备选产品", amountLabel: "补充资料后可量化", termLabel: "最长120天",
+    },
+  ]);
+  assert.match(primaryCard, /联易融[\s\S]*Amazon SC[\s\S]*160-200万美元[\s\S]*90天/);
+  assert.match(alternativeCard, /联易融[\s\S]*Amazon VC[\s\S]*补充资料后可量化[\s\S]*最长120天/);
 });
 
 test("customer report resolves selected scenario into amount and term labels", () => {
@@ -61,6 +107,9 @@ test("customer report resolves selected scenario into amount and term labels", (
     businessSummary: ["当前处于稳定经营阶段。"],
     financingAssessment: [{
       productId: "linklogis-amazon-sc",
+      institution: "联易融",
+      name: "联易融 Amazon SC 卖家融资贷",
+      roleLabel: "优先产品",
       amountLabel: "160-200万美元",
       termLabel: "90天",
       pricingLabel: "年化9%-11%",
