@@ -135,11 +135,17 @@ const reportWithProductIds = (report, matches) => {
 
 const narrativeFor = (input) => ({
   schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
-  businessSummaryCodes: input.summaryCodes.slice(0, 3),
-  productExplanations: input.products.map((product) => ({
+  portfolioSummaryCodes: input.summaryCodes.slice(0, 3),
+  productAnalyses: input.products.map((product) => ({
     productId: product.productId,
+    selectedAmountScenarioCode: product.amountScenarioCodes.includes("balanced")
+      ? "balanced"
+      : product.amountScenarioCodes[0] ?? null,
+    selectedTermCode: product.termCodes[0] ?? null,
     reasonCodes: product.reasonCodes.slice(0, 3),
-    confirmationCodes: product.confirmationCodes.slice(0, 3),
+    riskCodes: product.riskCodes.slice(0, 3),
+    sensitivityCodes: product.sensitivityCodes.slice(0, 3),
+    confidenceCode: product.confidenceCodes.includes("medium") ? "medium" : product.confidenceCodes[0],
   })),
   preparationActionCodes: input.preparationActionCodes.slice(0, 5),
   advisorFocusCodes: input.advisorFocusCodes.slice(0, 5),

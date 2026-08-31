@@ -11,14 +11,26 @@ import { createDailyLimiter } from "../server/ai/dailyLimiter.mjs";
 const generatedAt = new Date("2026-08-27T00:00:00.000Z");
 
 const sampleInput = {
-  schemaVersion: "meiou-analysis-v2",
+  schemaVersion: "meiou-analysis-v3",
+  policyVersion: "meiou-financing-scenarios-v1",
   scenario: "amazon_sc",
   facts: { entityRegion: "mainland" },
   summaryCodes: ["summary:profile-submitted", "summary:scenario:amazon_sc"],
   products: [{
     productId: "linklogis-amazon-sc",
+    quantificationStatus: "quantified",
+    amountScenarios: [
+      { scenarioCode: "conservative", currency: "USD", minimum: 800000, maximum: 1200000 },
+      { scenarioCode: "balanced", currency: "USD", minimum: 1200000, maximum: 1600000 },
+      { scenarioCode: "growth", currency: "USD", minimum: 1600000, maximum: 2000000 },
+    ],
+    amountScenarioCodes: ["conservative", "balanced", "growth"],
+    termCodes: ["sc_90_days", "sc_revolving"],
     reasonCodes: ["evidence:linklogis-amazon-sc:single-store-annual-gmv"],
-    confirmationCodes: [],
+    confirmationCodes: ["confirmation:linklogis-amazon-sc:collection-account-arrangement"],
+    riskCodes: ["risk:collections-unverified"],
+    sensitivityCodes: ["sensitivity:complete-evidence-may-narrow-range"],
+    confidenceCodes: ["low", "medium", "high"],
   }],
   preparationActionCodes: ["action:document:sales-data-last-12-months"],
   advisorFocusCodes: [],
@@ -32,6 +44,8 @@ const sampleLead = {
     contactName: "Do not send contact",
     phone: "13800138000",
     note: "Do not send free text",
+    qualifiedStoreCount: 1,
+    requestedAmount: { amount: 2000000, currency: "USD" },
   },
   productMatches: [{
     productId: "linklogis-amazon-sc",
@@ -49,16 +63,24 @@ const sampleLead = {
   companyName: "Do not send root company",
 };
 
-const validNarrative = (productId = "linklogis-amazon-sc") => ({
+const selectedCode = (codes, preferred) => (
+  codes.includes(preferred) ? preferred : codes[0] ?? null
+);
+
+const validNarrative = (input = sampleInput) => ({
   schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
-  businessSummaryCodes: ["summary:profile-submitted", "summary:scenario:amazon_sc"],
-  productExplanations: [{
-    productId,
-    reasonCodes: [`evidence:${productId}:single-store-annual-gmv`],
-    confirmationCodes: [],
-  }],
-  preparationActionCodes: ["action:document:sales-data-last-12-months"],
-  advisorFocusCodes: [],
+  portfolioSummaryCodes: input.summaryCodes.slice(0, 2),
+  productAnalyses: input.products.map((product) => ({
+    productId: product.productId,
+    selectedAmountScenarioCode: selectedCode(product.amountScenarioCodes, "balanced"),
+    selectedTermCode: selectedCode(product.termCodes, "sc_90_days"),
+    reasonCodes: product.reasonCodes.slice(0, 1),
+    riskCodes: product.riskCodes.slice(0, 1),
+    sensitivityCodes: product.sensitivityCodes.slice(0, 1),
+    confidenceCode: selectedCode(product.confidenceCodes, "medium"),
+  })),
+  preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+  advisorFocusCodes: input.advisorFocusCodes.slice(0, 1),
 });
 
 const jsonResponse = (payload, status = 200) => new Response(JSON.stringify(payload), {
@@ -97,27 +119,11 @@ test("DeepSeek client sends the official request with only the deidentified JSON
     ],
   });
   const prompt = request.body.messages[0].content;
-  for (const field of [
-    "schemaVersion",
-    "businessSummaryCodes",
-    "productExplanations",
-    "productId",
-    "reasonCodes",
-    "confirmationCodes",
-    "preparationActionCodes",
-    "advisorFocusCodes",
-  ]) assert.match(prompt, new RegExp(field));
-  assert.match(prompt, /exactly five top-level fields/i);
-  assert.match(prompt, /one to three businessSummaryCodes/i);
-  assert.match(prompt, /zero to three reasonCodes/i);
-  assert.match(prompt, /zero to three confirmationCodes/i);
-  assert.match(prompt, /one to five preparationActionCodes/i);
-  assert.match(prompt, /zero to five advisorFocusCodes/i);
-  assert.match(prompt, /unique ordered subset/i);
-  assert.match(prompt, /product ids and order are immutable/i);
-  assert.match(prompt, /do not output free-form prose/i);
-  assert.match(prompt, /Chinese customer text is resolved only by the server/i);
-  assert.match(prompt, /advisor output is code-only.*server.*Chinese text/i);
+  assert.match(prompt, /meiou-ai-analyst-v3/i);
+  assert.match(prompt, /only from the supplied allowlists/i);
+  assert.match(prompt, /every supplied product exactly once and in the supplied order/i);
+  assert.match(prompt, /use null when the supplied amount or term allowlist is empty/i);
+  assert.match(prompt, /never output free-form prose.*financial numbers.*extra fields/i);
   assert.doesNotMatch(prompt, /Task 1 JSON contract/i);
   assert.doesNotMatch(request.options.body, /companyName|contactName|phone/);
   assert.deepEqual(result.usage, { prompt_tokens: 40, completion_tokens: 20 });
@@ -198,7 +204,7 @@ test("report service builds its sole provider input from the deidentified bounda
       model: "deepseek-v4-pro",
       generateNarrative: async (input) => {
         receivedInput = input;
-        return { narrative: validNarrative(), usage: { prompt_tokens: 40, completion_tokens: 20 }, durationMs: 31 };
+        return { narrative: validNarrative(input), usage: { prompt_tokens: 40, completion_tokens: 20 }, durationMs: 31 };
       },
     },
     limiter: { tryAcquire: () => true },
@@ -234,7 +240,7 @@ test("report service falls back on provider timeout and logs only approved metad
     category: "timeout",
     durationMs: null,
     model: "deepseek-v4-pro",
-    promptVersion: "meiou-ai-advisor-v2",
+    promptVersion: "meiou-ai-analyst-v3",
   }]);
 });
 
@@ -328,16 +334,11 @@ test("report service falls back when the provider reorders deterministic product
   };
   const service = createAiReportService({
     client: {
-      generateNarrative: async () => ({
-        narrative: {
-          ...validNarrative("webank-cross-border-data-loan"),
-          productExplanations: [
-            { productId: "webank-cross-border-data-loan", reasonCodes: [], confirmationCodes: [] },
-            { productId: "linklogis-amazon-sc", reasonCodes: [], confirmationCodes: [] },
-          ],
-        },
-        durationMs: 1,
-      }),
+      generateNarrative: async (input) => {
+        const narrative = validNarrative(input);
+        narrative.productAnalyses.reverse();
+        return { narrative, durationMs: 1 };
+      },
     },
     limiter: { tryAcquire: () => true },
     now: () => generatedAt,
@@ -351,23 +352,19 @@ test("report service falls back when the provider reorders deterministic product
 
 test("report service rejects provider prose, unknown references, and duplicate code selections", async () => {
   const invalidNarratives = [
-    { ...validNarrative(), businessSummary: ["保证获批 100 万元"] },
-    { ...validNarrative(), businessSummaryCodes: ["summary:model:injected-model-value"] },
-    {
-      ...validNarrative(),
-      productExplanations: [{
-        ...validNarrative().productExplanations[0],
-        reasonCodes: [
-          "evidence:linklogis-amazon-sc:single-store-annual-gmv",
-          "evidence:linklogis-amazon-sc:single-store-annual-gmv",
-        ],
-      }],
+    (input) => ({ ...validNarrative(input), portfolioSummary: ["保证获批 100 万元"] }),
+    (input) => ({ ...validNarrative(input), portfolioSummaryCodes: ["summary:model:injected-model-value"] }),
+    (input) => {
+      const narrative = validNarrative(input);
+      const code = narrative.productAnalyses[0].reasonCodes[0];
+      narrative.productAnalyses[0].reasonCodes = [code, code];
+      return narrative;
     },
   ];
 
-  for (const narrative of invalidNarratives) {
+  for (const invalidNarrative of invalidNarratives) {
     const service = createAiReportService({
-      client: { generateNarrative: async () => ({ narrative, durationMs: 1 }) },
+      client: { generateNarrative: async (input) => ({ narrative: invalidNarrative(input), durationMs: 1 }) },
       limiter: { tryAcquire: () => true },
       now: () => generatedAt,
     });
@@ -375,6 +372,27 @@ test("report service rejects provider prose, unknown references, and duplicate c
     assert.equal(analysis.status, "fallback");
     assert.equal(analysis.meta.errorCategory, "contract_violation");
   }
+});
+
+test("contract violation returns a deterministic v3 fallback", async () => {
+  const service = createAiReportService({
+    client: {
+      generateNarrative: async (input) => {
+        const narrative = validNarrative(input);
+        narrative.productAnalyses[0].selectedAmountScenarioCode = "invented-20m";
+        return { narrative, durationMs: 1 };
+      },
+    },
+    limiter: { tryAcquire: () => true },
+    now: () => generatedAt,
+  });
+
+  const result = await service.generate(sampleLead);
+
+  assert.equal(result.status, "fallback");
+  assert.equal(result.meta.errorCategory, "contract_violation");
+  assert.equal(result.customerReport.schemaVersion, "meiou-ai-analyst-v3");
+  assert.equal(result.customerReport.productAnalyses[0].selectedAmountScenarioCode, "balanced");
 });
 
 test("environment service returns repeated not configured fallbacks without network calls or limiter use", async () => {

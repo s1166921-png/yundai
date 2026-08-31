@@ -31,6 +31,24 @@ const adminAuthorization = basicAuthorization(
   testAdminCredentials.password,
 );
 
+const validAnalystNarrative = (input) => ({
+  schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
+  portfolioSummaryCodes: input.summaryCodes.slice(0, 3),
+  productAnalyses: input.products.map((product) => ({
+    productId: product.productId,
+    selectedAmountScenarioCode: product.amountScenarioCodes.includes("balanced")
+      ? "balanced"
+      : product.amountScenarioCodes[0] ?? null,
+    selectedTermCode: product.termCodes[0] ?? null,
+    reasonCodes: product.reasonCodes.slice(0, 3),
+    riskCodes: product.riskCodes.slice(0, 3),
+    sensitivityCodes: product.sensitivityCodes.slice(0, 3),
+    confidenceCode: product.confidenceCodes.includes("medium") ? "medium" : product.confidenceCodes[0],
+  })),
+  preparationActionCodes: input.preparationActionCodes.slice(0, 5),
+  advisorFocusCodes: input.advisorFocusCodes.slice(0, 5),
+});
+
 const completeAmazonScPayload = (overrides = {}) => ({
   estimationMode: "complex",
   companyName: "Amazon SC Trading Co.",
@@ -589,19 +607,16 @@ test("POST persists the lead before AI generation and returns a customer-safe in
       sawPersistedPending = stored.some((item) => item.id === lead.id && item.aiAnalysis.status === "pending");
       pendingStoreMode = (await stat(leadsFilePath)).mode & 0o777;
       const input = buildAiAnalysisInput(lead);
+      const narrative = validAnalystNarrative(input);
       generatedAnalysis = {
         status: "generated",
         customerReport: {
-          schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
-          businessSummaryCodes: input.summaryCodes.slice(0, 2),
-          productExplanations: input.products.map((product) => ({
-            productId: product.productId,
-            reasonCodes: product.reasonCodes.slice(0, 1),
-            confirmationCodes: product.confirmationCodes.slice(0, 1),
-          })),
-          preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+          schemaVersion: narrative.schemaVersion,
+          portfolioSummaryCodes: narrative.portfolioSummaryCodes,
+          productAnalyses: narrative.productAnalyses,
+          preparationActionCodes: narrative.preparationActionCodes,
         },
-        advisorFocusCodes: [],
+        advisorFocusCodes: narrative.advisorFocusCodes,
         advisorFocus: [],
         meta: {
           provider: "deepseek",
@@ -779,19 +794,16 @@ test("raw valid generated responses omit persisted metadata, advisor output, and
   const aiReportService = {
     generate: async (lead) => {
       const input = buildAiAnalysisInput(lead);
+      const narrative = validAnalystNarrative(input);
       return {
         status: "generated",
         customerReport: {
-          schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
-          businessSummaryCodes: input.summaryCodes.slice(0, 1),
-          productExplanations: input.products.map((product) => ({
-            productId: product.productId,
-            reasonCodes: product.reasonCodes.slice(0, 1),
-            confirmationCodes: product.confirmationCodes.slice(0, 1),
-          })),
-          preparationActionCodes: input.preparationActionCodes.slice(0, 1),
+          schemaVersion: narrative.schemaVersion,
+          portfolioSummaryCodes: narrative.portfolioSummaryCodes,
+          productAnalyses: narrative.productAnalyses,
+          preparationActionCodes: narrative.preparationActionCodes,
         },
-        advisorFocusCodes: input.advisorFocusCodes.slice(0, 1),
+        advisorFocusCodes: narrative.advisorFocusCodes,
         advisorFocus: ["raw-valid-advisor-marker"],
         meta: {
           provider: "raw-valid-provider-marker",
@@ -1626,17 +1638,7 @@ test("daily-limit retry availability returns on the next UTC day without spendin
       generateNarrative: async (input) => {
         providerCalls += 1;
         return {
-          narrative: {
-            schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
-            businessSummaryCodes: input.summaryCodes.slice(0, 1),
-            productExplanations: input.products.map((product) => ({
-              productId: product.productId,
-              reasonCodes: product.reasonCodes.slice(0, 1),
-              confirmationCodes: product.confirmationCodes.slice(0, 1),
-            })),
-            preparationActionCodes: input.preparationActionCodes.slice(0, 1),
-            advisorFocusCodes: [],
-          },
+          narrative: validAnalystNarrative(input),
           durationMs: 1,
         };
       },

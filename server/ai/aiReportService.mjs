@@ -6,6 +6,7 @@ import { createDeepSeekClient } from "./deepSeekClient.mjs";
 
 const DEFAULT_TIMEOUT_MS = 12000;
 const DEFAULT_DAILY_LIMIT = 100;
+const CONTRACT_VIOLATION = "contract_violation";
 const PROVIDER_CATEGORIES = new Set([
   "not_configured",
   "timeout",
@@ -90,7 +91,7 @@ export function createAiReportService({ client, limiter, logger, now = () => new
       }
 
       const validation = validateAiNarrative(generated?.narrative, input);
-      if (!validation.ok) return fallback(lead, input, "contract_violation", generated?.durationMs, true);
+      if (!validation.ok) return fallback(lead, input, CONTRACT_VIOLATION, generated?.durationMs, true);
 
       return buildPersistedAiAnalysis({
         narrative: validation.value,
