@@ -1,5 +1,6 @@
 import { estimateAmount } from "./amountEstimators.js";
 import { getProductById } from "./productCatalog.js";
+import { ruleDependencyFields } from "./ruleEvaluator.js";
 
 export const SCENARIO_POLICY_VERSION = "meiou-financing-scenarios-v1";
 
@@ -11,10 +12,28 @@ const TERM_CODES = Object.freeze({
   "linklogis-b2b-factoring": ["up_to_120_days"],
 });
 
+const ALLOWED_ELIGIBILITY_STATUSES = new Set(["eligible", "needs_information"]);
+const FORMULA_UNAVAILABLE_PRODUCT_IDS = new Set([
+  "cmb-guangdong-business-loan",
+  "pingan-orange-tax-loan",
+  "linklogis-amazon-vc",
+  "linklogis-b2b-factoring",
+]);
+const MAX_MISSING_EVIDENCE_CODES = 20;
+const MAX_MISSING_EVIDENCE_CODE_LENGTH = 128;
+
 const freeze = (value) => {
   if (value === null || typeof value !== "object") return value;
   for (const nestedValue of Object.values(value)) freeze(nestedValue);
   return Object.freeze(value);
+};
+
+const clone = (value) => {
+  if (Array.isArray(value)) return value.map(clone);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [key, clone(nestedValue)]));
+  }
+  return value;
 };
 
 const sameCurrencyAmount = (profile, currency) => {
@@ -87,6 +106,26 @@ const amountEvidenceCodes = (productId, profile, amountEstimate) => {
   }
 };
 
+const matcherEvidenceCodes = (product) => new Set(product.ruleSet.flatMap(ruleDependencyFields));
+
+const sanitizedMatcherEvidenceCodes = (missingFields, product) => {
+  if (!Array.isArray(missingFields)) return [];
+
+  const allowedCodes = matcherEvidenceCodes(product);
+  return [...new Set(missingFields.filter((code) => (
+    typeof code === "string"
+    && code.length > 0
+    && code.length <= MAX_MISSING_EVIDENCE_CODE_LENGTH
+    && allowedCodes.has(code)
+  )))].slice(0, MAX_MISSING_EVIDENCE_CODES);
+};
+
+const boundedEvidenceCodes = (codes) => [...new Set(codes.filter((code) => (
+  typeof code === "string"
+  && code.length > 0
+  && code.length <= MAX_MISSING_EVIDENCE_CODE_LENGTH
+)))].slice(0, MAX_MISSING_EVIDENCE_CODES);
+
 const webankScenarios = (amountEstimate, profile) => {
   const requestedAmount = sameCurrencyAmount(profile, "RMB");
   if (amountEstimate.kind !== "range" || requestedAmount === null) return [];
@@ -131,29 +170,44 @@ const buildProductScenarios = (match, profile) => {
   const product = getProductById(match.productId);
   const amountEstimate = estimateAmount(product, profile);
   const amountScenarios = amountScenariosFor(product.id, amountEstimate, profile);
-  const missingEvidenceCodes = [...new Set([
-    ...(match.missingFields ?? []),
+  const missingEvidenceCodes = boundedEvidenceCodes([
+    ...sanitizedMatcherEvidenceCodes(match.missingFields, product),
     ...amountEvidenceCodes(product.id, profile, amountEstimate),
-  ])];
+  ]);
 
   return freeze({
     productId: product.id,
     rank: match.rank,
     eligibilityStatus: match.status,
-    quantificationStatus: amountScenarios.length > 0 ? "quantified" : "needs_evidence",
+    quantificationStatus: FORMULA_UNAVAILABLE_PRODUCT_IDS.has(product.id)
+      ? "formula_unavailable"
+      : amountScenarios.length > 0 ? "quantified" : "needs_evidence",
     amountScenarios,
     termOptions: [...(TERM_CODES[product.id] ?? [])],
-    pricingReference: product.pricing,
+    pricingReference: clone(product.pricing),
     missingEvidenceCodes,
   });
 };
 
 export function buildFinancingScenarioInput({ profile = {}, productMatches = [] } = {}) {
+  const seenRanks = new Set();
+  const seenProductIds = new Set();
   const products = productMatches
     .filter(({ productId, rank, status }) => (
-      getProductById(productId) != null && rank >= 1 && rank <= 3 && status !== "ineligible"
+      getProductById(productId) != null
+      && Number.isInteger(rank)
+      && rank >= 1
+      && rank <= 3
+      && ALLOWED_ELIGIBILITY_STATUSES.has(status)
     ))
-    .sort((left, right) => left.rank - right.rank)
+    .sort((left, right) => left.rank - right.rank || left.productId.localeCompare(right.productId))
+    .filter(({ productId, rank }) => {
+      if (seenRanks.has(rank) || seenProductIds.has(productId)) return false;
+      seenRanks.add(rank);
+      seenProductIds.add(productId);
+      return true;
+    })
+    .slice(0, 3)
     .map((match) => buildProductScenarios(match, profile));
 
   return freeze({ policyVersion: SCENARIO_POLICY_VERSION, products });
