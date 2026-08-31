@@ -1,0 +1,160 @@
+import { estimateAmount } from "./amountEstimators.js";
+import { getProductById } from "./productCatalog.js";
+
+export const SCENARIO_POLICY_VERSION = "meiou-financing-scenarios-v1";
+
+const TERM_CODES = Object.freeze({
+  "webank-cross-border-data-loan": ["webank_4_plus_5", "webank_3_plus_6"],
+  "pingan-foreign-trade-logistics-loan": ["up_to_36_months"],
+  "linklogis-amazon-sc": ["sc_90_days", "sc_revolving"],
+  "linklogis-amazon-vc": ["up_to_120_days"],
+  "linklogis-b2b-factoring": ["up_to_120_days"],
+});
+
+const freeze = (value) => {
+  if (value === null || typeof value !== "object") return value;
+  for (const nestedValue of Object.values(value)) freeze(nestedValue);
+  return Object.freeze(value);
+};
+
+const sameCurrencyAmount = (profile, currency) => {
+  const amount = profile?.requestedAmount;
+  return amount?.currency === currency && Number.isFinite(amount.amount)
+    ? amount.amount
+    : null;
+};
+
+const range = (scenarioCode, currency, minimum, maximum, assumptionCodes) => {
+  const roundedMinimum = Math.round(minimum);
+  const roundedMaximum = Math.round(maximum);
+
+  if (!Number.isFinite(roundedMinimum) || !Number.isFinite(roundedMaximum)
+    || roundedMaximum <= 0 || roundedMinimum > roundedMaximum) {
+    return null;
+  }
+
+  return freeze({
+    scenarioCode,
+    currency,
+    minimum: roundedMinimum,
+    maximum: roundedMaximum,
+    assumptionCodes: [...assumptionCodes],
+  });
+};
+
+const usableRanges = (ranges) => ranges.filter((item) => item !== null);
+
+const moneyEvidenceCode = (profile, field, currency, code) => (
+  profile?.[field]?.currency === currency && Number.isFinite(profile[field].amount)
+    ? []
+    : [code]
+);
+
+const requestedAmountEvidenceCode = (profile, currency) => (
+  sameCurrencyAmount(profile, currency) === null ? ["requested-amount"] : []
+);
+
+const collectionsEvidenceCode = (profile) => {
+  const collections = profile?.collectionsLast12Months;
+  const legacyCollections = profile?.allStoreRepayments;
+  const hasCollections = [collections, legacyCollections].some((amount) => (
+    amount?.currency === "RMB" && Number.isFinite(amount.amount)
+  ));
+  return hasCollections ? [] : ["twelve-month-collections"];
+};
+
+const amountEvidenceCodes = (productId, profile, amountEstimate) => {
+  switch (productId) {
+    case "webank-cross-border-data-loan":
+      return [...collectionsEvidenceCode(profile), ...requestedAmountEvidenceCode(profile, "RMB")];
+    case "linklogis-amazon-sc":
+      return [
+        ...(Number.isFinite(profile?.qualifiedStoreCount) && profile.qualifiedStoreCount > 0
+          ? []
+          : ["qualified-store-count"]),
+        ...requestedAmountEvidenceCode(profile, "USD"),
+      ];
+    case "pingan-foreign-trade-logistics-loan":
+      return amountEstimate.kind === "exact"
+        ? []
+        : [
+          ...moneyEvidenceCode(profile, "annualRevenue", "RMB", "annual-revenue"),
+          ...moneyEvidenceCode(profile, "taxInvoiceAmount", "RMB", "tax-invoice-amount"),
+          ...(profile?.industry == null ? ["industry"] : []),
+        ];
+    default:
+      return [];
+  }
+};
+
+const webankScenarios = (amountEstimate, profile) => {
+  const requestedAmount = sameCurrencyAmount(profile, "RMB");
+  if (amountEstimate.kind !== "range" || requestedAmount === null) return [];
+
+  const cap = Math.min(20000000, requestedAmount);
+  const monthlyCollections = amountEstimate.min;
+  return usableRanges([
+    range("conservative", "RMB", Math.min(monthlyCollections, cap), Math.min(monthlyCollections * 1.5, cap), ["monthly-collections", "requested-amount-cap"]),
+    range("balanced", "RMB", Math.min(monthlyCollections * 1.5, cap), Math.min(monthlyCollections * 2.5, cap), ["monthly-collections", "requested-amount-cap"]),
+    range("growth", "RMB", Math.min(monthlyCollections * 2.5, cap), Math.min(monthlyCollections * 3.5, cap), ["monthly-collections", "requested-amount-cap"]),
+  ]);
+};
+
+const linklogisScScenarios = (amountEstimate, profile) => {
+  const requestedAmount = sameCurrencyAmount(profile, "USD");
+  if (amountEstimate.kind !== "range" || requestedAmount === null) return [];
+
+  const cap = Math.min(amountEstimate.max, requestedAmount);
+  return usableRanges([
+    range("conservative", "USD", cap * 0.4, cap * 0.6, ["qualified-store-cap", "meiou-v1-simulation"]),
+    range("balanced", "USD", cap * 0.6, cap * 0.8, ["qualified-store-cap", "meiou-v1-simulation"]),
+    range("growth", "USD", cap * 0.8, cap, ["qualified-store-cap", "meiou-v1-simulation"]),
+  ]);
+};
+
+const amountScenariosFor = (productId, amountEstimate, profile) => {
+  switch (productId) {
+    case "webank-cross-border-data-loan":
+      return webankScenarios(amountEstimate, profile);
+    case "linklogis-amazon-sc":
+      return linklogisScScenarios(amountEstimate, profile);
+    case "pingan-foreign-trade-logistics-loan":
+      return amountEstimate.kind === "exact"
+        ? usableRanges([range("balanced", amountEstimate.currency, amountEstimate.min, amountEstimate.max, ["verified-logistics-formula"])])
+        : [];
+    default:
+      return [];
+  }
+};
+
+const buildProductScenarios = (match, profile) => {
+  const product = getProductById(match.productId);
+  const amountEstimate = estimateAmount(product, profile);
+  const amountScenarios = amountScenariosFor(product.id, amountEstimate, profile);
+  const missingEvidenceCodes = [...new Set([
+    ...(match.missingFields ?? []),
+    ...amountEvidenceCodes(product.id, profile, amountEstimate),
+  ])];
+
+  return freeze({
+    productId: product.id,
+    rank: match.rank,
+    eligibilityStatus: match.status,
+    quantificationStatus: amountScenarios.length > 0 ? "quantified" : "needs_evidence",
+    amountScenarios,
+    termOptions: [...(TERM_CODES[product.id] ?? [])],
+    pricingReference: product.pricing,
+    missingEvidenceCodes,
+  });
+};
+
+export function buildFinancingScenarioInput({ profile = {}, productMatches = [] } = {}) {
+  const products = productMatches
+    .filter(({ productId, rank, status }) => (
+      getProductById(productId) != null && rank >= 1 && rank <= 3 && status !== "ineligible"
+    ))
+    .sort((left, right) => left.rank - right.rank)
+    .map((match) => buildProductScenarios(match, profile));
+
+  return freeze({ policyVersion: SCENARIO_POLICY_VERSION, products });
+}
