@@ -160,6 +160,10 @@ export function buildAdminPage({ leadColumns, products }) {
         <h3>AI 客户报告</h3>
         <div id="drawerAiContent"></div>
       </section>
+      <section id="drawerAiScenarioAudit" class="drawer-section">
+        <h3>AI 专业分析</h3>
+        <div id="drawerAiScenarioAuditContent"></div>
+      </section>
       <section id="drawerAdvisorFocus" class="drawer-section">
         <h3>顾问核验重点</h3>
         <div id="drawerAdvisorContent"></div>
@@ -203,6 +207,7 @@ export function buildAdminPage({ leadColumns, products }) {
     const drawerCustomerContent = document.querySelector("#drawerCustomerContent");
     const drawerMatchContent = document.querySelector("#drawerMatchContent");
     const drawerAiContent = document.querySelector("#drawerAiContent");
+    const drawerAiScenarioAuditContent = document.querySelector("#drawerAiScenarioAuditContent");
     const drawerAdvisorContent = document.querySelector("#drawerAdvisorContent");
     const reviewStatusInput = document.querySelector("#reviewStatus");
     const reviewNoteInput = document.querySelector("#reviewNote");
@@ -305,6 +310,13 @@ export function buildAdminPage({ leadColumns, products }) {
     const renderDefinitionList = (entries) => '<dl class="definition-list">' + entries
       .map(([label, value]) => \`<dt>\${escapeHtml(label)}</dt><dd>\${escapeHtml(value || "-")}</dd>\`)
       .join("") + "</dl>";
+    const formatAuditRange = (scenario) => {
+      if (!scenario || !Number.isFinite(scenario.minimum) || !Number.isFinite(scenario.maximum)) return "待补充资料";
+      const amount = scenario.minimum === scenario.maximum
+        ? String(scenario.minimum)
+        : scenario.minimum + " - " + scenario.maximum;
+      return amount + (scenario.currency ? " " + scenario.currency : "");
+    };
     const renderDrawer = (lead) => {
       const profile = lead.profile || {};
       const requestedAmount = profile.requestedAmount || {};
@@ -348,6 +360,54 @@ export function buildAdminPage({ leadColumns, products }) {
             \${renderStringList(explanation.itemsToConfirm, "暂无待确认项")}
           </div>\`).join("")}
         <div class="explanation-row"><strong>资料准备建议</strong>\${renderStringList(customerReport.preparationActions, "暂无资料建议")}</div>\`;
+
+      const audit = lead.aiScenarioAudit || {};
+      const auditProducts = asArray(audit.products);
+      const assessments = asArray(customerReport.financingAssessment);
+      const auditMissingDocuments = asArray(audit.missingDocuments);
+      const auditMeta = audit.meta || {};
+      drawerAiScenarioAuditContent.innerHTML = auditProducts.length
+        ? auditProducts.map((product) => {
+          const assessment = assessments.filter((item) => item.productId === product.productId)[0] || {};
+          const rulesBoundary = asArray(product.amountScenarios)
+            .map((scenario) => scenario.scenarioCode + "：" + formatAuditRange(scenario))
+            .join("；") || "补充资料后可量化";
+          const impactFactors = asArray(product.amountScenarios)
+            .map((scenario) => asArray(scenario.assumptionCodes).join("、"))
+            .filter((value) => value)
+            .join("；") || "暂无额外影响因素";
+          const aiSelection = [product.selectedScenarioCode, product.selectedTermCode]
+            .filter((value) => value)
+            .join("；") || "未选择";
+          const missingMaterials = asArray(product.missingEvidenceCodes).concat(auditMissingDocuments);
+          return \`<div class="explanation-row">
+            <strong>\${escapeHtml(productNameFor(lead, product.productId))}</strong>
+            \${renderDefinitionList([
+              ["参考区间", assessment.amountLabel || "补充资料后可量化"],
+              ["期限", assessment.termLabel || "待银行最终核定"],
+              ["定价", assessment.pricingLabel || "待银行最终核定"],
+              ["可信度", assessment.confidenceLabel || "待顾问复核"],
+              ["规则边界", rulesBoundary],
+              ["AI 选择", aiSelection],
+              ["影响因素", impactFactors],
+              ["待补资料", missingMaterials.join("；") || "暂无"],
+            ])}
+            <strong>主要风险</strong>
+            \${renderStringList(assessment.risks, "暂无主要风险")}
+          </div>\`;
+        }).join("")
+        : '<p class="empty-copy">暂无可供复核的场景依据</p>';
+      drawerAiScenarioAuditContent.innerHTML += \`<div class="explanation-row">\${renderDefinitionList([
+        ["规则版本", audit.policyVersion],
+        ["AI 来源", auditMeta.provider],
+        ["模型", auditMeta.model],
+        ["提示版本", auditMeta.promptVersion],
+        ["生成时间", formatDateTime(auditMeta.generatedAt)],
+        ["耗时", Number.isFinite(auditMeta.durationMs) ? auditMeta.durationMs + " ms" : "-"],
+        ["用量", Number.isFinite(auditMeta.usage && auditMeta.usage.inputTokens)
+          ? auditMeta.usage.inputTokens + " / " + (Number.isFinite(auditMeta.usage.outputTokens) ? auditMeta.usage.outputTokens : "-")
+          : "-"],
+      ])}</div>\`;
 
       drawerAdvisorContent.innerHTML = \`
         <strong>AI 顾问关注项</strong>

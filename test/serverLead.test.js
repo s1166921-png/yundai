@@ -666,6 +666,67 @@ test("POST persists the lead before AI generation and returns a customer-safe in
   );
 });
 
+test("admin lead exposes current scenario audit without exposing it publicly", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, completeProgressiveAmazonScPayload());
+  const created = await response.json();
+  const publicLead = created.lead;
+  const adminLead = await getAdminLead(url, created.lead.id);
+
+  assert.equal(Object.hasOwn(publicLead, "aiScenarioAudit"), false);
+  assert.equal(adminLead.aiScenarioAudit.policyVersion, "meiou-financing-scenarios-v1");
+  assert.equal(adminLead.aiScenarioAudit.products[0].selectedScenarioCode, "balanced");
+  assert.equal(adminLead.aiScenarioAudit.products[0].selectedTermCode, "sc_90_days");
+  assert.deepEqual(adminLead.aiScenarioAudit.advisorReview, adminLead.advisorReview);
+  assert.equal(adminLead.aiScenarioAudit.meta.provider, "local");
+});
+
+test("historical v2 lead is reprojected with current catalog term labels", async (t) => {
+  const historicalLead = {
+    id: "historical-v2-webank",
+    createdAt: "2026-08-20T00:00:00.000Z",
+    companyName: "Historical Webank Co.",
+    contactName: "Historical Contact",
+    phone: "13800139999",
+    profile: {
+      primaryBusinessModel: "platform_ecommerce",
+      entityRegion: "mainland",
+      entityType: "limited_company",
+      requestedAmount: { amount: 3000000, currency: "RMB" },
+      allStoreRepayments: { amount: 2000000, currency: "RMB" },
+    },
+    productMatches: [{
+      productId: "webank-cross-border-data-loan",
+      rank: 1,
+      status: "eligible",
+      missingFields: [],
+      passedRules: [],
+      unknownRules: [],
+    }],
+    matchReport: { primary: null, alternatives: [], missingDocuments: [] },
+    aiAnalysis: {
+      status: "generated",
+      customerReport: {
+        schemaVersion: "meiou-ai-narrative-v2",
+        businessSummaryCodes: ["summary:profile-submitted"],
+        productExplanations: [{
+          productId: "webank-cross-border-data-loan",
+          reasonCodes: [],
+          confirmationCodes: [],
+        }],
+        preparationActionCodes: ["action:prepare-verifiable-business-materials"],
+      },
+      advisorFocusCodes: [],
+    },
+  };
+  const { url } = await startTestServer(t, { seedStore: { leads: [historicalLead] } });
+  const adminLead = await getAdminLead(url, historicalLead.id);
+
+  assert.doesNotThrow(() => adminLead.aiReport);
+  assert.equal(adminLead.matchReport.primary.term, "4+5 或 3+6，额度有效期 1 年");
+  assert.equal(adminLead.aiScenarioAudit.products[0].selectedScenarioCode, null);
+});
+
 test("POST without an injected service returns and persists a deterministic local fallback", async (t) => {
   const now = () => new Date("2026-08-27T00:00:00.000Z");
   const { leadsFilePath, url } = await startTestServer(t, { now });
@@ -2408,6 +2469,7 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
     "drawerCustomerSummary",
     "drawerDeterministicMatch",
     "drawerAiReport",
+    "drawerAiScenarioAudit",
     "drawerAdvisorFocus",
     "drawerReview",
     "drawerActions",
@@ -2417,6 +2479,13 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
   assert.match(html, /id="closeDrawer"/);
   assert.match(html, /id="saveReview"/);
   assert.match(html, /id="retryAi"/);
+  assert.match(html, /AI 专业分析/);
+  assert.match(html, /规则边界/);
+  assert.match(html, /AI 选择/);
+  assert.match(html, /影响因素/);
+  assert.match(html, /待补资料/);
+  assert.match(html, /规则版本/);
+  assert.match(html, /aiScenarioAudit/);
   assert.match(html, /event\.key === "Escape"/);
   assert.match(html, /drawerReturnFocus\.focus\(\)/);
   assert.match(html, /@media \(max-width: 720px\)[\s\S]*\.drawer[^}]*width: 100%/);

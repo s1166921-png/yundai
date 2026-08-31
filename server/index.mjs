@@ -13,9 +13,10 @@ import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getProductById } from "../src/lib/matching/productCatalog.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
 import { INTAKE_FIELD_KEYS, INTAKE_VERSION, getVisibleIntakeFields } from "../src/lib/matching/intakeSchema.js";
-import { publicAiReport } from "../src/lib/ai/aiReportContract.js";
+import { publicAiReport, validateAiNarrative } from "../src/lib/ai/aiReportContract.js";
 import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
+import { buildFinancingScenarioInput } from "../src/lib/matching/financingScenarioEngine.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
@@ -618,6 +619,61 @@ function projectedAiReportForLead(lead, matchReport = canonicalMatchReportForLea
   return publicAiReport(lead?.aiAnalysis, lead?.advisorReview, analysisInput);
 }
 
+function auditMetadata(analysis) {
+  const meta = analysis?.meta ?? {};
+  const usage = meta?.usage ?? {};
+  return {
+    status: typeof analysis?.status === "string" ? analysis.status : "pending",
+    provider: typeof meta.provider === "string" ? meta.provider : null,
+    model: typeof meta.model === "string" ? meta.model : null,
+    promptVersion: typeof meta.promptVersion === "string" ? meta.promptVersion : null,
+    generatedAt: typeof meta.generatedAt === "string" ? meta.generatedAt : null,
+    durationMs: Number.isFinite(meta.durationMs) ? meta.durationMs : null,
+    usage: {
+      inputTokens: Number.isFinite(usage.inputTokens) ? usage.inputTokens : null,
+      outputTokens: Number.isFinite(usage.outputTokens) ? usage.outputTokens : null,
+    },
+    errorCategory: typeof meta.errorCategory === "string" ? meta.errorCategory : null,
+    providerAttempted: meta.providerAttempted === true,
+  };
+}
+
+function buildAiScenarioAudit(lead, matchReport = canonicalMatchReportForLead(lead)) {
+  const scenarioInput = buildFinancingScenarioInput({
+    profile: lead?.profile,
+    productMatches: lead?.productMatches,
+  });
+  const analysisInput = buildAiAnalysisInput({
+    profile: lead?.profile,
+    productMatches: lead?.productMatches,
+    matchReport,
+  });
+  const customerReport = lead?.aiAnalysis?.customerReport;
+  const narrative = customerReport == null ? null : {
+    ...customerReport,
+    advisorFocusCodes: lead?.aiAnalysis?.advisorFocusCodes,
+  };
+  const validation = narrative?.schemaVersion === "meiou-ai-analyst-v3"
+    ? validateAiNarrative(narrative, analysisInput)
+    : { ok: false };
+  const selectedByProduct = new Map(
+    (validation.ok ? validation.value.productAnalyses : [])
+      .map((item) => [item.productId, item]),
+  );
+
+  return {
+    policyVersion: scenarioInput.policyVersion,
+    products: scenarioInput.products.map((product) => ({
+      ...product,
+      selectedScenarioCode: selectedByProduct.get(product.productId)?.selectedAmountScenarioCode ?? null,
+      selectedTermCode: selectedByProduct.get(product.productId)?.selectedTermCode ?? null,
+    })),
+    missingDocuments: Array.isArray(matchReport?.missingDocuments) ? [...matchReport.missingDocuments] : [],
+    meta: auditMetadata(lead?.aiAnalysis),
+    advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
+  };
+}
+
 function publicLead(lead) {
   const matchReport = canonicalMatchReportForLead(lead);
   return {
@@ -768,6 +824,7 @@ function adminLead(lead, aiReportService = null) {
     revision: storedLeadRevision(lead),
     aiAnalysis: { ...analysis, retryCount },
     aiReport: projectedAiReportForLead(lead, matchReport),
+    aiScenarioAudit: buildAiScenarioAudit(lead, matchReport),
     aiRetry: retryCapabilityForLead(lead, aiReportService),
     advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
   };
