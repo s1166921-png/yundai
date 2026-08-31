@@ -681,6 +681,85 @@ test("admin lead exposes current scenario audit without exposing it publicly", a
   assert.equal(adminLead.aiScenarioAudit.meta.provider, "local");
 });
 
+test("admin AI analysis projects only validated fields and allowlisted metadata", async (t) => {
+  const aiReportService = {
+    generate: async (lead) => {
+      const narrative = validAnalystNarrative(buildAiAnalysisInput(lead));
+      return {
+        status: "generated",
+        customerReport: {
+          schemaVersion: narrative.schemaVersion,
+          portfolioSummaryCodes: narrative.portfolioSummaryCodes,
+          productAnalyses: narrative.productAnalyses,
+          preparationActionCodes: narrative.preparationActionCodes,
+        },
+        advisorFocusCodes: narrative.advisorFocusCodes,
+        advisorFocus: ["SECRET-ADVISOR-PROSE"],
+        providerInput: "SECRET-PROVIDER-INPUT",
+        rawModelPayload: "SECRET-RAW-MODEL-PAYLOAD",
+        apiKey: "SECRET-API-KEY",
+        meta: {
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          promptVersion: "meiou-ai-analyst-v3",
+          generatedAt: "2026-08-31T00:00:00.000Z",
+          durationMs: 12,
+          usage: { inputTokens: 10, outputTokens: 5, rawUsage: "SECRET-RAW-USAGE" },
+          errorCategory: null,
+          providerAttempted: true,
+          apiKey: "SECRET-META-API-KEY",
+          rawModelPayload: "SECRET-META-RAW-PAYLOAD",
+          providerInput: "SECRET-META-PROVIDER-INPUT",
+        },
+      };
+    },
+  };
+  const { url } = await startTestServer(t, { aiReportService });
+  const created = await (await postLead(url, completeProgressiveAmazonScPayload())).json();
+  const adminLead = await getAdminLead(url, created.lead.id);
+  const serialized = JSON.stringify(adminLead);
+
+  assert.deepEqual(Object.keys(adminLead.aiAnalysis).sort(), [
+    "advisorFocus",
+    "advisorFocusCodes",
+    "customerReport",
+    "meta",
+    "retryCount",
+    "status",
+  ]);
+  assert.deepEqual(Object.keys(adminLead.aiAnalysis.meta).sort(), [
+    "durationMs",
+    "errorCategory",
+    "generatedAt",
+    "model",
+    "promptVersion",
+    "provider",
+    "providerAttempted",
+    "usage",
+  ]);
+  assert.deepEqual(Object.keys(adminLead.aiAnalysis.meta.usage).sort(), ["inputTokens", "outputTokens"]);
+  assert.equal(adminLead.aiAnalysis.status, "generated");
+  assert.equal(adminLead.aiAnalysis.customerReport.productAnalyses[0].productId, "linklogis-amazon-sc");
+  assert.equal(adminLead.aiReport.source, "ai");
+  assert.equal(adminLead.aiScenarioAudit.meta.provider, "deepseek");
+  assert.doesNotMatch(serialized, /SECRET-(?:RAW|PROVIDER|API|ADVISOR)/);
+  assert.doesNotMatch(serialized, /rawModelPayload|providerInput|apiKey|rawUsage/);
+});
+
+test("admin scenario audit projects readable term candidates and selected terms", async (t) => {
+  const { url } = await startTestServer(t);
+  const created = await (await postLead(url, completeProgressiveAmazonScPayload())).json();
+  const adminLead = await getAdminLead(url, created.lead.id);
+  const product = adminLead.aiScenarioAudit.products.find((item) => item.productId === "linklogis-amazon-sc");
+
+  assert.deepEqual(product.termOptions, [
+    { code: "sc_90_days", label: "90天" },
+    { code: "sc_revolving", label: "循环使用" },
+  ]);
+  assert.equal(product.selectedTermCode, "sc_90_days");
+  assert.equal(product.selectedTermLabel, "90天");
+});
+
 test("historical v2 lead is reprojected with current catalog term labels", async (t) => {
   const historicalLead = {
     id: "historical-v2-webank",
@@ -717,6 +796,7 @@ test("historical v2 lead is reprojected with current catalog term labels", async
         preparationActionCodes: ["action:prepare-verifiable-business-materials"],
       },
       advisorFocusCodes: [],
+      meta: null,
     },
   };
   const { url } = await startTestServer(t, { seedStore: { leads: [historicalLead] } });
@@ -2486,6 +2566,8 @@ test("admin page provides an accessible orderly advisor drawer and escapes build
   assert.match(html, /待补资料/);
   assert.match(html, /规则版本/);
   assert.match(html, /aiScenarioAudit/);
+  assert.match(html, /可选期限/);
+  assert.match(html, /selectedTermLabel/);
   assert.match(html, /event\.key === "Escape"/);
   assert.match(html, /drawerReturnFocus\.focus\(\)/);
   assert.match(html, /@media \(max-width: 720px\)[\s\S]*\.drawer[^}]*width: 100%/);

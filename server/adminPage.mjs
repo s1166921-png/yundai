@@ -376,9 +376,14 @@ export function buildAdminPage({ leadColumns, products }) {
             .map((scenario) => asArray(scenario.assumptionCodes).join("、"))
             .filter((value) => value)
             .join("；") || "暂无额外影响因素";
-          const aiSelection = [product.selectedScenarioCode, product.selectedTermCode]
+          const availableTerms = asArray(product.termOptions)
+            .map((term) => term.label)
             .filter((value) => value)
-            .join("；") || "未选择";
+            .join("；") || "待银行最终核定";
+          const aiSelection = [
+            product.selectedScenarioCode ? "额度：" + product.selectedScenarioCode : "额度：未选择",
+            "期限：" + (product.selectedTermLabel || "未选择"),
+          ].join("；");
           const missingMaterials = asArray(product.missingEvidenceCodes).concat(auditMissingDocuments);
           return \`<div class="explanation-row">
             <strong>\${escapeHtml(productNameFor(lead, product.productId))}</strong>
@@ -388,6 +393,7 @@ export function buildAdminPage({ leadColumns, products }) {
               ["定价", assessment.pricingLabel || "待银行最终核定"],
               ["可信度", assessment.confidenceLabel || "待顾问复核"],
               ["规则边界", rulesBoundary],
+              ["可选期限", availableTerms],
               ["AI 选择", aiSelection],
               ["影响因素", impactFactors],
               ["待补资料", missingMaterials.join("；") || "暂无"],

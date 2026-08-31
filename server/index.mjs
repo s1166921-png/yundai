@@ -17,6 +17,8 @@ import { publicAiReport, validateAiNarrative } from "../src/lib/ai/aiReportContr
 import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
 import { buildFinancingScenarioInput } from "../src/lib/matching/financingScenarioEngine.js";
+import { resolveAdvisorFocusCode } from "../src/lib/ai/aiReportReferences.js";
+import { resolveTermCode } from "../src/lib/ai/loanAnalystReferences.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
@@ -619,22 +621,78 @@ function projectedAiReportForLead(lead, matchReport = canonicalMatchReportForLea
   return publicAiReport(lead?.aiAnalysis, lead?.advisorReview, analysisInput);
 }
 
-function auditMetadata(analysis) {
-  const meta = analysis?.meta ?? {};
-  const usage = meta?.usage ?? {};
+function projectAiMetadata(meta = {}) {
+  const safeMeta = meta !== null && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
+  const usage = safeMeta.usage ?? {};
   return {
-    status: typeof analysis?.status === "string" ? analysis.status : "pending",
-    provider: typeof meta.provider === "string" ? meta.provider : null,
-    model: typeof meta.model === "string" ? meta.model : null,
-    promptVersion: typeof meta.promptVersion === "string" ? meta.promptVersion : null,
-    generatedAt: typeof meta.generatedAt === "string" ? meta.generatedAt : null,
-    durationMs: Number.isFinite(meta.durationMs) ? meta.durationMs : null,
+    provider: typeof safeMeta.provider === "string" ? safeMeta.provider : null,
+    model: typeof safeMeta.model === "string" ? safeMeta.model : null,
+    promptVersion: typeof safeMeta.promptVersion === "string" ? safeMeta.promptVersion : null,
+    generatedAt: typeof safeMeta.generatedAt === "string" ? safeMeta.generatedAt : null,
+    durationMs: Number.isFinite(safeMeta.durationMs) ? safeMeta.durationMs : null,
     usage: {
       inputTokens: Number.isFinite(usage.inputTokens) ? usage.inputTokens : null,
       outputTokens: Number.isFinite(usage.outputTokens) ? usage.outputTokens : null,
     },
-    errorCategory: typeof meta.errorCategory === "string" ? meta.errorCategory : null,
-    providerAttempted: meta.providerAttempted === true,
+    errorCategory: typeof safeMeta.errorCategory === "string" ? safeMeta.errorCategory : null,
+    providerAttempted: safeMeta.providerAttempted === true,
+  };
+}
+
+function auditMetadata(analysis) {
+  return {
+    status: ["pending", "generated", "fallback"].includes(analysis?.status) ? analysis.status : "pending",
+    ...projectAiMetadata(analysis?.meta),
+  };
+}
+
+function validatedV3Narrative(analysis, analysisInput) {
+  const customerReport = analysis?.customerReport;
+  if (customerReport === null || typeof customerReport !== "object" || Array.isArray(customerReport)) {
+    return { ok: false };
+  }
+  const narrative = {
+    schemaVersion: customerReport.schemaVersion,
+    portfolioSummaryCodes: customerReport.portfolioSummaryCodes,
+    productAnalyses: Array.isArray(customerReport.productAnalyses)
+      ? customerReport.productAnalyses.map((product) => ({
+        productId: product?.productId,
+        selectedAmountScenarioCode: product?.selectedAmountScenarioCode,
+        selectedTermCode: product?.selectedTermCode,
+        reasonCodes: product?.reasonCodes,
+        riskCodes: product?.riskCodes,
+        sensitivityCodes: product?.sensitivityCodes,
+        confidenceCode: product?.confidenceCode,
+      }))
+      : customerReport.productAnalyses,
+    preparationActionCodes: customerReport.preparationActionCodes,
+    advisorFocusCodes: analysis?.advisorFocusCodes,
+  };
+  return narrative.schemaVersion === "meiou-ai-analyst-v3"
+    ? validateAiNarrative(narrative, analysisInput)
+    : { ok: false };
+}
+
+function projectAdminAiAnalysis(analysis, analysisInput) {
+  const validation = validatedV3Narrative(analysis, analysisInput);
+  const narrative = validation.ok ? validation.value : null;
+  const retryCount = Number.isInteger(analysis?.retryCount) && analysis.retryCount >= 0
+    ? analysis.retryCount
+    : 0;
+  return {
+    status: ["pending", "generated", "fallback"].includes(analysis?.status) ? analysis.status : "pending",
+    customerReport: narrative == null ? null : {
+      schemaVersion: narrative.schemaVersion,
+      portfolioSummaryCodes: narrative.portfolioSummaryCodes,
+      productAnalyses: narrative.productAnalyses,
+      preparationActionCodes: narrative.preparationActionCodes,
+    },
+    advisorFocusCodes: narrative?.advisorFocusCodes ?? [],
+    advisorFocus: (narrative?.advisorFocusCodes ?? [])
+      .map(resolveAdvisorFocusCode)
+      .filter(Boolean),
+    retryCount,
+    meta: projectAiMetadata(analysis?.meta),
   };
 }
 
@@ -648,14 +706,7 @@ function buildAiScenarioAudit(lead, matchReport = canonicalMatchReportForLead(le
     productMatches: lead?.productMatches,
     matchReport,
   });
-  const customerReport = lead?.aiAnalysis?.customerReport;
-  const narrative = customerReport == null ? null : {
-    ...customerReport,
-    advisorFocusCodes: lead?.aiAnalysis?.advisorFocusCodes,
-  };
-  const validation = narrative?.schemaVersion === "meiou-ai-analyst-v3"
-    ? validateAiNarrative(narrative, analysisInput)
-    : { ok: false };
+  const validation = validatedV3Narrative(lead?.aiAnalysis, analysisInput);
   const selectedByProduct = new Map(
     (validation.ok ? validation.value.productAnalyses : [])
       .map((item) => [item.productId, item]),
@@ -663,11 +714,18 @@ function buildAiScenarioAudit(lead, matchReport = canonicalMatchReportForLead(le
 
   return {
     policyVersion: scenarioInput.policyVersion,
-    products: scenarioInput.products.map((product) => ({
-      ...product,
-      selectedScenarioCode: selectedByProduct.get(product.productId)?.selectedAmountScenarioCode ?? null,
-      selectedTermCode: selectedByProduct.get(product.productId)?.selectedTermCode ?? null,
-    })),
+    products: scenarioInput.products.map((product) => {
+      const selectedTermCode = selectedByProduct.get(product.productId)?.selectedTermCode ?? null;
+      return {
+        ...product,
+        termOptions: product.termOptions
+          .map((code) => ({ code, label: resolveTermCode(code) }))
+          .filter((term) => term.label !== null),
+        selectedScenarioCode: selectedByProduct.get(product.productId)?.selectedAmountScenarioCode ?? null,
+        selectedTermCode,
+        selectedTermLabel: resolveTermCode(selectedTermCode),
+      };
+    }),
     missingDocuments: Array.isArray(matchReport?.missingDocuments) ? [...matchReport.missingDocuments] : [],
     meta: auditMetadata(lead?.aiAnalysis),
     advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
@@ -813,16 +871,17 @@ function retryCapabilityForLead(lead, aiReportService) {
 }
 
 function adminLead(lead, aiReportService = null) {
-  const { operationId: _operationId, operationKind: _operationKind, ...analysis } = lead?.aiAnalysis ?? {};
-  const retryCount = Number.isInteger(analysis.retryCount) && analysis.retryCount >= 0
-    ? analysis.retryCount
-    : 0;
   const matchReport = canonicalMatchReportForLead(lead);
+  const analysisInput = buildAiAnalysisInput({
+    profile: lead?.profile,
+    productMatches: lead?.productMatches,
+    matchReport,
+  });
   return {
     ...lead,
     matchReport,
     revision: storedLeadRevision(lead),
-    aiAnalysis: { ...analysis, retryCount },
+    aiAnalysis: projectAdminAiAnalysis(lead?.aiAnalysis, analysisInput),
     aiReport: projectedAiReportForLead(lead, matchReport),
     aiScenarioAudit: buildAiScenarioAudit(lead, matchReport),
     aiRetry: retryCapabilityForLead(lead, aiReportService),
