@@ -662,7 +662,7 @@ test("POST persists the lead before AI generation and returns a customer-safe in
   assert.equal(stored.rawInput.advisorReview, undefined);
   assert.doesNotMatch(
     JSON.stringify(body),
-    /advisorFocus|"meta"|"provider"|"model"|promptVersion|"usage"|errorCategory|fitScore|confidence|ruleVersion|advisorReview/,
+    /advisorFocus|"meta"|"provider"|"model"|promptVersion|"usage"|errorCategory|fitScore|confidence(?!Label)|ruleVersion|advisorReview/,
   );
 });
 

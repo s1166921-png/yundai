@@ -38,6 +38,6 @@ test("modern and legacy production browser bundles exclude matching internals", 
   }
   assert.doesNotMatch(
     serializedBundle,
-    /ruleSet|ruleVersion|internalReason|fitScore|fitDimensions|confidence|failedRules|inputSnapshot|formulaKey|advisorVerificationFields|advisorPriority|companyCreditRating|internalBankRating|isOnAmlBlacklist|MEIOU_ADMIN_USER|MEIOU_ADMIN_PASSWORD|needs_information|反洗钱黑名单|预警信息|两个年度销售收入下滑超过 30%/,
+    /ruleSet|ruleVersion|internalReason|fitScore|fitDimensions|confidence(?!Label)|failedRules|inputSnapshot|formulaKey|advisorVerificationFields|advisorPriority|companyCreditRating|internalBankRating|isOnAmlBlacklist|MEIOU_ADMIN_USER|MEIOU_ADMIN_PASSWORD|needs_information|反洗钱黑名单|预警信息|两个年度销售收入下滑超过 30%/,
   );
 });

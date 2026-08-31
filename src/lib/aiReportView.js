@@ -217,6 +217,25 @@ const safeProductExplanations = (value) => {
     .slice(0, 3);
 };
 
+const safeFinancingAssessment = (value) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item != null && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      productId: normalizedText(item.productId),
+      amountLabel: normalizeCustomerAiText(item.amountLabel),
+      termLabel: normalizeCustomerAiText(item.termLabel),
+      pricingLabel: normalizeCustomerAiText(item.pricingLabel),
+      confidenceLabel: normalizeCustomerAiText(item.confidenceLabel),
+      reasons: safeList(item.reasons, 3),
+      risks: safeList(item.risks, 3),
+      sensitivities: safeList(item.sensitivities, 3),
+      itemsToConfirm: safeList(item.itemsToConfirm, 3),
+    }))
+    .filter((item) => item.productId && item.amountLabel && item.termLabel && item.pricingLabel)
+    .slice(0, 3);
+};
+
 export function buildAiReportView(aiReport) {
   if (aiReport == null || typeof aiReport !== "object" || Array.isArray(aiReport)) return null;
   const source = aiReport.source === "ai" ? "ai" : "rules_fallback";
@@ -230,6 +249,7 @@ export function buildAiReportView(aiReport) {
     statusMessage: normalizeCustomerAiText(aiReport.statusMessage),
     businessSummary: safeList(aiReport.businessSummary, 3),
     productExplanations: safeProductExplanations(aiReport.productExplanations),
+    financingAssessment: safeFinancingAssessment(aiReport.financingAssessment),
     preparationActions: safeList(aiReport.preparationActions, 5),
     privacyNotice: normalizeCustomerAiText(aiReport.privacyNotice),
   };

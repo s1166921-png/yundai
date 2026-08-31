@@ -28,7 +28,6 @@ const FORBIDDEN_ANALYSIS_KEYS = new Set([
   "note",
   "fitScore",
   "fitDimensions",
-  "confidence",
   "advisorFocus",
   "internalReason",
   "provider",
@@ -41,6 +40,7 @@ const FORBIDDEN_ANALYSIS_KEYS = new Set([
 
 const FORBIDDEN_PUBLIC_KEYS = new Set([
   ...FORBIDDEN_ANALYSIS_KEYS,
+  "confidence",
   "generatedAt",
   "durationMs",
   "usage",
@@ -67,7 +67,6 @@ const FORBIDDEN_PUBLIC_VALUE_MARKERS = [
   "2026-08-28T00:00:00.000Z",
   "fitScore",
   "fitDimensions",
-  "confidence",
   "advisorFocus",
   "internalReason",
   "generatedAt",
@@ -192,6 +191,13 @@ test("every ranked journey survives deidentification, AI validation, and public 
       const view = buildProductMatchView(matchReport, getPublicProducts(), aiReport);
 
       assert.deepEqual(aiReport.productExplanations.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
+      assert.deepEqual(aiReport.financingAssessment.map(({ productId }) => productId), fixture.expectedRankedIds, fixture.name);
+      for (const item of aiReport.financingAssessment) {
+        assert.ok(item.amountLabel.length > 0, fixture.name);
+        assert.ok(item.termLabel.length > 0, fixture.name);
+        assert.ok(item.pricingLabel.length > 0, fixture.name);
+        assert.ok(item.confidenceLabel.length > 0, fixture.name);
+      }
       assert.deepEqual(publicProductIds(view), fixture.expectedRankedIds, fixture.name);
       assertSerializedPrivacyClean(aiReport, `${fixture.name}.aiReport`);
       assertSerializedPrivacyClean(view, `${fixture.name}.view`);

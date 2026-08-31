@@ -87,8 +87,12 @@ const deterministicEvidenceList = (value) => (
 
 const explanationMapFrom = (aiReport) => {
   const explanations = new Map();
-  if (!Array.isArray(aiReport?.productExplanations)) return explanations;
-  for (const explanation of aiReport.productExplanations) {
+  const items = Array.isArray(aiReport?.productExplanations)
+    ? aiReport.productExplanations
+    : Array.isArray(aiReport?.financingAssessment)
+      ? aiReport.financingAssessment
+      : [];
+  for (const explanation of items) {
     if (typeof explanation?.productId !== "string" || explanations.has(explanation.productId)) continue;
     explanations.set(explanation.productId, {
       aiReasons: safeExplanationList(explanation.reasons),

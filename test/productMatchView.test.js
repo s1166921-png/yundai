@@ -167,6 +167,25 @@ test("AI explanations merge only by immutable product id without replacing deter
   assert.deepEqual(view.alternatives[1].aiItemsToConfirm, ["需确认买方交易记录。"]);
 });
 
+test("financing assessment merges its server-resolved reasons only by product id", () => {
+  const view = buildProductMatchView(customerReport, PUBLIC_PRODUCTS, {
+    financingAssessment: [{
+      productId: "linklogis-amazon-sc",
+      amountLabel: "160-200万美元",
+      termLabel: "90天",
+      pricingLabel: "年化9%-11%",
+      confidenceLabel: "中等可信度",
+      reasons: ["服务端已核验的产品方向说明。"],
+      risks: ["回款仍需核验。"],
+      sensitivities: ["补齐资料后范围可能缩窄。"],
+      itemsToConfirm: ["回款账户安排确认。"],
+    }],
+  });
+
+  assert.deepEqual(view.primary.aiReasons, ["服务端已核验的产品方向说明。"]);
+  assert.deepEqual(view.primary.aiItemsToConfirm, ["回款账户安排确认。"]);
+});
+
 test("browser AI filtering never removes server-owned deterministic evidence", () => {
   const report = {
     ...customerReport,

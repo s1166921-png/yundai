@@ -5,6 +5,12 @@ import {
   resolveReasonCode,
   resolveSummaryCode,
 } from "./aiReportReferences.js";
+import {
+  resolveConfidenceCode,
+  resolveLoanAnalystCode,
+  resolveTermCode,
+} from "./loanAnalystReferences.js";
+import { getProductById } from "../matching/productCatalog.js";
 
 export const AI_PROMPT_VERSION = "meiou-ai-analyst-v3";
 export const AI_NARRATIVE_SCHEMA_VERSION = "meiou-ai-analyst-v3";
@@ -422,6 +428,64 @@ const resolveCodes = (codes, resolver) => {
   return result;
 };
 
+const amountUnit = (currency) => ({ RMB: "元", USD: "美元" }[currency] ?? "");
+
+const formatAmountValue = (value) => {
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (value >= 10000) {
+    const wan = Math.round((value / 10000) * 10) / 10;
+    return `${wan}万`;
+  }
+  return String(value);
+};
+
+const formatSelectedAmount = (scenario) => {
+  const minimum = formatAmountValue(scenario?.minimum);
+  const maximum = formatAmountValue(scenario?.maximum);
+  const unit = amountUnit(scenario?.currency);
+  if (minimum == null || maximum == null || !unit) return "补充资料后可量化";
+  return minimum === maximum ? `${minimum}${unit}` : `${minimum}-${maximum}${unit}`;
+};
+
+const formatPricing = (pricing) => {
+  const rate = pricing?.annualizedRate;
+  if (typeof rate?.minimum === "string" && typeof rate?.maximum === "string") {
+    return `年化${rate.minimum}-${rate.maximum}`;
+  }
+  if (typeof rate?.minimum === "string") return `年化${rate.minimum}`;
+  return "待银行最终核定";
+};
+
+const resolveSelectedScenario = (productInput, analysis) => {
+  const selected = productInput.amountScenarios.find(({ scenarioCode }) => (
+    scenarioCode === analysis.selectedAmountScenarioCode
+  ));
+  return selected == null ? null : {
+    currency: selected.currency,
+    minimum: selected.minimum,
+    maximum: selected.maximum,
+  };
+};
+
+const resolveFinancingAssessment = (narrative, analysisInput) => {
+  const productsById = new Map(analysisInput.products.map((product) => [product.productId, product]));
+  return narrative.productAnalyses.map((analysis) => {
+    const productInput = productsById.get(analysis.productId);
+    const product = getProductById(analysis.productId);
+    return {
+      productId: analysis.productId,
+      amountLabel: formatSelectedAmount(resolveSelectedScenario(productInput, analysis)),
+      termLabel: resolveTermCode(analysis.selectedTermCode) ?? "待银行最终核定",
+      pricingLabel: formatPricing(product?.pricing),
+      confidenceLabel: resolveConfidenceCode(analysis.confidenceCode) ?? "待顾问复核",
+      reasons: resolveCodes(analysis.reasonCodes, resolveReasonCode),
+      risks: resolveCodes(analysis.riskCodes, resolveLoanAnalystCode),
+      sensitivities: resolveCodes(analysis.sensitivityCodes, resolveLoanAnalystCode),
+      itemsToConfirm: resolveCodes(productInput?.confirmationCodes ?? [], resolveConfirmationCode),
+    };
+  });
+};
+
 const resolvePublicV3Narrative = (narrative, analysisInput) => {
   const productsById = new Map(analysisInput.products.map((product) => [product.productId, product]));
   return {
@@ -431,6 +495,7 @@ const resolvePublicV3Narrative = (narrative, analysisInput) => {
       reasons: resolveCodes(product.reasonCodes, resolveReasonCode),
       itemsToConfirm: resolveCodes(productsById.get(product.productId)?.confirmationCodes ?? [], resolveConfirmationCode),
     })),
+    financingAssessment: resolveFinancingAssessment(narrative, analysisInput),
     preparationActions: resolveCodes(narrative.preparationActionCodes, resolvePreparationActionCode),
   };
 };
@@ -442,6 +507,7 @@ const resolvePublicV2Narrative = (narrative) => ({
     reasons: resolveCodes(product.reasonCodes, resolveReasonCode),
     itemsToConfirm: resolveCodes(product.confirmationCodes, resolveConfirmationCode),
   })),
+  financingAssessment: [],
   preparationActions: resolveCodes(narrative.preparationActionCodes, resolvePreparationActionCode),
 });
 
@@ -467,6 +533,7 @@ export function publicAiReport(analysis, advisorReview, analysisInput) {
     statusMessage: generated ? GENERATED_STATUS_MESSAGE : FALLBACK_STATUS_MESSAGE,
     businessSummary: customerReport.businessSummary,
     productExplanations: customerReport.productExplanations,
+    financingAssessment: customerReport.financingAssessment,
     preparationActions: customerReport.preparationActions,
     privacyNotice: PRIVACY_NOTICE,
   };

@@ -4,7 +4,7 @@ import { AiPreliminaryReport } from "./AiPreliminaryReport.jsx";
 const aiHighlights = (product) => [...new Set([
   ...product.aiReasons,
   ...product.aiItemsToConfirm,
-])];
+])].slice(0, 3);
 
 function CatalogProductCard({ product }) {
   return (

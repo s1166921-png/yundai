@@ -16,6 +16,17 @@ const customerAiReport = {
     reasons: ["Amazon SC 场景与产品方向一致。", "confidence: 0.98"],
     itemsToConfirm: ["需确认单店铺 GMV 证明。", "顾问内部备注：重点跟进"],
   }],
+  financingAssessment: [{
+    productId: "linklogis-amazon-sc",
+    amountLabel: "160-200万美元",
+    termLabel: "90天",
+    pricingLabel: "年化9%-11%",
+    confidenceLabel: "中等可信度",
+    reasons: ["Amazon SC 场景与产品方向一致。"],
+    risks: ["近 12 个月回款仍需核验。"],
+    sensitivities: ["稳定回款提高后，参考区间可能上调。"],
+    itemsToConfirm: ["需确认单店铺 GMV 证明。"],
+  }],
   preparationActions: ["准备近 12 个月销售报告。"],
   privacyNotice: "AI 仅分析脱敏经营字段，企业名称、联系人和手机号未发送给模型。",
   confidence: 0.98,
@@ -39,7 +50,32 @@ test("customer AI view keeps bounded explanations and the review state", () => {
   assert.equal(view.reviewLabel, "专业顾问待复核");
   assert.equal(view.productExplanations[0].reasons.length, 1);
   assert.equal(view.productExplanations[0].itemsToConfirm.length, 1);
-  assert.doesNotMatch(JSON.stringify(view), /confidence|advisorNotes|provider|model|DeepSeek|internal-model/);
+  assert.doesNotMatch(JSON.stringify(view), /"confidence"|advisorNotes|provider|model|DeepSeek|internal-model/);
+});
+
+test("customer report resolves selected scenario into amount and term labels", () => {
+  const view = buildAiReportView({
+    source: "ai",
+    reviewStatus: "pending",
+    statusMessage: "AI 初筛完成，专业顾问待复核。",
+    businessSummary: ["当前处于稳定经营阶段。"],
+    financingAssessment: [{
+      productId: "linklogis-amazon-sc",
+      amountLabel: "160-200万美元",
+      termLabel: "90天",
+      pricingLabel: "年化9%-11%",
+      confidenceLabel: "中等可信度",
+      reasons: ["店铺经营时长满足基础条件。"],
+      risks: ["近 12 个月回款仍需核验。"],
+      sensitivities: ["稳定回款提高后参考区间可能上调。"],
+      itemsToConfirm: ["Amazon近12个月回款证明"],
+    }],
+    preparationActions: [],
+    privacyNotice: "AI仅分析脱敏经营字段。",
+  });
+
+  assert.equal(view.financingAssessment[0].amountLabel, "160-200万美元");
+  assert.equal(view.financingAssessment[0].termLabel, "90天");
 });
 
 test("fallback view is explicitly labeled as a rules report and keeps the server status", () => {
@@ -127,13 +163,16 @@ test("customer AI view rejects system metadata shapes while preserving natural-l
   assert.equal(view.privacyNotice, "");
 });
 
-test("customer report renders summary and actions once without anonymous product explanations", async (t) => {
+test("customer report renders the financing assessment without internal metadata", async (t) => {
   const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
   const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report: customerAiReport }));
   const expectedOrder = [
     "AI 初步分析",
     "专业顾问待复核",
     "经营判断",
+    "AI 参考融资能力",
+    "区间形成原因",
+    "敏感性分析",
     "融资准备清单",
     customerAiReport.privacyNotice,
   ];
@@ -143,9 +182,10 @@ test("customer report renders summary and actions once without anonymous product
     assert.ok(nextIndex > previousIndex, `${text} should follow the preceding report section`);
     return nextIndex;
   }, -1);
-  assert.doesNotMatch(markup, /Amazon SC 场景与产品方向一致。|需确认单店铺 GMV 证明。/);
-  assert.doesNotMatch(markup, /为什么匹配|仍需确认/);
-  assert.doesNotMatch(markup, /DeepSeek|internal-model|confidence|置信|评分|advisorNotes|顾问备注/);
+  assert.match(markup, /160-200万美元[\s\S]*90天[\s\S]*年化9%-11%/);
+  assert.match(markup, /Amazon SC 场景与产品方向一致。/);
+  assert.match(markup, /需确认单店铺 GMV 证明。/);
+  assert.doesNotMatch(markup, /DeepSeek|internal-model|promptVersion|usage|errorCategory|advisorNotes|顾问备注/);
 });
 
 test("homepage presents the confirmed four-step trust module and Amazon SC example", async (t) => {
