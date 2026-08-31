@@ -23,6 +23,12 @@ const formatLimit = (limit = {}) => {
 };
 
 const formatTerm = (term = {}) => {
+  if (Array.isArray(term.repaymentPlans) && term.repaymentPlans.length > 0) {
+    const validity = Number.isFinite(term.creditValidityMonths)
+      ? `，额度有效期 ${term.creditValidityMonths / 12} 年`
+      : "";
+    return `${term.repaymentPlans.join(" 或 ")}${validity}`;
+  }
   if (Number.isFinite(term.financingDays)) {
     return term.repayment ? `${term.financingDays}天或${term.repayment}` : `${term.financingDays}天`;
   }
@@ -36,14 +42,14 @@ const formatTerm = (term = {}) => {
   if (Number.isFinite(term.maximumMonths)) {
     return `最长${term.maximumMonths}个月${term.revolving ? "，可循环" : ""}`;
   }
-  return "目录暂未提供";
+  return "待银行最终核定";
 };
 
 const formatPricing = (pricing = {}) => {
   const rate = pricing.annualizedRate;
   if (rate?.minimum != null && rate?.maximum != null) return `年化${rate.minimum}-${rate.maximum}`;
   if (rate?.minimum != null) return `年化${rate.minimum}`;
-  return pricing.note ?? "目录暂未提供";
+  return pricing.note ?? "待银行最终核定";
 };
 
 const projectProduct = (product) => ({

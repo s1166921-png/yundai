@@ -165,6 +165,23 @@ test("report copies customer product facts from the versioned catalog", () => {
   assert.deepEqual(buildProductReport(profileFixture, matchFixture), report);
 });
 
+test("customer reports carry the sourced WeBank and Ping An terms", () => {
+  const report = buildCustomerMatchReport({ intakeVersion: "progressive-v1" }, [{
+    ...matchFixture[0],
+    productId: "webank-cross-border-data-loan",
+    rank: 1,
+  }, {
+    ...matchFixture[0],
+    productId: "pingan-foreign-trade-logistics-loan",
+    rank: 2,
+  }]);
+
+  assert.equal(report.primary.term, "4+5 或 3+6，额度有效期 1 年");
+  assert.equal(report.alternatives[0].term, "最长36个月");
+  assert.equal(report.primary.pricing, "待银行最终核定");
+  assert.equal(report.alternatives[0].pricing, "待银行最终核定");
+});
+
 test("report selects only ranks one through three and caps alternatives at two", () => {
   const report = buildCustomerMatchReport(profileFixture, [
     matchFixture[0],

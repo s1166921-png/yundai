@@ -182,9 +182,9 @@ export const PRODUCT_CATALOG = Object.freeze([
     customerTargetProfile: "行业需为批发零售或加工制造；企业需从事自营进出口。",
     customerPrerequisite: "行业需为批发零售或加工制造。",
     pricing: Object.freeze({ annualizedRate: null }),
-    term: Object.freeze({ maximumMonths: null }),
+    term: Object.freeze({ maximumMonths: 36 }),
     limit: Object.freeze({ maximum: 5000000, currency: "RMB" }),
-    version: "2026-08-24",
+    version: "2026-08-31",
     source: source("7.3"),
     amountEstimator: Object.freeze({
       type: "formulaWithCap",
@@ -237,9 +237,9 @@ export const PRODUCT_CATALOG = Object.freeze([
     customerTargetProfile: "需为 Amazon 店铺收款主体；第一期只准入 Amazon 美国站。",
     customerPrerequisite: "需为 Amazon 店铺收款主体。",
     pricing: Object.freeze({ annualizedRate: null }),
-    term: Object.freeze({ maximumMonths: null }),
+    term: Object.freeze({ repaymentPlans: Object.freeze(["4+5", "3+6"]), creditValidityMonths: 12 }),
     limit: Object.freeze({ maximum: 20000000, currency: "RMB" }),
-    version: "2026-08-24",
+    version: "2026-08-31",
     source: source("7.4"),
     amountEstimator: Object.freeze({
       type: "referenceRange",

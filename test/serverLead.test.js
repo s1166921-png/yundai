@@ -1874,8 +1874,11 @@ test("a rejecting AI retry service persists a safe fallback and never leaks its 
 });
 
 test("authenticated GET /api/leads returns full internal matching evidence", async (t) => {
-  const { url } = await startTestServer(t);
+  const { url, leadsFilePath } = await startTestServer(t);
   await postLead(url);
+  const storedLeads = JSON.parse(await readFile(leadsFilePath, "utf8"));
+  storedLeads[0].matchReport.primary.term = "stale stored term";
+  await writeFile(leadsFilePath, JSON.stringify(storedLeads), "utf8");
   const response = await fetch(`${url}/api/leads`, {
     headers: { Authorization: adminAuthorization },
   });
@@ -1893,6 +1896,7 @@ test("authenticated GET /api/leads returns full internal matching evidence", asy
   assert.ok(payload.leads[0].aiInsight.priority);
   assert.match(payload.leads[0].ruleVersion, /^2026-/);
   assert.equal(payload.leads[0].matchReport.ruleVersion, undefined);
+  assert.equal(payload.leads[0].matchReport.primary.term, "90天或随借随还");
   assert.match(primaryMatch.ruleVersion, /^2026-/);
 });
 
@@ -2382,6 +2386,7 @@ test("admin page exposes useful filters while preserving explicit selection-only
   assert.match(html, /value === "progressive" \? "产品匹配"/);
   assert.match(html, /ids\.forEach\(\(id\) => params\.append\("ids", id\)\)/);
   assert.doesNotMatch(html, /href="\/api\/leads\/export"/);
+  assert.match(html, /product\.institution, product\.currency, product\.term, product\.pricing, product\.limit/);
 });
 
 test("admin page provides an accessible orderly advisor drawer and escapes build-time values", () => {

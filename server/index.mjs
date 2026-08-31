@@ -761,11 +761,13 @@ function adminLead(lead, aiReportService = null) {
   const retryCount = Number.isInteger(analysis.retryCount) && analysis.retryCount >= 0
     ? analysis.retryCount
     : 0;
+  const matchReport = canonicalMatchReportForLead(lead);
   return {
     ...lead,
+    matchReport,
     revision: storedLeadRevision(lead),
     aiAnalysis: { ...analysis, retryCount },
-    aiReport: projectedAiReportForLead(lead),
+    aiReport: projectedAiReportForLead(lead, matchReport),
     aiRetry: retryCapabilityForLead(lead, aiReportService),
     advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
   };

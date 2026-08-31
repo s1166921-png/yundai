@@ -330,7 +330,7 @@ export function buildAdminPage({ leadColumns, products }) {
         ? rankedProducts.map((product, index) => \`
             <div class="product-row">
               <strong>\${escapeHtml(index === 0 ? "第一推荐：" + (product.name || "") : "备选：" + (product.name || ""))}</strong>
-              <p>\${escapeHtml([product.institution, product.currency, product.term, product.limit].filter(Boolean).join(" · "))}</p>
+              <p>\${escapeHtml([product.institution, product.currency, product.term, product.pricing, product.limit].filter(Boolean).join(" · "))}</p>
               \${renderStringList(product.whyMatched, "暂无匹配说明")}
             </div>\`).join("")
         : '<p class="empty-copy">暂无推荐产品</p>';

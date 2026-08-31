@@ -292,3 +292,15 @@ test("public product projection preserves normalized target-profile punctuation"
     assert.equal(product.targetProfile, getProductById(product.id).customerTargetProfile);
   }
 });
+
+test("public product projection exposes sourced bank terms without internal catalog wording", () => {
+  const products = getPublicProducts();
+  const webank = products.find((product) => product.id === "webank-cross-border-data-loan");
+  const logistics = products.find((product) => product.id === "pingan-foreign-trade-logistics-loan");
+  const cmb = products.find((product) => product.id === "cmb-guangdong-business-loan");
+
+  assert.equal(webank.term, "4+5 或 3+6，额度有效期 1 年");
+  assert.equal(logistics.term, "最长36个月");
+  assert.equal(cmb.term, "待银行最终核定");
+  assert.doesNotMatch(JSON.stringify(products), /目录暂未提供/);
+});
