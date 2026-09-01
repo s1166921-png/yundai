@@ -140,6 +140,23 @@ const safeReportProduct = (reportProduct, products, explanations) => {
   };
 };
 
+const safeImprovementPath = (path, products) => {
+  if (path == null || typeof path !== "object" || Array.isArray(path)) return null;
+  const catalog = catalogProductFor(path, products);
+  if (catalog == null) return null;
+  const failedConditions = safeExplanationList(path.failedConditions);
+  const reassessmentActions = safeExplanationList(path.reassessmentActions);
+  if (failedConditions.length === 0 || reassessmentActions.length === 0) return null;
+  return {
+    productId: catalog.id,
+    institution: catalog.institution ?? "",
+    name: catalog.name ?? "",
+    presentationLabel: "暂不匹配/提升路径",
+    failedConditions,
+    reassessmentActions,
+  };
+};
+
 const alternativeDifferences = (alternative, primary) => {
   const differences = [];
   if (alternative.scenario?.label && alternative.scenario.label !== primary?.scenario?.label) {
@@ -200,6 +217,10 @@ const buildReportView = (report, products, aiReport) => {
       reason: typeof item.reason === "string" ? item.reason : "",
       presentationLabel: "暂不匹配",
     }));
+  const improvementPaths = (Array.isArray(report.improvementPaths) ? report.improvementPaths : [])
+    .slice(0, 2)
+    .map((path) => safeImprovementPath(path, products))
+    .filter(Boolean);
 
   return {
     state: "report",
@@ -208,6 +229,7 @@ const buildReportView = (report, products, aiReport) => {
     alternatives,
     missingDocuments,
     nonMatches,
+    improvementPaths,
     disclaimer: MATCH_DISCLAIMER,
   };
 };

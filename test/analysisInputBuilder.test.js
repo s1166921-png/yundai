@@ -98,6 +98,8 @@ test("v3 input contains selectable scenarios without customer identity", () => {
       requestedAmount: { amount: 2000000, currency: "USD" },
       singleStoreGmv: { amount: 6500000, currency: "USD" },
       platformHistoryMonths: 18,
+      collectionsLast12Months: { amount: 12000000, currency: "RMB" },
+      currentLoanBalance: { amount: 0, currency: "RMB" },
     },
     productMatches: [{
       productId: "linklogis-amazon-sc", rank: 1, status: "eligible",

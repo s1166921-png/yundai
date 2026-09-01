@@ -29,6 +29,8 @@ const progressiveAmazonScPayload = (overrides = {}) => ({
   platformHistoryMonths: 18,
   singleStoreGmvUsd: 6000000,
   qualifiedStoreCount: 1,
+  collectionsLast12MonthsRmb: 12000000,
+  currentLoanBalanceRmb: 0,
   acceptsAccountControl: true,
   preferredCurrency: "usd",
   requestedAmount: 3000000,
@@ -185,7 +187,7 @@ const PROVIDER_SELECTION_FIXTURES = Object.freeze({
       amountLabel: "120万-180万美元",
       termLabel: "90天",
       pricingLabel: "年化9%-11%",
-      fallbackAmountLabel: "180万-240万美元",
+      fallbackAmountLabel: "120万-180万美元",
     },
   },
   "webank-medium-collections": {
@@ -391,7 +393,7 @@ const narrativeFor = (input) => ({
 
 const DETERMINISTIC_PIPELINE_CASES = [
   ["amazon-sc-complete", progressiveAmazonScPayload(), "linklogis-amazon-sc", "quantified", ["conservative", "balanced", "growth"], ["sc_90_days", "sc_revolving"]],
-  ["amazon-sc-missing-collections", progressiveAmazonScPayload({ collectionsLast12MonthsRmb: null }), "linklogis-amazon-sc", "quantified", ["conservative", "balanced", "growth"], ["sc_90_days", "sc_revolving"]],
+  ["amazon-sc-missing-collections", progressiveAmazonScPayload({ collectionsLast12MonthsRmb: null }), "linklogis-amazon-sc", "quantified", ["conservative"], ["sc_90_days", "sc_revolving"]],
   ["webank-medium-collections", progressiveWebankPayload(), "webank-cross-border-data-loan", "quantified", ["conservative", "balanced", "growth"], ["webank_4_plus_5", "webank_3_plus_6"]],
   ["pingan-logistics-manufacturing", progressiveLogisticsPayload(), "pingan-foreign-trade-logistics-loan", "quantified", ["balanced"], ["up_to_36_months"]],
   ["cmb-missing-formula", progressiveCmbPayload(), "cmb-guangdong-business-loan", "formula_unavailable", [], []],

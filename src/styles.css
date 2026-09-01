@@ -2911,6 +2911,88 @@ h2 {
   margin-top: 52px;
 }
 
+.match-improvement-paths {
+  margin-top: 42px;
+  padding-top: 28px;
+  border-top: 1px solid rgba(255, 190, 92, 0.34);
+}
+
+.match-improvement-paths > header h3 {
+  color: #fff;
+  font-size: 25px;
+}
+
+.match-improvement-path-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.match-improvement-path {
+  flex: 1 1 calc(50% - 9px);
+  width: calc(50% - 9px);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 190, 92, 0.42);
+  border-radius: 8px;
+  background: rgba(43, 31, 18, 0.48);
+}
+
+.match-improvement-path + .match-improvement-path {
+  margin-left: 18px;
+}
+
+.match-improvement-path > header,
+.match-improvement-path > section {
+  padding: 20px 24px;
+}
+
+.match-improvement-path > header {
+  min-height: 126px;
+}
+
+.match-improvement-path > header > span {
+  color: #ffd489;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.match-improvement-path > header > p {
+  margin-top: 12px;
+  color: rgba(255, 230, 185, 0.74);
+  font-size: 12px;
+}
+
+.match-improvement-path h4 {
+  margin-top: 6px;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.match-improvement-path > section {
+  min-height: 126px;
+  border-top: 1px solid rgba(255, 214, 137, 0.16);
+}
+
+.match-improvement-path h5 {
+  color: rgba(255, 220, 157, 0.9);
+  font-size: 13px;
+}
+
+.match-improvement-path ul {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: rgba(232, 241, 255, 0.8);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .match-alternatives > header h3 {
   color: #fff;
   font-size: 25px;
@@ -3915,6 +3997,29 @@ h2 {
 
   .match-alternatives {
     margin-top: 42px;
+  }
+
+  .match-improvement-path-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .match-improvement-path {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .match-improvement-path + .match-improvement-path {
+    margin-top: 18px;
+    margin-left: 0;
+  }
+
+  .match-improvement-path > header,
+  .match-improvement-path > section {
+    padding-inline: 20px;
+  }
+
+  .match-improvement-path > section {
+    min-height: 0;
   }
 
   .match-alternative-result > header,

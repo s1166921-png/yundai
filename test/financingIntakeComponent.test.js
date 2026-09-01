@@ -263,6 +263,39 @@ test("preferred result presents its reference amount once", async (t) => {
   assert.match(markup, /<dt>参考定价<\/dt>/);
 });
 
+test("all-ineligible reports render improvement paths apart from product recommendations", async (t) => {
+  const server = await createServer({
+    configFile: fileURLToPath(new URL("../vite.config.mjs", import.meta.url)),
+    server: { middlewareMode: true, hmr: false, ws: false },
+  });
+  t.after(() => server.close());
+  const { ProductMatchCenter } = await server.ssrLoadModule("/src/components/ProductMatchCenter.jsx");
+  const markup = renderToStaticMarkup(createElement(ProductMatchCenter, {
+    report: {
+      primary: null,
+      alternatives: [],
+      summary: "当前产品暂不匹配，已整理可重新评估的提升路径。",
+      improvementPaths: [{
+        productId: "webank-cross-border-data-loan",
+        presentationLabel: "暂不匹配/提升路径",
+        failedConditions: ["所有店铺近 12 个月销售额需不低于 200 万元。", "第一期只准入 Amazon 美国站。"],
+        reassessmentActions: ["重新评估前请先满足或核验：所有店铺近 12 个月销售额需不低于 200 万元。"],
+      }],
+      missingDocuments: [],
+      nonMatches: [],
+    },
+    products: getPublicProducts(),
+  }));
+
+  assert.match(markup, /class="match-improvement-paths"/);
+  assert.match(markup, /暂不匹配的提升路径/);
+  assert.match(markup, /微众银行跨境电商数据贷/);
+  assert.match(markup, /暂不匹配\/提升路径/);
+  assert.match(markup, /所有店铺近 12 个月销售额需不低于 200 万元。/);
+  assert.match(markup, /重新评估前请先满足或核验：所有店铺近 12 个月销售额需不低于 200 万元。/);
+  assert.doesNotMatch(markup, /class="match-primary-result"|class="match-alternative-result"/);
+});
+
 test("match center keeps deterministic evidence and conditions while AI selections stay supplemental", async (t) => {
   const server = await createServer({
     configFile: fileURLToPath(new URL("../vite.config.mjs", import.meta.url)),

@@ -82,6 +82,13 @@ const collectionsEvidenceCode = (profile) => {
   return hasCollections ? [] : ["twelve-month-collections"];
 };
 
+const currentLoanBalanceEvidenceCode = (profile) => moneyEvidenceCode(
+  profile,
+  "currentLoanBalance",
+  "RMB",
+  "current-loan-balance",
+);
+
 const amountEvidenceCodes = (productId, profile, amountEstimate) => {
   switch (productId) {
     case "webank-cross-border-data-loan":
@@ -92,6 +99,8 @@ const amountEvidenceCodes = (productId, profile, amountEstimate) => {
           ? []
           : ["qualified-store-count"]),
         ...requestedAmountEvidenceCode(profile, "USD"),
+        ...collectionsEvidenceCode(profile),
+        ...currentLoanBalanceEvidenceCode(profile),
       ];
     case "pingan-foreign-trade-logistics-loan":
       return amountEstimate.kind === "exact"

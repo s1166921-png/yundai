@@ -162,6 +162,36 @@ function AlternativeResult({ product }) {
   );
 }
 
+function ImprovementPaths({ paths }) {
+  return (
+    <section className="match-improvement-paths" aria-labelledby="match-improvement-paths-title">
+      <header>
+        <p className="eyebrow">re-evaluation paths</p>
+        <h3 id="match-improvement-paths-title">暂不匹配的提升路径</h3>
+      </header>
+      <div className="match-improvement-path-grid">
+        {paths.map((path) => (
+          <article className="match-improvement-path" key={path.productId}>
+            <header>
+              <span>{path.presentationLabel}</span>
+              <p>{path.institution}</p>
+              <h4>{path.name}</h4>
+            </header>
+            <section>
+              <h5>当前暂不匹配条件</h5>
+              <ul>{path.failedConditions.map((condition) => <li key={condition}>{condition}</li>)}</ul>
+            </section>
+            <section>
+              <h5>重新评估建议</h5>
+              <ul>{path.reassessmentActions.map((action) => <li key={action}>{action}</li>)}</ul>
+            </section>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MatchResults({ view }) {
   return (
     <div className="product-match-results" aria-live="polite">
@@ -169,10 +199,12 @@ function MatchResults({ view }) {
         <PrimaryResult product={view.primary} />
       ) : (
         <section className="match-empty-state">
-          <h3>当前暂无优先推荐</h3>
+          <h3>{view.improvementPaths.length > 0 ? "当前暂无匹配产品" : "当前暂无优先推荐"}</h3>
           <p>{view.summary || "请补充相关经营信息后再评估。"}</p>
         </section>
       )}
+
+      {view.improvementPaths.length > 0 && <ImprovementPaths paths={view.improvementPaths} />}
 
       {view.alternatives.length > 0 && (
         <section className="match-alternatives" aria-labelledby="match-alternatives-title">

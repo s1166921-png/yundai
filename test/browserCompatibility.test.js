@@ -72,6 +72,22 @@ test("trust module legacy fallback stacks at mobile widths and long result strin
   assert.match(resultListRule, /overflow-wrap:\s*anywhere/);
 });
 
+test("no-match improvement paths use a stable grid that stacks safely on mobile", async () => {
+  const styles = await readFile(stylesPath, "utf8");
+  const gridStart = styles.indexOf(".match-improvement-path-grid {");
+  const gridEnd = styles.indexOf("}", gridStart);
+  const gridRule = styles.slice(gridStart, gridEnd);
+  const mobileStart = styles.indexOf("@media (max-width: 720px)");
+  const mobileRules = styles.slice(mobileStart);
+
+  assert.ok(gridStart >= 0, "improvement-path grid is missing");
+  assert.ok(gridRule.indexOf("display: flex") < gridRule.indexOf("display: grid"), "grid needs a Flexbox fallback");
+  assert.match(gridRule, /flex-wrap:\s*wrap/);
+  assert.match(gridRule, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobileRules, /\.match-improvement-path-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(mobileRules, /\.match-improvement-path\s*\{[\s\S]*?flex-basis:\s*100%[\s\S]*?width:\s*100%/);
+});
+
 test("AI report line reveal has an explicit reduced-motion override", async () => {
   const styles = await readFile(stylesPath, "utf8");
   const reducedMotionStart = styles.indexOf("@media (prefers-reduced-motion: reduce)");

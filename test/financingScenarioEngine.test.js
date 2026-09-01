@@ -29,11 +29,28 @@ test("Amazon SC scenarios never exceed demand or qualified-store cap", () => {
       requestedAmount: { amount: 2000000, currency: "USD" },
       singleStoreGmv: { amount: 6500000, currency: "USD" },
       platformHistoryMonths: 18,
+      collectionsLast12Months: { amount: 12000000, currency: "RMB" },
+      currentLoanBalance: { amount: 0, currency: "RMB" },
     },
     productMatches: [{ productId: "linklogis-amazon-sc", rank: 1, status: "eligible" }],
   });
   assert.equal(Math.max(...result.products[0].amountScenarios.map(({ maximum }) => maximum)), 2000000);
   assert.deepEqual(result.products[0].termOptions, ["sc_90_days", "sc_revolving"]);
+});
+
+test("eligible Amazon SC with unverified collections or debt allows only a conservative scenario", () => {
+  const result = buildFinancingScenarioInput({
+    profile: {
+      qualifiedStoreCount: 1,
+      requestedAmount: { amount: 2000000, currency: "USD" },
+      singleStoreGmv: { amount: 6500000, currency: "USD" },
+      platformHistoryMonths: 18,
+    },
+    productMatches: [{ productId: "linklogis-amazon-sc", rank: 1, status: "eligible" }],
+  });
+
+  assert.deepEqual(result.products[0].amountScenarios.map(({ scenarioCode }) => scenarioCode), ["conservative"]);
+  assert.deepEqual(result.products[0].missingEvidenceCodes, ["twelve-month-collections", "current-loan-balance"]);
 });
 
 test("products without a verified formula return no numeric scenarios", () => {
@@ -151,7 +168,13 @@ test("engine accepts only server matcher statuses and sanitized matcher evidence
   });
 
   assert.deepEqual(result.products.map(({ productId }) => productId), ["linklogis-amazon-sc"]);
-  assert.deepEqual(result.products[0].missingEvidenceCodes, ["platformHistoryMonths", "qualified-store-count", "requested-amount"]);
+  assert.deepEqual(result.products[0].missingEvidenceCodes, [
+    "platformHistoryMonths",
+    "qualified-store-count",
+    "requested-amount",
+    "twelve-month-collections",
+    "current-loan-balance",
+  ]);
 });
 
 test("engine ignores null and primitive product matches", () => {

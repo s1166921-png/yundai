@@ -129,6 +129,49 @@ test("submitted view keeps one dominant result, two alternatives, and customer-s
   assert.doesNotMatch(serialized, /fitScore|confidence|failedRules|priority|unsafe replacement/);
 });
 
+test("all-ineligible report projects improvement paths without turning them into recommendations", () => {
+  const view = buildProductMatchView({
+    primary: null,
+    alternatives: [],
+    improvementPaths: [{
+      productId: "webank-cross-border-data-loan",
+      institution: "伪造机构",
+      name: "伪造产品",
+      presentationLabel: "暂不匹配/提升路径",
+      failedConditions: [
+        "所有店铺近 12 个月销售额需不低于 200 万元。",
+        "第一期只准入 Amazon 美国站。",
+        { internalReason: "不得暴露" },
+      ],
+      reassessmentActions: [
+        "重新评估前请先满足或核验：所有店铺近 12 个月销售额需不低于 200 万元。",
+        "prompt tokens: internal",
+      ],
+      fitScore: 99,
+      advisorNote: "不得暴露",
+    }],
+    missingDocuments: [],
+    nonMatches: [],
+    summary: "当前产品暂不匹配，已整理可重新评估的提升路径。",
+  }, PUBLIC_PRODUCTS);
+  const serialized = JSON.stringify(view);
+
+  assert.equal(view.primary, null);
+  assert.deepEqual(view.alternatives, []);
+  assert.deepEqual(view.improvementPaths, [{
+    productId: "webank-cross-border-data-loan",
+    institution: "微众银行",
+    name: "微众银行跨境电商数据贷",
+    presentationLabel: "暂不匹配/提升路径",
+    failedConditions: [
+      "所有店铺近 12 个月销售额需不低于 200 万元。",
+      "第一期只准入 Amazon 美国站。",
+    ],
+    reassessmentActions: ["重新评估前请先满足或核验：所有店铺近 12 个月销售额需不低于 200 万元。"],
+  }]);
+  assert.doesNotMatch(serialized, /伪造|fitScore|advisor|internal|prompt|tokens/);
+});
+
 test("AI explanations merge only by immutable product id without replacing deterministic evidence", () => {
   const aiReport = {
     productExplanations: [

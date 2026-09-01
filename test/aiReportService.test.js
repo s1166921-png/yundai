@@ -46,6 +46,8 @@ const sampleLead = {
     note: "Do not send free text",
     qualifiedStoreCount: 1,
     requestedAmount: { amount: 2000000, currency: "USD" },
+    collectionsLast12Months: { amount: 12000000, currency: "RMB" },
+    currentLoanBalance: { amount: 0, currency: "RMB" },
   },
   productMatches: [{
     productId: "linklogis-amazon-sc",

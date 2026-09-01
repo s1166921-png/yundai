@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { buildCustomerMatchReport as buildProductReport } from "../src/lib/aiInsight.js";
+import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
+import { matchProducts } from "../src/lib/matching/productMatcher.js";
 
 const profileFixture = {
   entityRegion: "mainland",
@@ -213,6 +215,40 @@ test("report does not promote ineligible products when no ranked result exists",
     name: "联易融 Amazon SC 卖家融资贷",
     reason: "当前资料暂未满足该产品的部分基础准入要求。",
   }]);
+});
+
+test("all-ineligible live-like ecommerce profile receives safe improvement paths, not recommendations", () => {
+  const profile = normalizeCustomerProfile({
+    intakeVersion: "progressive-v1",
+    primaryBusinessModel: "platform_ecommerce",
+    primaryPlatformOrBuyerName: "Amazon",
+    entityRegion: "mainland",
+    entityType: "individual_business",
+    platformSites: ["other"],
+    companyAgeMonths: 20,
+    allStoreSalesRmb: 1400000,
+    platformRepaymentsLast12MonthsRmb: 300000,
+    platformHistoryMonths: 20,
+    hasCurrentOverdue: false,
+    hasMaterialCreditOrJudicialNegative: false,
+    consentToDataUse: true,
+  });
+  const matches = matchProducts(profile);
+  const report = buildCustomerMatchReport(profile, matches);
+  const serialized = JSON.stringify(report);
+
+  assert.equal(matches.every((match) => match.status === "ineligible"), true);
+  assert.equal(report.primary, null);
+  assert.deepEqual(report.alternatives, []);
+  assert.equal(report.improvementPaths.length, 2);
+  assert.ok(report.improvementPaths.every((path) => path.presentationLabel === "暂不匹配/提升路径"));
+  assert.ok(report.improvementPaths.some((path) => path.failedConditions.includes("所有店铺近 12 个月销售额需不低于 200 万元。")));
+  assert.ok(report.improvementPaths.some((path) => path.failedConditions.includes("所有店铺近 12 个月回款额需不低于 50 万元。")));
+  assert.ok(report.improvementPaths.some((path) => path.failedConditions.includes("第一期只准入 Amazon 美国站。")));
+  assert.ok(report.improvementPaths.some((path) => path.failedConditions.includes("企业注册需满 24 个月。")));
+  assert.match(report.summary, /暂不匹配/);
+  assert.match(report.summary, /提升路径/);
+  assert.doesNotMatch(serialized, /internalReason|fitScore|confidence|failedRules|advisor|prompt|token/);
 });
 
 test("low-evidence and needs-information profiles are possible directions with amounts suppressed", () => {

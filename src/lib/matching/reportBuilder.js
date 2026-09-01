@@ -190,6 +190,53 @@ const safeItemsToConfirm = (product, unknownRules = []) => {
     .slice(0, 3);
 };
 
+const safeFailedConditions = (product, failedRules = []) => {
+  const failedRuleIds = new Set((Array.isArray(failedRules) ? failedRules : [])
+    .map((rule) => rule?.id)
+    .filter((id) => typeof id === "string"));
+  return product.ruleSet
+    .filter((rule) => failedRuleIds.has(rule.id) && rule.internalReason == null)
+    .map((rule) => rule.message)
+    .filter((message, index, messages) => messages.indexOf(message) === index)
+    .slice(0, 3);
+};
+
+const improvementPathsFor = (profile, matches) => matches
+  .filter((match) => match?.status === "ineligible")
+  .map((match) => {
+    const product = getProductById(match.productId);
+    if (product == null) return null;
+    const failedConditions = safeFailedConditions(product, match.failedRules);
+    if (failedConditions.length === 0) return null;
+    return {
+      productId: product.id,
+      institution: product.institution,
+      name: product.name,
+      presentationLabel: "暂不匹配/提升路径",
+      failedConditions,
+      reassessmentActions: failedConditions.map((condition) => `重新评估前请先满足或核验：${condition}`),
+      primaryBusinessModelFit: product.fitProfile?.businessModels?.includes(profile.primaryBusinessModel) === true,
+      customerEvidenceGapCount: (Array.isArray(match.missingFields) ? match.missingFields : [])
+        .filter((field) => profile.intakeVersion !== "progressive-v1" || isProgressiveCustomerProfileField(field))
+        .length,
+      fitScore: Number.isFinite(match.fitScore) ? match.fitScore : 0,
+    };
+  })
+  .filter(Boolean)
+  .sort((left, right) => (
+    Number(right.primaryBusinessModelFit) - Number(left.primaryBusinessModelFit)
+    || left.customerEvidenceGapCount - right.customerEvidenceGapCount
+    || right.fitScore - left.fitScore
+    || left.productId.localeCompare(right.productId)
+  ))
+  .slice(0, 2)
+  .map(({
+    primaryBusinessModelFit: _primaryBusinessModelFit,
+    customerEvidenceGapCount: _customerEvidenceGapCount,
+    fitScore: _fitScore,
+    ...path
+  }) => path);
+
 const reportProduct = (profile, match, role) => {
   const product = getProductById(match.productId);
   if (product == null) return null;
@@ -245,14 +292,19 @@ export function buildCustomerMatchReport(profile = {}, matches = []) {
       reason: NON_MATCH_REASON,
       ...(profile.intakeVersion === "progressive-v1" ? { presentationLabel: "暂不匹配" } : {}),
     }));
+  const allProductsIneligible = matches.length > 0 && matches.every((match) => match?.status === "ineligible");
+  const improvementPaths = allProductsIneligible ? improvementPathsFor(profile, matches) : [];
 
   return {
     primary,
     alternatives,
     nonMatches,
+    improvementPaths,
     missingDocuments: missingDocumentsFor(profile, recommendedMatches),
     summary: primary == null
-      ? "当前资料中暂无可展示的推荐产品，请补充相关资料后再评估。"
+      ? improvementPaths.length > 0
+        ? "当前产品暂不匹配，已整理可重新评估的提升路径。"
+        : "当前资料中暂无可展示的推荐产品，请补充相关资料后再评估。"
       : primary.presentationLabel === "优先匹配" || primary.presentationLabel === "优先产品方向"
         ? `已为您整理 1 款优先产品及 ${alternatives.length} 款备选产品。`
         : primary.presentationLabel === "可能方向"

@@ -692,7 +692,7 @@ test("admin lead exposes current scenario audit without exposing it publicly", a
 
   assert.equal(Object.hasOwn(publicLead, "aiScenarioAudit"), false);
   assert.equal(adminLead.aiScenarioAudit.policyVersion, "meiou-financing-scenarios-v1");
-  assert.equal(adminLead.aiScenarioAudit.products[0].selectedScenarioCode, "balanced");
+  assert.equal(adminLead.aiScenarioAudit.products[0].selectedScenarioCode, "conservative");
   assert.equal(adminLead.aiScenarioAudit.products[0].selectedTermCode, "sc_90_days");
   assert.deepEqual(adminLead.aiScenarioAudit.advisorReview, adminLead.advisorReview);
   assert.equal(adminLead.aiScenarioAudit.meta.provider, "local");
@@ -1404,6 +1404,47 @@ test("POST /api/leads exposes only customer-safe non-match summaries", async (t)
     assert.equal(nonMatch.reason, "当前资料暂未满足该产品的部分基础准入要求。");
   }
   assert.doesNotMatch(JSON.stringify(payload.lead.matchReport.nonMatches), /fitScore|confidence|failedRules|internalReason|priority/);
+});
+
+test("POST /api/leads projects all-ineligible improvement paths without recommendations", async (t) => {
+  const { url } = await startTestServer(t);
+  const response = await postLead(url, visibleProgressivePayload({
+    companyName: "No Match Ecommerce Co.",
+    primaryBusinessModel: "platform_ecommerce",
+    entityRegion: "mainland",
+    entityType: "individual_business",
+    companyAgeMonths: 20,
+    legalRepresentativeAge: 38,
+    preferredCurrency: "rmb",
+    requestedAmount: 1000000,
+    fundUse: "platform_operations",
+    platformHistoryMonths: 20,
+    platformSites: ["other"],
+    storeCount: 2,
+    allStoreSalesRmb: 1400000,
+    platformRepaymentsLast12MonthsRmb: 300000,
+    refundRatePercent: 12,
+    qualifiedStoreCount: 1,
+    acceptsAccountControl: true,
+    hasCurrentOverdue: false,
+    hasMaterialCreditOrJudicialNegative: false,
+    contactName: "No Match Contact",
+    phone: "13800139020",
+    consentToDataUse: true,
+  }));
+  const payload = await response.json();
+  const { matchReport } = payload.lead;
+  const serialized = JSON.stringify(matchReport);
+
+  assert.equal(response.status, 201);
+  assert.equal(matchReport.primary, null);
+  assert.deepEqual(matchReport.alternatives, []);
+  assert.equal(matchReport.improvementPaths.length, 2);
+  assert.ok(matchReport.improvementPaths.every((path) => path.presentationLabel === "暂不匹配/提升路径"));
+  assert.ok(matchReport.improvementPaths.some((path) => path.failedConditions.includes("所有店铺近 12 个月销售额需不低于 200 万元。")));
+  assert.ok(matchReport.improvementPaths.some((path) => path.failedConditions.includes("所有店铺近 12 个月回款额需不低于 50 万元。")));
+  assert.ok(matchReport.improvementPaths.some((path) => path.failedConditions.includes("第一期只准入 Amazon 美国站。")));
+  assert.doesNotMatch(serialized, /internalReason|fitScore|confidence|failedRules|advisor|prompt|token/);
 });
 
 test("concurrent POST /api/leads atomically preserve every generated AI analysis", async (t) => {

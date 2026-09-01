@@ -655,6 +655,19 @@ function publicNonMatch(nonMatch) {
   };
 }
 
+function publicImprovementPath(path) {
+  if (!isPlainObject(path) || typeof path.productId !== "string") return null;
+  const failedConditions = stringArray(path.failedConditions).slice(0, 3);
+  const reassessmentActions = stringArray(path.reassessmentActions).slice(0, 3);
+  if (failedConditions.length === 0 || reassessmentActions.length === 0) return null;
+  return {
+    productId: path.productId,
+    presentationLabel: "暂不匹配/提升路径",
+    failedConditions,
+    reassessmentActions,
+  };
+}
+
 function publicMatchReport(report) {
   return {
     primary: publicReportProduct(report?.primary),
@@ -663,6 +676,9 @@ function publicMatchReport(report) {
       : [],
     nonMatches: Array.isArray(report?.nonMatches)
       ? report.nonMatches.map(publicNonMatch).filter(Boolean)
+      : [],
+    improvementPaths: Array.isArray(report?.improvementPaths)
+      ? report.improvementPaths.map(publicImprovementPath).filter(Boolean).slice(0, 2)
       : [],
     missingDocuments: Array.isArray(report?.missingDocuments) ? [...report.missingDocuments] : [],
     summary: report?.summary ?? "",
