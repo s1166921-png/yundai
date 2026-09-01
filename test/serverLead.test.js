@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmod, readFile, readdir, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,22 @@ const adminAuthorization = basicAuthorization(
   testAdminCredentials.username,
   testAdminCredentials.password,
 );
+
+const rawGet = (url, headers) => new Promise((resolve, reject) => {
+  const target = new URL(url);
+  const request = httpRequest({
+    hostname: target.hostname,
+    port: target.port,
+    path: target.pathname,
+    method: "GET",
+    headers,
+  }, (response) => {
+    response.resume();
+    response.once("end", () => resolve(response));
+  });
+  request.once("error", reject);
+  request.end();
+});
 
 const validAnalystNarrative = (input) => ({
   schemaVersion: AI_NARRATIVE_SCHEMA_VERSION,
@@ -1675,6 +1692,29 @@ test("CORS advertises PATCH for authenticated advisor review requests", async (t
   assert.match(response.headers.get("access-control-allow-methods"), /(?:^|,)PATCH(?:,|$)/);
 });
 
+test("local admin review accepts an authenticated direct same-origin mutation", async (t) => {
+  const { url } = await startTestServer(t);
+  const created = await (await postLead(url, completeAmazonScPayload({ companyName: "Same-origin Admin Co." }))).json();
+  const current = await getAdminLead(url, created.lead.id);
+  const response = await fetch(`${url}/api/leads/${created.lead.id}/review`, {
+    method: "PATCH",
+    headers: {
+      Authorization: adminAuthorization,
+      Origin: url,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      expectedRevision: current.revision,
+      status: "reviewed",
+      note: "Saved by the local admin page.",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), url);
+  assert.equal((await response.json()).lead.advisorReview.status, "reviewed");
+});
+
 test("simultaneous advisor review and lead submission preserve both atomic updates", async (t) => {
   const { url } = await startTestServer(t);
   const existing = await (await postLead(url, completeAmazonScPayload({ companyName: "Reviewed Co." }))).json();
@@ -2177,10 +2217,10 @@ test("POST /api/leads requires application/json", async (t) => {
   assert.deepEqual(await response.json(), { error: "请使用 application/json 提交" });
 });
 
-test("CORS allows only configured origins and rejects request-derived authority", async (t) => {
+test("CORS allows direct loopback same-origin while rejecting forged or cross-origin authority", async (t) => {
   const configuredOrigin = "https://ops.example.test";
   const { url } = await startTestServer(t, { allowedOrigins: [configuredOrigin] });
-  const unconfiguredServerOriginResponse = await fetch(`${url}/api/products`, {
+  const sameOriginResponse = await fetch(`${url}/api/products`, {
     headers: { Origin: url },
   });
   const forgedAuthorityResponse = await fetch(`${url}/api/products`, {
@@ -2189,13 +2229,27 @@ test("CORS allows only configured origins and rejects request-derived authority"
       Origin: "http://rebound.example.test",
     },
   });
+  const originHostMismatchResponse = await rawGet(`${url}/api/products`, {
+    Host: `localhost:${new URL(url).port}`,
+    Origin: url,
+  });
+  const protocolMismatchResponse = await fetch(`${url}/api/products`, {
+    headers: {
+      Host: `127.0.0.1:${new URL(url).port}`,
+      Origin: `https://127.0.0.1:${new URL(url).port}`,
+    },
+  });
   const configuredResponse = await fetch(`${url}/api/products`, { headers: { Origin: configuredOrigin } });
   const rejectedResponse = await fetch(`${url}/api/products`, { headers: { Origin: "https://untrusted.example.test" } });
 
-  assert.equal(unconfiguredServerOriginResponse.status, 403);
-  assert.equal(unconfiguredServerOriginResponse.headers.get("access-control-allow-origin"), null);
+  assert.equal(sameOriginResponse.status, 200);
+  assert.equal(sameOriginResponse.headers.get("access-control-allow-origin"), url);
   assert.equal(forgedAuthorityResponse.status, 403);
   assert.equal(forgedAuthorityResponse.headers.get("access-control-allow-origin"), null);
+  assert.equal(originHostMismatchResponse.statusCode, 403);
+  assert.equal(originHostMismatchResponse.headers["access-control-allow-origin"], undefined);
+  assert.equal(protocolMismatchResponse.status, 403);
+  assert.equal(protocolMismatchResponse.headers.get("access-control-allow-origin"), null);
   assert.equal(configuredResponse.status, 200);
   assert.equal(configuredResponse.headers.get("access-control-allow-origin"), configuredOrigin);
   assert.equal(rejectedResponse.status, 403);

@@ -192,7 +192,13 @@ const buildProductScenarios = (match, profile) => {
 export function buildFinancingScenarioInput({ profile = {}, productMatches = [] } = {}) {
   const seenRanks = new Set();
   const seenProductIds = new Set();
-  const products = productMatches
+  const matches = Array.isArray(productMatches) ? productMatches : [];
+  const products = matches
+    .filter((match) => (
+      match !== null
+      && typeof match === "object"
+      && !Array.isArray(match)
+    ))
     .filter(({ productId, rank, status }) => (
       getProductById(productId) != null
       && Number.isInteger(rank)

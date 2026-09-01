@@ -154,6 +154,14 @@ test("engine accepts only server matcher statuses and sanitized matcher evidence
   assert.deepEqual(result.products[0].missingEvidenceCodes, ["platformHistoryMonths", "qualified-store-count", "requested-amount"]);
 });
 
+test("engine ignores null and primitive product matches", () => {
+  const result = buildFinancingScenarioInput({
+    productMatches: [null, undefined, false, 7, "not-a-match", { productId: "linklogis-amazon-vc", rank: 1, status: "eligible" }],
+  });
+
+  assert.deepEqual(result.products.map(({ productId }) => productId), ["linklogis-amazon-vc"]);
+});
+
 test("engine clones pricing references before freezing its result", () => {
   const result = buildFinancingScenarioInput({
     productMatches: [{ productId: "linklogis-amazon-sc", rank: 1, status: "eligible" }],

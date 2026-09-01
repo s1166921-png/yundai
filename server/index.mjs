@@ -38,6 +38,7 @@ const localDevelopmentOrigins = new Set([
   "http://127.0.0.1:5173",
   "http://localhost:5173",
 ]);
+const loopbackHostnames = new Set(["localhost", "127.0.0.1", "::1"]);
 
 const legacyBaseFields = [
   "companyName",
@@ -338,6 +339,28 @@ function parseSerializedHttpOrigin(value) {
   }
 }
 
+function isLoopbackSocketAddress(address) {
+  return address === "127.0.0.1"
+    || address === "::1"
+    || address === "::ffff:127.0.0.1";
+}
+
+function isTrustedDirectLoopbackSameOrigin(request, normalizedOrigin) {
+  const host = request.headers.host;
+  if (typeof host !== "string") return false;
+
+  const protocol = request.socket?.encrypted === true ? "https:" : "http:";
+  const requestOrigin = parseSerializedHttpOrigin(`${protocol}//${host}`);
+  if (requestOrigin !== normalizedOrigin) return false;
+
+  const origin = new URL(normalizedOrigin);
+  const port = Number(origin.port || (origin.protocol === "https:" ? 443 : 80));
+  return loopbackHostnames.has(origin.hostname)
+    && Number.isInteger(request.socket?.localPort)
+    && request.socket.localPort === port
+    && isLoopbackSocketAddress(request.socket.localAddress);
+}
+
 function applyCorsHeaders(request, response, allowedOrigins, allowLocalDevelopmentOrigins) {
   const origin = request.headers.origin;
   if (!origin) return true;
@@ -346,7 +369,8 @@ function applyCorsHeaders(request, response, allowedOrigins, allowLocalDevelopme
   if (normalizedOrigin == null) return false;
   const isDocumentedLocalDevelopmentOrigin = allowLocalDevelopmentOrigins
     && localDevelopmentOrigins.has(normalizedOrigin);
-  if (!isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
+  const isTrustedDirectLoopbackOrigin = isTrustedDirectLoopbackSameOrigin(request, normalizedOrigin);
+  if (!isTrustedDirectLoopbackOrigin && !isDocumentedLocalDevelopmentOrigin && !allowedOrigins.has(normalizedOrigin)) return false;
 
   response.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
   response.setHeader("Access-Control-Allow-Credentials", "true");
