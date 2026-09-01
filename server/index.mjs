@@ -426,14 +426,62 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function addProductIdsToReport(report, matches) {
-  const rankedMatches = new Map(matches.filter((match) => match.rank != null).map((match) => [match.rank, match]));
+function isPlainObject(value) {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function plainObjectArray(value) {
+  return Array.isArray(value) ? value.filter(isPlainObject) : [];
+}
+
+function stringArray(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+
+function normalizeStoredProductMatches(value) {
+  return plainObjectArray(value).map((match) => ({
+    ...match,
+    missingFields: stringArray(match.missingFields),
+    advisorVerificationFields: stringArray(match.advisorVerificationFields),
+    passedRules: plainObjectArray(match.passedRules),
+    unknownRules: plainObjectArray(match.unknownRules),
+    failedRules: plainObjectArray(match.failedRules),
+  }));
+}
+
+function normalizeStoredMatchReport(value) {
+  const report = isPlainObject(value) ? value : {};
   return {
     ...report,
-    primary: report.primary == null
+    primary: isPlainObject(report.primary) ? report.primary : null,
+    alternatives: plainObjectArray(report.alternatives),
+    nonMatches: plainObjectArray(report.nonMatches),
+    missingDocuments: stringArray(report.missingDocuments),
+  };
+}
+
+function projectStoredLead(lead) {
+  const storedLead = isPlainObject(lead) ? lead : {};
+  return {
+    ...storedLead,
+    productMatches: normalizeStoredProductMatches(storedLead.productMatches),
+    matchReport: normalizeStoredMatchReport(storedLead.matchReport),
+  };
+}
+
+function addProductIdsToReport(report, matches) {
+  const safeReport = normalizeStoredMatchReport(report);
+  const rankedMatches = new Map(normalizeStoredProductMatches(matches)
+    .filter((match) => match.rank != null)
+    .map((match) => [match.rank, match]));
+  return {
+    ...safeReport,
+    primary: safeReport.primary == null
       ? null
-      : { productId: rankedMatches.get(1)?.productId ?? null, ...report.primary },
-    alternatives: report.alternatives.map((product, index) => ({
+      : { productId: rankedMatches.get(1)?.productId ?? null, ...safeReport.primary },
+    alternatives: safeReport.alternatives.map((product, index) => ({
       productId: rankedMatches.get(index + 2)?.productId ?? null,
       ...product,
     })),
@@ -458,9 +506,9 @@ function progressiveRawInput(input) {
 }
 
 function collectAdvisorVerificationFields(productMatches) {
-  return [...new Set(productMatches
+  return [...new Set(normalizeStoredProductMatches(productMatches)
     .filter((match) => match.rank != null && match.status !== "ineligible")
-    .flatMap((match) => match.advisorVerificationFields ?? []))];
+    .flatMap((match) => match.advisorVerificationFields))];
 }
 
 function normalizeLead(input, now = () => new Date()) {
@@ -623,26 +671,28 @@ function publicMatchReport(report) {
 }
 
 function canonicalMatchReportForLead(lead) {
-  if (lead?.profile && Array.isArray(lead?.productMatches)) {
+  const projectedLead = projectStoredLead(lead);
+  if (isPlainObject(projectedLead.profile)) {
     try {
       return addProductIdsToReport(
-        buildCustomerMatchReport(lead.profile, lead.productMatches),
-        lead.productMatches,
+        buildCustomerMatchReport(projectedLead.profile, projectedLead.productMatches),
+        projectedLead.productMatches,
       );
     } catch {
       // Historical records without a complete canonical profile use the stored projection below.
     }
   }
-  return lead?.matchReport ?? {};
+  return projectedLead.matchReport;
 }
 
 function projectedAiReportForLead(lead, matchReport = canonicalMatchReportForLead(lead)) {
+  const projectedLead = projectStoredLead(lead);
   const analysisInput = buildAiAnalysisInput({
-    profile: lead?.profile,
-    productMatches: lead?.productMatches,
+    profile: projectedLead.profile,
+    productMatches: projectedLead.productMatches,
     matchReport,
   });
-  return publicAiReport(lead?.aiAnalysis, lead?.advisorReview, analysisInput);
+  return publicAiReport(projectedLead.aiAnalysis, projectedLead.advisorReview, analysisInput);
 }
 
 function projectAiMetadata(meta = {}) {
@@ -721,16 +771,17 @@ function projectAdminAiAnalysis(analysis, analysisInput) {
 }
 
 function buildAiScenarioAudit(lead, matchReport = canonicalMatchReportForLead(lead)) {
+  const projectedLead = projectStoredLead(lead);
   const scenarioInput = buildFinancingScenarioInput({
-    profile: lead?.profile,
-    productMatches: lead?.productMatches,
+    profile: projectedLead.profile,
+    productMatches: projectedLead.productMatches,
   });
   const analysisInput = buildAiAnalysisInput({
-    profile: lead?.profile,
-    productMatches: lead?.productMatches,
+    profile: projectedLead.profile,
+    productMatches: projectedLead.productMatches,
     matchReport,
   });
-  const validation = validatedV3Narrative(lead?.aiAnalysis, analysisInput);
+  const validation = validatedV3Narrative(projectedLead.aiAnalysis, analysisInput);
   const selectedByProduct = new Map(
     (validation.ok ? validation.value.productAnalyses : [])
       .map((item) => [item.productId, item]),
@@ -751,19 +802,20 @@ function buildAiScenarioAudit(lead, matchReport = canonicalMatchReportForLead(le
       };
     }),
     missingDocuments: Array.isArray(matchReport?.missingDocuments) ? [...matchReport.missingDocuments] : [],
-    meta: auditMetadata(lead?.aiAnalysis),
-    advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
+    meta: auditMetadata(projectedLead.aiAnalysis),
+    advisorReview: projectStoredAdvisorReview(projectedLead.advisorReview),
   };
 }
 
 function publicLead(lead) {
-  const matchReport = canonicalMatchReportForLead(lead);
+  const projectedLead = projectStoredLead(lead);
+  const matchReport = canonicalMatchReportForLead(projectedLead);
   return {
-    id: lead.id,
-    createdAt: lead.createdAt,
-    estimationMode: lead.estimationMode,
+    id: projectedLead.id,
+    createdAt: projectedLead.createdAt,
+    estimationMode: projectedLead.estimationMode,
     matchReport: publicMatchReport(matchReport),
-    aiReport: projectedAiReportForLead(lead, matchReport),
+    aiReport: projectedAiReportForLead(projectedLead, matchReport),
   };
 }
 
@@ -772,14 +824,14 @@ function getLeadValue(lead, key) {
 }
 
 function getPrimaryMatch(lead) {
-  return lead.productMatches?.find((match) => match.rank === 1) ?? null;
+  return normalizeStoredProductMatches(lead?.productMatches).find((match) => match.rank === 1) ?? null;
 }
 
 function getOverallMatchStatus(lead) {
   const primaryMatch = getPrimaryMatch(lead);
   if (primaryMatch) return primaryMatch.status;
 
-  const matches = Array.isArray(lead.productMatches) ? lead.productMatches : [];
+  const matches = normalizeStoredProductMatches(lead?.productMatches);
   return matches.length > 0 && matches.every((match) => match.status === "ineligible")
     ? "ineligible"
     : null;
@@ -814,7 +866,7 @@ function formatMatchingValue(lead, key) {
     case "matching.primaryScenario":
       return lead.profile?.primaryBusinessModel ?? "";
     case "matching.alternatives":
-      return lead.matchReport?.alternatives?.map((product) => product.name).filter(Boolean).join("；") ?? "";
+      return plainObjectArray(lead.matchReport?.alternatives).map((product) => product.name).filter(Boolean).join("；");
     case "matching.status":
       return formatMatchStatus(getOverallMatchStatus(lead)) || "无推荐";
     case "matching.fitScore":
@@ -830,17 +882,17 @@ function formatMatchingValue(lead, key) {
     case "matching.currency":
       return lead.matchReport?.primary?.estimatedAmount?.currency ?? lead.matchReport?.primary?.currency ?? "";
     case "matching.missingFields":
-      return primaryMatch?.missingFields?.join("；") ?? "";
+      return stringArray(primaryMatch?.missingFields).join("；");
     case "matching.failedRules":
-      return (lead.productMatches ?? []).flatMap((match) => (
-        (match.failedRules ?? []).map((rule) => (
+      return normalizeStoredProductMatches(lead.productMatches).flatMap((match) => (
+        plainObjectArray(match.failedRules).map((rule) => (
           `${getProductName(match.productId)}：${rule.internalReason ?? rule.message ?? rule.id ?? "未通过"}`
         ))
       )).join("；");
     case "matching.advisorNextStep":
       return lead.aiInsight?.nextStep ?? "";
     case "matching.advisorFollowUp":
-      return lead.advisorVerificationFields?.join("；") ?? "";
+      return stringArray(lead.advisorVerificationFields).join("；");
     default:
       return "";
   }
@@ -895,21 +947,22 @@ function retryCapabilityForLead(lead, aiReportService) {
 }
 
 function adminLead(lead, aiReportService = null) {
-  const matchReport = canonicalMatchReportForLead(lead);
+  const projectedLead = projectStoredLead(lead);
+  const matchReport = canonicalMatchReportForLead(projectedLead);
   const analysisInput = buildAiAnalysisInput({
-    profile: lead?.profile,
-    productMatches: lead?.productMatches,
+    profile: projectedLead.profile,
+    productMatches: projectedLead.productMatches,
     matchReport,
   });
   return {
-    ...lead,
+    ...projectedLead,
     matchReport,
-    revision: storedLeadRevision(lead),
-    aiAnalysis: projectAdminAiAnalysis(lead?.aiAnalysis, analysisInput),
-    aiReport: projectedAiReportForLead(lead, matchReport),
-    aiScenarioAudit: buildAiScenarioAudit(lead, matchReport),
-    aiRetry: retryCapabilityForLead(lead, aiReportService),
-    advisorReview: projectStoredAdvisorReview(lead?.advisorReview),
+    revision: storedLeadRevision(projectedLead),
+    aiAnalysis: projectAdminAiAnalysis(projectedLead.aiAnalysis, analysisInput),
+    aiReport: projectedAiReportForLead(projectedLead, matchReport),
+    aiScenarioAudit: buildAiScenarioAudit(projectedLead, matchReport),
+    aiRetry: retryCapabilityForLead(projectedLead, aiReportService),
+    advisorReview: projectStoredAdvisorReview(projectedLead.advisorReview),
   };
 }
 

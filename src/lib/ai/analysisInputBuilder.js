@@ -105,6 +105,10 @@ export const buildAiAnalysisInput = ({ profile = {}, productMatches = [], matchR
   addBucketFact(facts, "platformHistoryBand", profile.platformHistoryMonths, monthBand);
   addBucketFact(facts, "singleStoreGmvBand", profile.singleStoreGmv, moneyBand);
   addBucketFact(facts, "requestedAmountBand", profile.requestedAmount, moneyBand);
+  addBucketFact(facts, "annualRevenueBand", profile.annualRevenue, moneyBand);
+  addBucketFact(facts, "collectionsLast12MonthsBand", profile.collectionsLast12Months, moneyBand);
+  addBucketFact(facts, "taxInvoiceAmountBand", profile.taxInvoiceAmount, moneyBand);
+  addBucketFact(facts, "currentLoanBalanceBand", profile.currentLoanBalance, moneyBand);
   addEnumFact(facts, "fundUse", profile.fundUse, FUND_USES);
   if (profile.acceptsAccountControl === true || profile.acceptsAccountControl === false) {
     facts.acceptsAccountControl = profile.acceptsAccountControl;

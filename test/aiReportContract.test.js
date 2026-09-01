@@ -8,6 +8,7 @@ import {
   validateAiNarrative,
 } from "../src/lib/ai/aiReportContract.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
+import { buildAiAnalysisInput } from "../src/lib/ai/analysisInputBuilder.js";
 
 const analystInputFixture = () => ({
   schemaVersion: "meiou-analysis-v3",
@@ -332,6 +333,28 @@ test("fallback selections are deterministic v3 choices", () => {
     ],
     confidenceCode: "low",
   }]);
+});
+
+test("incomplete candidates reject optimistic provider selections and fall back conservatively", () => {
+  const input = buildAiAnalysisInput({
+    profile: {
+      primaryBusinessModel: "amazon_sc",
+      qualifiedStoreCount: 1,
+      requestedAmount: { amount: 2000000, currency: "USD" },
+      singleStoreGmv: { amount: 6500000, currency: "USD" },
+      platformHistoryMonths: 18,
+    },
+    productMatches: [{ productId: "linklogis-amazon-sc", rank: 1, status: "needs_information" }],
+    matchReport: {},
+  });
+  const providerNarrative = validNarrative(input);
+
+  assert.deepEqual(input.products[0].amountScenarioCodes, ["conservative"]);
+  providerNarrative.productAnalyses[0].selectedAmountScenarioCode = "growth";
+  assert.equal(validateAiNarrative(providerNarrative, input).ok, false);
+
+  const fallback = buildFallbackAiAnalysis({ analysisInput: input, errorCategory: "timeout" });
+  assert.equal(fallback.customerReport.productAnalyses[0].selectedAmountScenarioCode, "conservative");
 });
 
 test("public projection ignores persisted prose and private metadata", () => {

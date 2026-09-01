@@ -472,12 +472,13 @@ test("golden deterministic guardrails project through match and customer reports
   const rejectedAccountControl = buildGoldenPipeline(progressiveAmazonScPayload({ acceptsAccountControl: false }));
   assert.equal(rejectedAccountControl.productMatches.find(({ productId }) => productId === "linklogis-amazon-sc")?.status, "needs_information");
   assert.ok(rejectedAccountControl.analysisInput.products[0].riskCodes.includes("risk:account-control-arrangement"));
+  assert.deepEqual(rejectedAccountControl.analysisInput.products[0].amountScenarioCodes, ["conservative"]);
   assert.equal(rejectedAccountControl.matchReport.primary?.productId, "linklogis-amazon-sc");
   assert.equal(rejectedAccountControl.matchReport.primary?.estimatedAmount, null);
   const rejectedAccountControlReport = publicAiReport(buildFallbackAiAnalysis({ analysisInput: rejectedAccountControl.analysisInput }), { status: "pending" }, rejectedAccountControl.analysisInput);
   assertPublicPrimaryAssessment(rejectedAccountControlReport, {
     productId: "linklogis-amazon-sc",
-    amountLabel: "180万-240万美元",
+    amountLabel: "120万-180万美元",
     termLabel: "90天",
     pricingLabel: "年化9%-11%",
   });

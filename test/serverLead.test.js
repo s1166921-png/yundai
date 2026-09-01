@@ -2098,6 +2098,69 @@ test("authenticated evidence retains dependency-level composite missing fields",
   assert.ok(lead.matchReport.missingDocuments.includes("回款账户安排确认"));
 });
 
+test("admin projections and selected export tolerate malformed persisted product matches", async (t) => {
+  const leads = [
+    {
+      id: "malformed-product-matches",
+      createdAt: "2026-08-30T00:00:00.000Z",
+      companyName: "Malformed Matches Co.",
+      contactName: "Malformed Contact",
+      phone: "13800139010",
+      profile: { primaryBusinessModel: "amazon_sc", entityRegion: "mainland" },
+      productMatches: { unexpected: "object instead of an array" },
+      matchReport: { primary: { name: "stale" }, alternatives: "not-an-array" },
+      aiAnalysis: { status: "fallback" },
+      advisorReview: { status: "pending", note: "", updatedAt: null },
+    },
+    {
+      id: "malformed-nested-matches",
+      createdAt: "2026-08-30T00:01:00.000Z",
+      companyName: "Malformed Nested Co.",
+      contactName: "Nested Contact",
+      phone: "13800139011",
+      profile: { primaryBusinessModel: "amazon_sc", entityRegion: "mainland" },
+      productMatches: [
+        null,
+        "not-a-match",
+        7,
+        {
+          productId: "linklogis-amazon-sc",
+          rank: 1,
+          status: "eligible",
+          missingFields: "not-an-array",
+          advisorVerificationFields: [null, "核验回款账户", 9],
+          passedRules: [null, "not-a-rule", { id: "amazon-sc-entity" }],
+          unknownRules: { not: "an-array" },
+          failedRules: [null, "not-a-rule", { message: "资料待核验" }],
+        },
+      ],
+      matchReport: { alternatives: [null, "not-a-product"] },
+      aiAnalysis: { status: "fallback" },
+      advisorReview: { status: "pending", note: "", updatedAt: null },
+    },
+  ];
+  const { url } = await startTestServer(t, { seedStore: { leads } });
+  const listResponse = await fetch(`${url}/api/leads`, { headers: { Authorization: adminAuthorization } });
+  const list = await listResponse.json();
+  const exportResponse = await fetch(
+    `${url}/api/leads/export?ids=malformed-product-matches&ids=malformed-nested-matches`,
+    { headers: { Authorization: adminAuthorization } },
+  );
+  const excel = await exportResponse.text();
+
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(list.leads.map((lead) => lead.id).sort(), ["malformed-nested-matches", "malformed-product-matches"]);
+  assert.deepEqual(list.leads.find((lead) => lead.id === "malformed-product-matches").productMatches, []);
+  const nested = list.leads.find((lead) => lead.id === "malformed-nested-matches").productMatches;
+  assert.deepEqual(nested[0].missingFields, []);
+  assert.deepEqual(nested[0].advisorVerificationFields, ["核验回款账户"]);
+  assert.deepEqual(nested[0].passedRules, [{ id: "amazon-sc-entity" }]);
+  assert.deepEqual(nested[0].unknownRules, []);
+  assert.deepEqual(nested[0].failedRules, [{ message: "资料待核验" }]);
+  assert.equal(exportResponse.status, 200);
+  assert.doesNotMatch(excel, /\[object Object\]|not-a-(?:match|rule|product)/);
+});
+
 test("authenticated export rejects an empty lead selection", async (t) => {
   const { url } = await startTestServer(t);
   await postLead(url);

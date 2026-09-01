@@ -185,3 +185,28 @@ test("engine omits scenarios when required numeric evidence is absent or invalid
   assert.deepEqual(result.products[0].amountScenarios, []);
   assert.equal(result.products[0].quantificationStatus, "needs_evidence");
 });
+
+test("materially incomplete candidates expose only conservative supported amounts", () => {
+  const incompleteSc = buildFinancingScenarioInput({
+    profile: {
+      qualifiedStoreCount: 1,
+      requestedAmount: { amount: 2000000, currency: "USD" },
+      singleStoreGmv: { amount: 6500000, currency: "USD" },
+      platformHistoryMonths: 18,
+    },
+    productMatches: [{ productId: "linklogis-amazon-sc", rank: 1, status: "needs_information" }],
+  });
+  const incompleteLogistics = buildFinancingScenarioInput({
+    profile: {
+      industry: "processing_manufacturing",
+      annualRevenue: { amount: 40000000, currency: "RMB" },
+      taxInvoiceAmount: { amount: 3000000, currency: "RMB" },
+    },
+    productMatches: [{ productId: "pingan-foreign-trade-logistics-loan", rank: 1, status: "needs_information" }],
+  });
+
+  assert.deepEqual(incompleteSc.products[0].amountScenarios.map(({ scenarioCode }) => scenarioCode), ["conservative"]);
+  assert.equal(incompleteSc.products[0].quantificationStatus, "quantified");
+  assert.deepEqual(incompleteLogistics.products[0].amountScenarios, []);
+  assert.equal(incompleteLogistics.products[0].quantificationStatus, "needs_evidence");
+});

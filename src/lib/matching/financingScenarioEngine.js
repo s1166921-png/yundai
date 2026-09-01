@@ -169,11 +169,14 @@ const amountScenariosFor = (productId, amountEstimate, profile) => {
 const buildProductScenarios = (match, profile) => {
   const product = getProductById(match.productId);
   const amountEstimate = estimateAmount(product, profile);
-  const amountScenarios = amountScenariosFor(product.id, amountEstimate, profile);
+  const allAmountScenarios = amountScenariosFor(product.id, amountEstimate, profile);
   const missingEvidenceCodes = boundedEvidenceCodes([
     ...sanitizedMatcherEvidenceCodes(match.missingFields, product),
     ...amountEvidenceCodes(product.id, profile, amountEstimate),
   ]);
+  const amountScenarios = match.status === "eligible" && missingEvidenceCodes.length === 0
+    ? allAmountScenarios
+    : allAmountScenarios.filter(({ scenarioCode }) => scenarioCode === "conservative");
 
   return freeze({
     productId: product.id,

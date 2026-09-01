@@ -85,9 +85,12 @@ construction and `pnpm start` keep that local-origin mode off by default. Other 
 remain denied unless set in comma-separated `MEIOU_ALLOWED_ORIGINS` values for explicitly
 approved frontends. Every configured value must already be an exact serialized `http` or
 `https` origin; startup rejects whitespace, userinfo, paths, queries, fragments, default-
-port normalization, and malformed values. Request `Host`/authority is never trusted for
-CORS. A production frontend, including one served from the same public origin, must set
-that exact public origin in `MEIOU_ALLOWED_ORIGINS`. Lead submissions must use
+port normalization, and malformed values. A constrained direct-loopback same-origin
+exception permits the built local admin at `http://127.0.0.1:8787/admin`: the request
+must arrive on a loopback listener and its serialized `Origin`, `Host`, protocol, and port
+must agree. `Host` alone is never trusted, and forged, malformed, protocol-mismatched, or
+cross-origin requests remain denied. Production and proxied frontends must still configure
+their exact public origin in `MEIOU_ALLOWED_ORIGINS`. Lead submissions must use
 `Content-Type: application/json`.
 
 For a local frontend on a different port, use an exact origin:
@@ -128,13 +131,12 @@ verification limitation.
 To exercise the built application locally, start the combined static and API server:
 
 ```bash
-MEIOU_ALLOWED_ORIGINS=http://127.0.0.1:8787 \
 PORT=8787 pnpm start
 ```
 
-This command is for local verification. The explicit same-origin setting is required so
-the browser's built-asset module requests are not denied with `403`. Deployment,
-production server changes, and DNS changes are outside this repository workflow.
+This command is for direct local verification. The constrained loopback same-origin rule
+covers the built admin and API on this URL; it does not broaden the cross-origin allowlist.
+Deployment, production server changes, and DNS changes are outside this repository workflow.
 
 ## Runtime architecture
 

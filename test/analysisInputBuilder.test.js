@@ -164,6 +164,41 @@ test("analysis input uses lower-inclusive and upper-exclusive month and money ba
   assert.equal(atBoundary({ requestedAmount: { amount: 1000000, currency: "EUR" } }).requestedAmountBand, undefined);
 });
 
+test("analysis input exposes currency-aware operating bands without raw financial values", () => {
+  const low = buildAiAnalysisInput({
+    profile: {
+      annualRevenue: { amount: 900000, currency: "RMB" },
+      collectionsLast12Months: { amount: 400000, currency: "RMB" },
+      taxInvoiceAmount: { amount: 600000, currency: "RMB" },
+      currentLoanBalance: { amount: 200000, currency: "RMB" },
+    },
+    productMatches: [],
+  });
+  const high = buildAiAnalysisInput({
+    profile: {
+      annualRevenue: { amount: 12000000, currency: "USD" },
+      collectionsLast12Months: { amount: 4000000, currency: "USD" },
+      taxInvoiceAmount: { amount: 7000000, currency: "USD" },
+      currentLoanBalance: { amount: 1500000, currency: "USD" },
+    },
+    productMatches: [],
+  });
+
+  assert.deepEqual(low.facts, {
+    annualRevenueBand: "under_1m_RMB",
+    collectionsLast12MonthsBand: "under_1m_RMB",
+    taxInvoiceAmountBand: "under_1m_RMB",
+    currentLoanBalanceBand: "under_1m_RMB",
+  });
+  assert.deepEqual(high.facts, {
+    annualRevenueBand: "10m_plus_USD",
+    collectionsLast12MonthsBand: "3m-5m_USD",
+    taxInvoiceAmountBand: "5m-10m_USD",
+    currentLoanBalanceBand: "1m-3m_USD",
+  });
+  assert.doesNotMatch(JSON.stringify({ low, high }), /900000|4000000|7000000|1500000/);
+});
+
 test("analysis input caps ranked products and keeps only safe evidence", () => {
   const input = buildAiAnalysisInput({
     productMatches: [
