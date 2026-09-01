@@ -45,6 +45,10 @@ synthetic profiles and placeholder local credentials for development and QA.
 
 ### AI local modes
 
+- **AI v3 data boundary:** `meiou-analysis-v3` sends only deidentified operating
+  classifications, product IDs, and server-owned allowlist codes. Company names,
+  contacts, phone numbers, free text, internal match evidence, and advisor notes are
+  never sent to DeepSeek.
 - **No `DEEPSEEK_API_KEY`:** submissions use the deterministic `rules_fallback` report.
   The fallback is explicitly labeled for the customer and lead persistence still succeeds.
 - **Official key configured:** the server calls DeepSeek using the values above and
@@ -52,6 +56,8 @@ synthetic profiles and placeholder local credentials for development and QA.
   used.
 - Provider timeouts, rate limits, malformed responses, and other provider failures do
   not block lead persistence. They resolve to the local fallback instead.
+- Customer-facing reports are preliminary preparation guidance, not a credit approval,
+  credit commitment, or final pricing offer. A financing advisor must review any next step.
 
 Deployment, SMS, production hosting, and cloud credential setup are out of scope for
 this repository workflow.
@@ -148,7 +154,8 @@ Full evidence is available only through authenticated internal paths:
 - `GET /api/leads/export` requires admin authentication and a non-empty `ids` selection.
 - The unlinked `/admin` UI filters by customer, product, institution, currency, status,
   financing amount, and date; it enables export only after one or more visible customer
-  IDs are explicitly selected.
+  IDs are explicitly selected. Open a customer from this admin entry to review its AI
+  scenario audit, submit the advisor review, and export only the selected records.
 - Review and AI-retry mutations include the lead's current revision. Ambiguous transport
   failures and revision conflicts trigger a filtered refetch before the UI presents the
   latest server state. No-key and exhausted-day states do not consume the one provider

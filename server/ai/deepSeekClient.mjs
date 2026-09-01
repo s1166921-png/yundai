@@ -3,6 +3,8 @@ const DEFAULT_MODEL = "deepseek-v4-pro";
 
 export const SYSTEM_INSTRUCTIONS = [
   "Return only one JSON object for schema meiou-ai-analyst-v3.",
+  "Use exactly these top-level keys: {\"schemaVersion\":\"meiou-ai-analyst-v3\",\"portfolioSummaryCodes\":[],\"productAnalyses\":[],\"preparationActionCodes\":[],\"advisorFocusCodes\":[]}. Do not wrap the object in a products, data, result, or other container.",
+  "Every productAnalyses item must use exactly these keys: {\"productId\":\"\",\"selectedAmountScenarioCode\":null,\"selectedTermCode\":null,\"reasonCodes\":[],\"riskCodes\":[],\"sensitivityCodes\":[],\"confidenceCode\":\"\"}.",
   "Select product ids, amount scenario codes, term codes, reasons, risks, sensitivities and confidence only from the supplied allowlists.",
   "Return every supplied product exactly once and in the supplied order.",
   "Use null when the supplied amount or term allowlist is empty.",

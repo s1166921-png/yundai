@@ -9,6 +9,7 @@ import {
   validateAiNarrative,
 } from "../src/lib/ai/aiReportContract.js";
 import { buildFallbackAiAnalysis } from "../src/lib/ai/fallbackReportBuilder.js";
+import { normalizeCustomerProfile } from "../src/lib/matching/customerProfile.js";
 import { matchProducts } from "../src/lib/matching/productMatcher.js";
 import { buildCustomerMatchReport } from "../src/lib/matching/reportBuilder.js";
 import { getPublicProducts } from "../src/lib/matching/publicProductProjection.js";
@@ -19,6 +20,191 @@ const rankedProductIds = (matches) => matches.filter(RANKED_MATCH).sort((left, r
 const publicProductIds = (view) => [view.primary, ...(view.alternatives ?? [])]
   .filter(Boolean)
   .map(({ productId }) => productId);
+
+const progressiveAmazonScPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "amazon_sc",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  platformHistoryMonths: 18,
+  singleStoreGmvUsd: 6000000,
+  qualifiedStoreCount: 1,
+  acceptsAccountControl: true,
+  preferredCurrency: "usd",
+  requestedAmount: 3000000,
+  fundUse: "inventory_procurement",
+  hasCurrentOverdue: false,
+  hasMajorLitigation: false,
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const progressiveWebankPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "platform_ecommerce",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  companyAgeMonths: 24,
+  legalRepresentativeAge: 38,
+  hasCurrentOverdue: false,
+  hasMaterialCreditOrJudicialNegative: false,
+  platformHistoryMonths: 30,
+  storeCount: 2,
+  allStoreSalesRmb: 24000000,
+  allStoreRepaymentsRmb: 9000000,
+  collectionsLast12MonthsRmb: 12000000,
+  refundRatePercent: 12,
+  participatingStoreOperatingDays: 365,
+  amazonAccountStatus: "normal",
+  amazonAhrScore: 320,
+  platformSites: ["united_states"],
+  fbaInventoryTurnoverCount: 3,
+  borrowerMatchesCollectionEntity: true,
+  acceptsAccountControl: true,
+  preferredCurrency: "rmb",
+  requestedAmount: 4000000,
+  fundUse: "receivables_turnover",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const progressiveLogisticsPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "processing_manufacturing",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  industry: "加工制造",
+  companyAgeMonths: 60,
+  controllerIndustryExperienceYears: 8,
+  hasSelfOperatedImportExportQualification: true,
+  foreignExchangeClassification: "a",
+  customsCreditClassification: "正常类",
+  importExportAmountLast12MonthsUsd: 1000000,
+  importExportAmountMonths13To24Usd: 900000,
+  daysSinceLatestImportExport: 30,
+  importExportCountLast12Months: 8,
+  importExportRevenueSharePercent: 60,
+  commodityRevenueSharePercent: 10,
+  twoYearSalesDeclinePercent: 10,
+  assetLiabilityRatioPercent: 45,
+  preferredCurrency: "rmb",
+  requestedAmount: 4000000,
+  taxRecordAndInvoiceCustomerTier: "tax_invoice",
+  coreAssetLiabilityRatioPercent: 70,
+  annualRevenueRmb: 40000000,
+  taxInvoiceAmountRmb: 3000000,
+  fundUse: "logistics_working_capital",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const progressiveCmbPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "tax_operations",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  registeredProvince: "广东省",
+  settlementAccountOpenedMonths: 24,
+  settlementAccountFlowNormal: true,
+  companyAgeMonths: 72,
+  annualRevenueRmb: 18000000,
+  assetLiabilityRatioPercent: 55,
+  creditBankCount: 3,
+  hasCurrentOverdue: false,
+  preferredCurrency: "rmb",
+  requestedAmount: 2000000,
+  fundUse: "tax_business_operations",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const progressiveAmazonVcPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "amazon_vc",
+  entityRegion: "mainland",
+  entityType: "limited_company",
+  platformSites: ["united_states"],
+  amazonAnnualGmvUsd: 3000000,
+  platformHistoryMonths: 12,
+  acceptsReceivablesArrangement: true,
+  acceptsAccountControl: true,
+  preferredCurrency: "usd",
+  requestedAmount: 1000000,
+  fundUse: "receivables_turnover",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const progressiveB2bPayload = (overrides = {}) => ({
+  intakeVersion: "progressive-v1",
+  primaryBusinessModel: "b2b_supermarket",
+  entityRegion: "hong_kong",
+  entityType: "limited_company",
+  buyerName: "Approved Buyer",
+  buyerCountry: "Singapore",
+  buyerTradingHistoryMonths: 24,
+  annualB2bTradeUsd: 5000000,
+  acceptsAccountControl: true,
+  acceptsReceivablesArrangement: true,
+  preferredCurrency: "usd",
+  requestedAmount: 1500000,
+  fundUse: "receivables_turnover",
+  consentToDataUse: true,
+  ...overrides,
+});
+
+const buildGoldenPipeline = (payload) => {
+  const profile = normalizeCustomerProfile(payload);
+  const productMatches = matchProducts(profile);
+  const matchReport = reportWithProductIds(buildCustomerMatchReport(profile, productMatches), productMatches);
+  return {
+    profile,
+    productMatches,
+    analysisInput: buildAiAnalysisInput({ profile, productMatches, matchReport }),
+  };
+};
+
+const GOLDEN_ANALYST_FIXTURES = Object.freeze({
+  "amazon-sc-complete": {
+    payload: progressiveAmazonScPayload(),
+    selectedAmountScenarioCode: "growth",
+  },
+  "amazon-sc-missing-collections": {
+    payload: progressiveAmazonScPayload({ collectionsLast12MonthsRmb: null }),
+    selectedAmountScenarioCode: "conservative",
+  },
+  "webank-medium-collections": {
+    payload: progressiveWebankPayload(),
+    selectedAmountScenarioCode: "balanced",
+  },
+  "pingan-logistics-manufacturing": {
+    payload: progressiveLogisticsPayload(),
+    selectedAmountScenarioCode: "balanced",
+  },
+  "cmb-missing-formula": {
+    payload: progressiveCmbPayload(),
+    selectedAmountScenarioCode: null,
+  },
+});
+
+const buildGoldenAnalystFixture = (fixtureName) => {
+  const fixture = GOLDEN_ANALYST_FIXTURES[fixtureName];
+  if (fixture == null) throw new RangeError(`Unknown Golden analyst fixture: ${fixtureName}`);
+
+  const pipeline = buildGoldenPipeline(fixture.payload);
+  const narrative = narrativeFor(pipeline.analysisInput);
+  narrative.productAnalyses[0] = {
+    ...narrative.productAnalyses[0],
+    selectedAmountScenarioCode: fixture.selectedAmountScenarioCode,
+  };
+  const validation = validateAiNarrative(narrative, pipeline.analysisInput);
+
+  return {
+    ...pipeline,
+    validation,
+    productAnalyses: validation.value?.productAnalyses ?? narrative.productAnalyses,
+  };
+};
 
 const FORBIDDEN_ANALYSIS_KEYS = new Set([
   "companyName",
@@ -148,6 +334,51 @@ const narrativeFor = (input) => ({
   })),
   preparationActionCodes: input.preparationActionCodes.slice(0, 5),
   advisorFocusCodes: input.advisorFocusCodes.slice(0, 5),
+});
+
+const CASES = [
+  ["amazon-sc-complete", "linklogis-amazon-sc", "growth"],
+  ["amazon-sc-missing-collections", "linklogis-amazon-sc", "conservative"],
+  ["webank-medium-collections", "webank-cross-border-data-loan", "balanced"],
+  ["pingan-logistics-manufacturing", "pingan-foreign-trade-logistics-loan", "balanced"],
+  ["cmb-missing-formula", "cmb-guangdong-business-loan", null],
+];
+
+for (const [fixtureName, expectedProductId, expectedScenarioCode] of CASES) {
+  test(`golden analyst case: ${fixtureName}`, () => {
+    const result = buildGoldenAnalystFixture(fixtureName);
+
+    assert.equal(result.validation.ok, true);
+    assert.equal(result.productAnalyses[0].productId, expectedProductId);
+    assert.equal(result.productAnalyses[0].selectedAmountScenarioCode, expectedScenarioCode);
+  });
+}
+
+test("golden analyst guardrails retain caps, hard stops, and unavailable formulas", () => {
+  const overLimit = buildGoldenPipeline(progressiveAmazonScPayload({ requestedAmount: 4000000 }));
+  const overLimitScenarios = overLimit.analysisInput.products[0].amountScenarios;
+  assert.equal(Math.max(...overLimitScenarios.map(({ maximum }) => maximum)), 3000000);
+
+  const currencyMismatch = buildGoldenPipeline(progressiveAmazonScPayload({ preferredCurrency: "rmb" }));
+  assert.equal(currencyMismatch.analysisInput.products[0].quantificationStatus, "needs_evidence");
+  assert.deepEqual(currencyMismatch.analysisInput.products[0].amountScenarioCodes, []);
+
+  const overdue = buildGoldenPipeline(progressiveWebankPayload({ hasCurrentOverdue: true }));
+  assert.equal(overdue.productMatches.find(({ productId }) => productId === "webank-cross-border-data-loan")?.status, "ineligible");
+
+  const rejectedAccountControl = buildGoldenPipeline(progressiveAmazonScPayload({ acceptsAccountControl: false }));
+  assert.equal(rejectedAccountControl.productMatches.find(({ productId }) => productId === "linklogis-amazon-sc")?.status, "needs_information");
+  assert.ok(rejectedAccountControl.analysisInput.products[0].riskCodes.includes("risk:account-control-arrangement"));
+
+  for (const [payload, expectedProductId] of [
+    [progressiveAmazonVcPayload(), "linklogis-amazon-vc"],
+    [progressiveB2bPayload(), "linklogis-b2b-factoring"],
+  ]) {
+    const result = buildGoldenPipeline(payload);
+    assert.equal(result.analysisInput.products[0].productId, expectedProductId);
+    assert.equal(result.analysisInput.products[0].quantificationStatus, "formula_unavailable");
+    assert.deepEqual(result.analysisInput.products[0].amountScenarios, []);
+  }
 });
 
 test("at least thirty synthetic journeys preserve deterministic product authority", () => {

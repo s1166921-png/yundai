@@ -99,6 +99,39 @@ test("multi-product financing assessment keeps each identity and role with its o
   assert.match(alternativeCard, /联易融[\s\S]*Amazon VC[\s\S]*补充资料后可量化[\s\S]*最长120天/);
 });
 
+test("formula-unavailable products display an explicit non-numeric funding state", async (t) => {
+  const { AiPreliminaryReport } = await loadModule(t, "/src/components/AiPreliminaryReport.jsx");
+  const report = {
+    ...customerAiReport,
+    financingAssessment: [
+      {
+        ...customerAiReport.financingAssessment[0],
+        productId: "linklogis-amazon-vc",
+        name: "联易融 Amazon VC 发货后融资贷",
+        amountLabel: "补充资料后可量化",
+        termLabel: "最长120天",
+      },
+      {
+        ...customerAiReport.financingAssessment[0],
+        productId: "linklogis-b2b-factoring",
+        institution: "联易融",
+        name: "联易融 B2B 应收账款融资",
+        roleLabel: "备选产品",
+        amountLabel: "补充资料后可量化",
+        termLabel: "最长120天",
+      },
+    ],
+  };
+  const view = buildAiReportView(report);
+  const markup = renderToStaticMarkup(createElement(AiPreliminaryReport, { report }));
+
+  assert.deepEqual(view.financingAssessment.map(({ amountLabel }) => amountLabel), [
+    "补充资料后可量化",
+    "补充资料后可量化",
+  ]);
+  assert.match(markup, /Amazon VC[\s\S]*补充资料后可量化[\s\S]*B2B 应收账款融资[\s\S]*补充资料后可量化/);
+});
+
 test("customer report resolves selected scenario into amount and term labels", () => {
   const view = buildAiReportView({
     source: "ai",

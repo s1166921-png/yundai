@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "vite";
 
 const stylesPath = new URL("../src/styles.css", import.meta.url);
 const viteConfigPath = new URL("../vite.config.mjs", import.meta.url);
@@ -81,4 +85,22 @@ test("legacy Vite targets retain iOS and Safari 10", async () => {
   const config = await readFile(viteConfigPath, "utf8");
   assert.match(config, /iOS >= 10/);
   assert.match(config, /Safari >= 10/);
+});
+
+test("production build emits distinct modern and legacy entry assets", async (t) => {
+  const outputDirectory = await mkdtemp(path.join(tmpdir(), "meiou-browser-build-"));
+  t.after(() => rm(outputDirectory, { recursive: true, force: true }));
+
+  await build({
+    configFile: fileURLToPath(viteConfigPath),
+    logLevel: "silent",
+    build: { outDir: outputDirectory, emptyOutDir: true },
+  });
+
+  const assets = await readdir(path.join(outputDirectory, "assets"));
+  const modernEntry = assets.find((asset) => /^index-[\w-]+\.js$/.test(asset) && !asset.includes("legacy"));
+  const legacyEntry = assets.find((asset) => /^index-legacy-[\w-]+\.js$/.test(asset));
+
+  assert.ok(modernEntry, "the modern entry asset is missing");
+  assert.ok(legacyEntry, "the legacy entry asset is missing");
 });

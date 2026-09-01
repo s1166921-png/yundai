@@ -123,6 +123,28 @@ test("DeepSeek client sends the official request with only the deidentified JSON
   assert.match(prompt, /only from the supplied allowlists/i);
   assert.match(prompt, /every supplied product exactly once and in the supplied order/i);
   assert.match(prompt, /use null when the supplied amount or term allowlist is empty/i);
+  assert.match(prompt, /exactly these top-level keys/i);
+  for (const key of [
+    "schemaVersion",
+    "portfolioSummaryCodes",
+    "productAnalyses",
+    "preparationActionCodes",
+    "advisorFocusCodes",
+  ]) {
+    assert.match(prompt, new RegExp(`"${key}"`));
+  }
+  assert.match(prompt, /do not wrap the object/i);
+  for (const key of [
+    "productId",
+    "selectedAmountScenarioCode",
+    "selectedTermCode",
+    "reasonCodes",
+    "riskCodes",
+    "sensitivityCodes",
+    "confidenceCode",
+  ]) {
+    assert.match(prompt, new RegExp(`"${key}"`));
+  }
   assert.match(prompt, /never output free-form prose.*financial numbers.*extra fields/i);
   assert.doesNotMatch(prompt, /Task 1 JSON contract/i);
   assert.doesNotMatch(request.options.body, /companyName|contactName|phone/);
