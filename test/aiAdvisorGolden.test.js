@@ -160,49 +160,102 @@ const buildGoldenPipeline = (payload) => {
   return {
     profile,
     productMatches,
+    matchReport,
     analysisInput: buildAiAnalysisInput({ profile, productMatches, matchReport }),
   };
 };
 
-const GOLDEN_ANALYST_FIXTURES = Object.freeze({
+const PROVIDER_SELECTION_FIXTURES = Object.freeze({
   "amazon-sc-complete": {
     payload: progressiveAmazonScPayload(),
-    selectedAmountScenarioCode: "growth",
+    providerSelectedAmountScenarioCode: "growth",
+    expected: {
+      productId: "linklogis-amazon-sc",
+      amountLabel: "240万-300万美元",
+      termLabel: "90天",
+      pricingLabel: "年化9%-11%",
+      fallbackAmountLabel: "180万-240万美元",
+    },
   },
   "amazon-sc-missing-collections": {
     payload: progressiveAmazonScPayload({ collectionsLast12MonthsRmb: null }),
-    selectedAmountScenarioCode: "conservative",
+    providerSelectedAmountScenarioCode: "conservative",
+    expected: {
+      productId: "linklogis-amazon-sc",
+      amountLabel: "120万-180万美元",
+      termLabel: "90天",
+      pricingLabel: "年化9%-11%",
+      fallbackAmountLabel: "180万-240万美元",
+    },
   },
   "webank-medium-collections": {
     payload: progressiveWebankPayload(),
-    selectedAmountScenarioCode: "balanced",
+    providerSelectedAmountScenarioCode: "balanced",
+    expected: {
+      productId: "webank-cross-border-data-loan",
+      amountLabel: "150万-250万元",
+      termLabel: "4+5，额度有效期1年",
+      pricingLabel: "待银行最终核定",
+      fallbackAmountLabel: "150万-250万元",
+    },
   },
   "pingan-logistics-manufacturing": {
     payload: progressiveLogisticsPayload(),
-    selectedAmountScenarioCode: "balanced",
+    providerSelectedAmountScenarioCode: "balanced",
+    expected: {
+      productId: "pingan-foreign-trade-logistics-loan",
+      amountLabel: "500万元",
+      termLabel: "最长36个月",
+      pricingLabel: "待银行最终核定",
+      fallbackAmountLabel: "500万元",
+    },
   },
   "cmb-missing-formula": {
     payload: progressiveCmbPayload(),
-    selectedAmountScenarioCode: null,
+    providerSelectedAmountScenarioCode: null,
+    expected: {
+      productId: "cmb-guangdong-business-loan",
+      amountLabel: "补充资料后可量化",
+      termLabel: "待银行最终核定",
+      pricingLabel: "待银行最终核定",
+      fallbackAmountLabel: "补充资料后可量化",
+    },
   },
 });
 
-const buildGoldenAnalystFixture = (fixtureName) => {
-  const fixture = GOLDEN_ANALYST_FIXTURES[fixtureName];
-  if (fixture == null) throw new RangeError(`Unknown Golden analyst fixture: ${fixtureName}`);
+const buildValidatedProviderSelectionFixture = (fixtureName) => {
+  const fixture = PROVIDER_SELECTION_FIXTURES[fixtureName];
+  if (fixture == null) throw new RangeError(`Unknown provider selection fixture: ${fixtureName}`);
 
   const pipeline = buildGoldenPipeline(fixture.payload);
   const narrative = narrativeFor(pipeline.analysisInput);
   narrative.productAnalyses[0] = {
     ...narrative.productAnalyses[0],
-    selectedAmountScenarioCode: fixture.selectedAmountScenarioCode,
+    selectedAmountScenarioCode: fixture.providerSelectedAmountScenarioCode,
   };
   const validation = validateAiNarrative(narrative, pipeline.analysisInput);
+  if (!validation.ok) throw new Error(validation.errors.join("; "));
+  const providerAnalysis = buildPersistedAiAnalysis({
+    narrative: validation.value,
+    provider: "validated-provider-fixture",
+    model: "validated-provider-fixture",
+    promptVersion: "validated-provider-fixture",
+    generatedAt: "2026-08-28T00:00:00.000Z",
+    durationMs: 1,
+    usage: { inputTokens: 1, outputTokens: 1 },
+  });
+  const fallbackAnalysis = buildFallbackAiAnalysis({
+    analysisInput: pipeline.analysisInput,
+    errorCategory: "provider-fixture-fallback",
+    now: () => new Date("2026-08-28T00:00:00.000Z"),
+  });
 
   return {
     ...pipeline,
+    fixture,
     validation,
-    productAnalyses: validation.value?.productAnalyses ?? narrative.productAnalyses,
+    providerReport: publicAiReport(providerAnalysis, { status: "pending" }, pipeline.analysisInput),
+    fallbackReport: publicAiReport(fallbackAnalysis, { status: "pending" }, pipeline.analysisInput),
   };
 };
 
@@ -336,39 +389,98 @@ const narrativeFor = (input) => ({
   advisorFocusCodes: input.advisorFocusCodes.slice(0, 5),
 });
 
-const CASES = [
-  ["amazon-sc-complete", "linklogis-amazon-sc", "growth"],
-  ["amazon-sc-missing-collections", "linklogis-amazon-sc", "conservative"],
-  ["webank-medium-collections", "webank-cross-border-data-loan", "balanced"],
-  ["pingan-logistics-manufacturing", "pingan-foreign-trade-logistics-loan", "balanced"],
-  ["cmb-missing-formula", "cmb-guangdong-business-loan", null],
+const DETERMINISTIC_PIPELINE_CASES = [
+  ["amazon-sc-complete", progressiveAmazonScPayload(), "linklogis-amazon-sc", "quantified", ["conservative", "balanced", "growth"], ["sc_90_days", "sc_revolving"]],
+  ["amazon-sc-missing-collections", progressiveAmazonScPayload({ collectionsLast12MonthsRmb: null }), "linklogis-amazon-sc", "quantified", ["conservative", "balanced", "growth"], ["sc_90_days", "sc_revolving"]],
+  ["webank-medium-collections", progressiveWebankPayload(), "webank-cross-border-data-loan", "quantified", ["conservative", "balanced", "growth"], ["webank_4_plus_5", "webank_3_plus_6"]],
+  ["pingan-logistics-manufacturing", progressiveLogisticsPayload(), "pingan-foreign-trade-logistics-loan", "quantified", ["balanced"], ["up_to_36_months"]],
+  ["cmb-missing-formula", progressiveCmbPayload(), "cmb-guangdong-business-loan", "formula_unavailable", [], []],
 ];
 
-for (const [fixtureName, expectedProductId, expectedScenarioCode] of CASES) {
-  test(`golden analyst case: ${fixtureName}`, () => {
-    const result = buildGoldenAnalystFixture(fixtureName);
+for (const [fixtureName, payload, expectedProductId, expectedQuantificationStatus, expectedScenarioCodes, expectedTermCodes] of DETERMINISTIC_PIPELINE_CASES) {
+  test(`golden deterministic pipeline builds expected candidate and scenario set: ${fixtureName}`, () => {
+    const result = buildGoldenPipeline(payload);
+    const primaryInput = result.analysisInput.products[0];
 
-    assert.equal(result.validation.ok, true);
-    assert.equal(result.productAnalyses[0].productId, expectedProductId);
-    assert.equal(result.productAnalyses[0].selectedAmountScenarioCode, expectedScenarioCode);
+    assert.equal(result.matchReport.primary?.productId, expectedProductId);
+    assert.equal(primaryInput.productId, expectedProductId);
+    assert.equal(primaryInput.quantificationStatus, expectedQuantificationStatus);
+    assert.deepEqual(primaryInput.amountScenarioCodes, expectedScenarioCodes);
+    assert.deepEqual(primaryInput.termCodes, expectedTermCodes);
   });
 }
 
-test("golden analyst guardrails retain caps, hard stops, and unavailable formulas", () => {
+const assertPublicPrimaryAssessment = (report, expected) => {
+  const primary = report.financingAssessment[0];
+  assert.equal(primary.productId, expected.productId);
+  assert.equal(primary.roleLabel, "优先产品");
+  assert.equal(primary.amountLabel, expected.amountLabel);
+  assert.equal(primary.termLabel, expected.termLabel);
+  assert.equal(primary.pricingLabel, expected.pricingLabel);
+};
+
+for (const fixtureName of Object.keys(PROVIDER_SELECTION_FIXTURES)) {
+  test(`validated provider fixture selection projects a complete public customer report: ${fixtureName}`, () => {
+    const result = buildValidatedProviderSelectionFixture(fixtureName);
+    const { expected } = result.fixture;
+
+    assert.equal(result.validation.ok, true);
+    assert.equal(result.providerReport.source, "ai");
+    assertPublicPrimaryAssessment(result.providerReport, expected);
+
+    assert.equal(result.fallbackReport.source, "rules_fallback");
+    assertPublicPrimaryAssessment(result.fallbackReport, {
+      ...expected,
+      amountLabel: expected.fallbackAmountLabel,
+    });
+  });
+}
+
+test("golden deterministic guardrails project through match and customer reports", () => {
   const overLimit = buildGoldenPipeline(progressiveAmazonScPayload({ requestedAmount: 4000000 }));
   const overLimitScenarios = overLimit.analysisInput.products[0].amountScenarios;
   assert.equal(Math.max(...overLimitScenarios.map(({ maximum }) => maximum)), 3000000);
+  assert.equal(overLimit.matchReport.primary?.productId, "linklogis-amazon-sc");
+  const overLimitReport = publicAiReport(buildFallbackAiAnalysis({ analysisInput: overLimit.analysisInput }), { status: "pending" }, overLimit.analysisInput);
+  assertPublicPrimaryAssessment(overLimitReport, {
+    productId: "linklogis-amazon-sc",
+    amountLabel: "180万-240万美元",
+    termLabel: "90天",
+    pricingLabel: "年化9%-11%",
+  });
 
   const currencyMismatch = buildGoldenPipeline(progressiveAmazonScPayload({ preferredCurrency: "rmb" }));
   assert.equal(currencyMismatch.analysisInput.products[0].quantificationStatus, "needs_evidence");
   assert.deepEqual(currencyMismatch.analysisInput.products[0].amountScenarioCodes, []);
+  assert.equal(currencyMismatch.matchReport.primary?.productId, "linklogis-amazon-sc");
+  assert.equal(currencyMismatch.matchReport.primary?.estimatedAmount?.currency, "USD");
+  assert.equal(currencyMismatch.matchReport.primary?.estimatedAmount?.max, 3000000);
+  const currencyMismatchReport = publicAiReport(buildFallbackAiAnalysis({ analysisInput: currencyMismatch.analysisInput }), { status: "pending" }, currencyMismatch.analysisInput);
+  assertPublicPrimaryAssessment(currencyMismatchReport, {
+    productId: "linklogis-amazon-sc",
+    amountLabel: "补充资料后可量化",
+    termLabel: "90天",
+    pricingLabel: "年化9%-11%",
+  });
 
   const overdue = buildGoldenPipeline(progressiveWebankPayload({ hasCurrentOverdue: true }));
   assert.equal(overdue.productMatches.find(({ productId }) => productId === "webank-cross-border-data-loan")?.status, "ineligible");
+  assert.notEqual(overdue.matchReport.primary?.productId, "webank-cross-border-data-loan");
+  const overdueReport = publicAiReport(buildFallbackAiAnalysis({ analysisInput: overdue.analysisInput }), { status: "pending" }, overdue.analysisInput);
+  assert.equal(overdueReport.financingAssessment.some(({ productId }) => productId === "webank-cross-border-data-loan"), false);
 
   const rejectedAccountControl = buildGoldenPipeline(progressiveAmazonScPayload({ acceptsAccountControl: false }));
   assert.equal(rejectedAccountControl.productMatches.find(({ productId }) => productId === "linklogis-amazon-sc")?.status, "needs_information");
   assert.ok(rejectedAccountControl.analysisInput.products[0].riskCodes.includes("risk:account-control-arrangement"));
+  assert.equal(rejectedAccountControl.matchReport.primary?.productId, "linklogis-amazon-sc");
+  assert.equal(rejectedAccountControl.matchReport.primary?.estimatedAmount, null);
+  const rejectedAccountControlReport = publicAiReport(buildFallbackAiAnalysis({ analysisInput: rejectedAccountControl.analysisInput }), { status: "pending" }, rejectedAccountControl.analysisInput);
+  assertPublicPrimaryAssessment(rejectedAccountControlReport, {
+    productId: "linklogis-amazon-sc",
+    amountLabel: "180万-240万美元",
+    termLabel: "90天",
+    pricingLabel: "年化9%-11%",
+  });
 
   for (const [payload, expectedProductId] of [
     [progressiveAmazonVcPayload(), "linklogis-amazon-vc"],
@@ -378,6 +490,14 @@ test("golden analyst guardrails retain caps, hard stops, and unavailable formula
     assert.equal(result.analysisInput.products[0].productId, expectedProductId);
     assert.equal(result.analysisInput.products[0].quantificationStatus, "formula_unavailable");
     assert.deepEqual(result.analysisInput.products[0].amountScenarios, []);
+    assert.equal(result.matchReport.primary?.productId, expectedProductId);
+    assert.equal(result.matchReport.primary?.estimatedAmount?.kind, "manual");
+    assert.equal(result.matchReport.primary?.estimatedAmount?.max, null);
+    const report = publicAiReport(buildFallbackAiAnalysis({ analysisInput: result.analysisInput }), { status: "pending" }, result.analysisInput);
+    assert.equal(report.source, "rules_fallback");
+    assert.equal(report.financingAssessment[0].productId, expectedProductId);
+    assert.equal(report.financingAssessment[0].roleLabel, "优先产品");
+    assert.equal(report.financingAssessment[0].amountLabel, "补充资料后可量化");
   }
 });
 

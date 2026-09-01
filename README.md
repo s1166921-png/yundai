@@ -59,6 +59,23 @@ synthetic profiles and placeholder local credentials for development and QA.
 - Customer-facing reports are preliminary preparation guidance, not a credit approval,
   credit commitment, or final pricing offer. A financing advisor must review any next step.
 
+### Verified DeepSeek smoke override
+
+The documented production default remains `deepseek-v4-pro` with its 12-second timeout.
+For the Task 6 local smoke, the verified successful provider submission used this explicit
+override:
+
+```bash
+DEEPSEEK_MODEL=deepseek-v4-flash \
+DEEPSEEK_TIMEOUT_MS=90000 \
+PORT=8787 pnpm dev:api
+```
+
+This is a local verification override, not a production-default change. In that smoke,
+the Pro configuration timed out and safely produced `rules_fallback`; it did not produce
+an `ai` source report. Operators using Pro may need to set a larger appropriate timeout,
+while retaining the fallback behavior for provider failures.
+
 Deployment, SMS, production hosting, and cloud credential setup are out of scope for
 this repository workflow.
 
@@ -111,11 +128,13 @@ verification limitation.
 To exercise the built application locally, start the combined static and API server:
 
 ```bash
+MEIOU_ALLOWED_ORIGINS=http://127.0.0.1:8787 \
 PORT=8787 pnpm start
 ```
 
-This command is for local verification. Deployment, production server changes, and DNS
-changes are outside this repository workflow.
+This command is for local verification. The explicit same-origin setting is required so
+the browser's built-asset module requests are not denied with `403`. Deployment,
+production server changes, and DNS changes are outside this repository workflow.
 
 ## Runtime architecture
 
