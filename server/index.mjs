@@ -25,6 +25,8 @@ import { createPromotionHandler } from "./promotion/routes.mjs";
 import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
 import { createOwnershipHandler, resolveSubmissionOwnership } from "./sales/ownership.mjs";
 import { createSalesCustomerHandler } from "./sales/customerRoutes.mjs";
+import { buildSalesPage } from './sales/salesPage.mjs';
+import { buildAccountPage } from './sales/accountPage.mjs';
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -88,6 +90,8 @@ const leadColumns = [
   ["companyName", "企业名称"],
   ["contactName", "联系人"],
   ["phone", "联系电话"],
+  ["sourceSalespersonName", "来源销售"],
+  ["assignedSalespersonName", "负责销售"],
   ["platform", "主营平台"],
   ["productInterest", "意向产品"],
   ["matching.primaryScenario", "主融资场景"],
@@ -1048,6 +1052,11 @@ function filterLeads(url, leads) {
   const toTime = dateTo ? Date.parse(`${dateTo}T23:59:59.999`) : Number.NaN;
 
   return leads.filter((lead) => {
+    const assignment = url.searchParams.get('assignment');
+    if (assignment === 'unassigned' && lead.assignedSalespersonId) return false;
+    if (assignment === 'assigned' && !lead.assignedSalespersonId) return false;
+    const owner = url.searchParams.get('assignedSalespersonId');
+    if (owner && lead.assignedSalespersonId !== owner) return false;
     const primary = getPrimaryMatch(lead);
     const product = getProductById(primary?.productId);
     const submittedAmount = lead.profile?.requestedAmount?.amount;
@@ -1169,6 +1178,10 @@ async function handleRequest(request, response, {
   }
 
   try {
+    if (request.method === 'GET' && ['/admin/sales', '/admin/sales/accounts'].includes(url.pathname)) {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
+      response.end(url.pathname === '/admin/sales' ? buildSalesPage() : buildAccountPage()); return;
+    }
     if (await ownershipHandler(request, response, url)) return;
     if (await salesAuthHandler(request, response, url)) return;
     if (await salesCustomerHandler(request, response, url)) return;
@@ -1251,8 +1264,14 @@ async function handleRequest(request, response, {
         return;
       }
       const leads = await readLeads(leadsFilePath);
+      let names = new Map();
+      if (leads.some(lead => lead.sourceSalespersonId || lead.assignedSalespersonId)) {
+        try { names = new Map((await getPromotionStore()).listSalespeople().map(s => [s.id, s.name])); } catch { /* Existing admin remains available during promotion outage. */ }
+      }
       sendJson(response, 200, {
-        leads: filterLeads(url, leads).map((lead) => adminLead(lead, aiReportService)),
+        leads: filterLeads(url, leads).map((lead) => ({ ...adminLead(lead, aiReportService),
+          sourceSalespersonName: lead.sourceSalespersonId ? names.get(lead.sourceSalespersonId) ?? '历史销售' : '普通入口 / 未知',
+          assignedSalespersonName: lead.assignedSalespersonId ? names.get(lead.assignedSalespersonId) ?? '历史销售' : '待分配' })),
       });
       return;
     }
