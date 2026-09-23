@@ -2,6 +2,8 @@
 
 日期：2026-09-23。环境：Windows、Node 24.15.0、pnpm 11.3.0。实现位于 feat/sales-qr；未上线、推送或合并。
 
+后续更新：功能分支已推送并创建 PR #1，未合并或上线。按用户要求将销售密码下限改为 8 个字符；新增 HTTP 边界测试验证创建、修改、重置接受 8 位并拒绝 7 位，以及三个页面表单的最小长度一致。相关认证、身份和界面测试共 9 项通过。
+
 ## 自动验证
 
 执行 `node --test --test-timeout=45000 --test-concurrency=1 test/*.test.js`：共 400 项，398 通过、0 失败、2 跳过。两项 POSIX 文件权限测试在 Windows 跳过，在 Unix 保持启用。`pnpm build` 现代及 legacy 构建通过，`git diff --check` 无空白错误。

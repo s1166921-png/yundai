@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { salesFixture } from './salesTestSupport.js';
+test('eight-character passwords work across creation, change and reset; seven are rejected', async t => {
+  const f = await salesFixture(t);
+  const sale = (await (await f.asAdmin('/api/admin/promotions/salespeople', 'POST', { name: '密码边界测试' })).json()).salesperson;
+  const route = '/api/admin/sales/accounts';
+  const input = { salespersonId: sale.id, username: 'eight.test', password: 'Seven12' };
+  assert.equal((await f.asAdmin(route, 'POST', input)).status, 400);
+  const created = await f.asAdmin(route, 'POST', { ...input, password: 'Eight123' });
+  assert.equal(created.status, 201);
+  const account = (await created.json()).account;
+  const session = await f.login('eight.test', 'Eight123');
+  assert.equal((await f.request('/api/sales/password', 'POST', { currentPassword: 'Eight123', newPassword: 'Seven12' }, session.headers)).status, 400);
+  assert.equal((await f.request('/api/sales/password', 'POST', { currentPassword: 'Eight123', newPassword: 'Changed8' }, session.headers)).status, 200);
+  await f.login('eight.test', 'Changed8');
+  assert.equal((await f.asAdmin(route + '/' + account.id + '/password', 'POST', { password: 'Seven12' })).status, 400);
+  assert.equal((await f.asAdmin(route + '/' + account.id + '/password', 'POST', { password: 'Reset123' })).status, 200);
+  assert.equal((await f.login('eight.test', 'Reset123')).data.mustChangePassword, true);
+});
 test('sales authentication enforces cookies, Origin, CSRF, change password, logout and reset', async t => {
   const f = await salesFixture(t), { account, sale } = await f.create('sales.a');
   assert.equal((await f.request('/api/admin/sales/accounts')).status, 401);

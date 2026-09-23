@@ -6,8 +6,8 @@ const derive = promisify(scrypt);
 const options = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 let running = 0;
 export function validatePassword(password) {
-  if (typeof password !== 'string' || password.length < 12 || password.length > 128 || Buffer.byteLength(password) > 512)
-    throw new PromotionError('密码须为 12–128 个字符');
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128 || Buffer.byteLength(password) > 512)
+    throw new PromotionError('密码须为 8–128 个字符');
 }
 async function compute(password, salt) {
   if (running >= 4) throw new PromotionError('登录服务繁忙，请稍后重试', 429);

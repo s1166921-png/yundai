@@ -51,7 +51,7 @@ store.updateSalesperson(salesperson.id, { active: false });
 assert.equal(store.identity.resolveSession(session.token), null);
 ```
 
-- [ ] 建立 accounts(id, salesperson_id UNIQUE REFERENCES salespeople(id), username UNIQUE, password_hash, must_change_password, created_at, updated_at)、sessions(token_hash PRIMARY KEY, account_id, csrf_token, expires_at)。username 规范为 trim 后小写 ASCII，3–64 字符 `[a-z0-9._-]`；密码 12–128 字符、UTF-8 不超过 512 字节，拒绝静默截断。保存 scrypt 参数、随机 16 字节盐和 64 字节派生值；用 timingSafeEqual 比较，未知用户名也执行一次固定 dummy 哈希验证。
+- [ ] 建立 accounts(id, salesperson_id UNIQUE REFERENCES salespeople(id), username UNIQUE, password_hash, must_change_password, created_at, updated_at)、sessions(token_hash PRIMARY KEY, account_id, csrf_token, expires_at)。username 规范为 trim 后小写 ASCII，3–64 字符 `[a-z0-9._-]`；密码 8–128 字符、UTF-8 不超过 512 字节，拒绝静默截断。保存 scrypt 参数、随机 16 字节盐和 64 字节派生值；用 timingSafeEqual 比较，未知用户名也执行一次固定 dummy 哈希验证。
 
 ```js
 const derived = await scryptAsync(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });

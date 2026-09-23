@@ -6,6 +6,15 @@ import { mountSalesClient } from '../server/sales/salesClient.mjs';
 import { buildAccountPage } from '../server/sales/accountPage.mjs';
 import { mountAccountClient } from '../server/sales/accountClient.mjs';
 const ok = data => ({ ok: true, status: 200, json: async () => data });
+test('all password-setting forms allow eight characters', () => {
+  const { document: sales } = parseHTML(buildSalesPage());
+  const { document: admin } = parseHTML(buildAccountPage());
+  for (const input of [sales.querySelector('#new-password'), admin.querySelector('#initial-password'), admin.querySelector('#reset-password')]) {
+    assert.equal(input.getAttribute('minlength'), '8');
+    assert.equal(input.getAttribute('maxlength'), '128');
+  }
+  assert.match(sales.querySelector('#change-panel').textContent, /8–128/);
+});
 test('sales login enforces initial password screen and logout clears late customer responses', async () => {
   const { document } = parseHTML(buildSalesPage());
   let resolveList, initial = true;
