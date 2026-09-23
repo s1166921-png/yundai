@@ -3,6 +3,14 @@
 React 19 and Vite 6 customer intake for deterministic financing-product matching, with
 a local Node API, authenticated admin review, and selected-customer Excel export.
 
+## Sales promotion QR codes
+
+Administrators can create salesperson-specific links and downloadable QR codes at
+`/admin/promotions`, then view anonymous page visits by salesperson and date.
+This counts visits, not identified customers or unique people.
+See the [setup and usage guide](docs/sales-promotion.md) and
+[validation record](docs/sales-promotion-qa.md) before deployment.
+
 ## Local setup
 
 Install the pinned dependencies:

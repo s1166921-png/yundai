@@ -109,6 +109,7 @@ export function buildAdminPage({ leadColumns, products }) {
         <div class="tools">
           <input id="username" autocomplete="username" placeholder="管理员账户" />
           <input id="password" type="password" autocomplete="current-password" placeholder="管理员密码" />
+          <a href="/admin/promotions">销售推广</a>
           <button id="load" type="button">读取客户信息</button>
           <button id="export" class="primary" type="button" disabled>导出选中 Excel</button>
         </div>

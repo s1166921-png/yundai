@@ -50,7 +50,7 @@ export function normalizePublicSiteUrl(value) {
   let url;
   try { url = new URL(value); } catch { throw invalid(); }
   if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash ||
-      url.port || !url.hostname.includes(".") || url.hostname.endsWith(".localhost") || url.hostname.endsWith(".local") ||
+      url.port || url.hostname.endsWith(".") || !url.hostname.includes(".") || url.hostname.endsWith(".localhost") || url.hostname.endsWith(".local") ||
       isIP(url.hostname) || url.hostname.startsWith("[")) throw invalid();
   return url.origin;
 }

@@ -55,6 +55,6 @@ test("validation rejects malformed input, expired events, invalid dates and publ
   assert.equal(f.store.recordVisit(f.event("0".repeat(32))).inserted, false);
   for (const dateFrom of ["2026-02-30", "2026-13-01", "yesterday"]) assert.throws(() => validateDateRange({ dateFrom }));
   assert.throws(() => validateDateRange({ dateFrom: "2026-09-23", dateTo: "2026-09-22" }));
-  for (const value of ["http://example.org", "https://localhost", "https://example.org/path", "https://a:b@example.org", "https://example.org/?x=1"]) assert.throws(() => normalizePublicSiteUrl(value));
+  for (const value of ["http://example.org", "https://localhost", "https://localhost.", "https://foo.local.", "https://foo.localhost.", "https://example.org/path", "https://a:b@example.org", "https://example.org/?x=1"]) assert.throws(() => normalizePublicSiteUrl(value));
   assert.equal(normalizePublicSiteUrl("https://yundai.meiouyuncang.com/"), "https://yundai.meiouyuncang.com");
 });

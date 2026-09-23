@@ -656,7 +656,8 @@ test("POST persists the lead before AI generation and returns a customer-safe in
 
   assert.equal(response.status, 201);
   assert.equal(sawPersistedPending, true);
-  assert.equal(pendingStoreMode, 0o600);
+  if (process.platform !== "win32") assert.equal(pendingStoreMode, 0o600);
+  else t.diagnostic("POSIX 0600 bits are not represented by Windows stat; persistence assertions still run.");
   assert.equal(generatedCount, 1);
   assert.equal(body.lead.aiReport.source, "ai");
   assert.equal(body.lead.aiReport.reviewStatus, "pending");
@@ -674,7 +675,7 @@ test("POST persists the lead before AI generation and returns a customer-safe in
     note: "",
     updatedAt: null,
   });
-  assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal((await stat(leadsFilePath)).mode & 0o777, 0o600);
   assert.equal(stored.rawInput.aiAnalysis, undefined);
   assert.equal(stored.rawInput.advisorReview, undefined);
   assert.doesNotMatch(
@@ -1552,7 +1553,7 @@ test("client disconnect after pending persistence does not remove the lead", asy
   assert.fail("lead was not retained and completed after the client disconnected");
 });
 
-test("both pending and completed lead writes preserve mode 0600", async (t) => {
+test("both pending and completed lead writes preserve mode 0600", { skip: process.platform === "win32" ? "POSIX file mode test; Windows uses ACLs" : false }, async (t) => {
   const { leadsFilePath, url } = await startTestServer(t);
   const createdResponse = await postLead(url);
 
@@ -2503,7 +2504,7 @@ test("an oversized JSON body returns reliable 413 JSON and closes the connection
   assert.deepEqual(await response.json(), { error: "请求内容过大" });
 });
 
-test("initialization repairs an existing lead store to mode 0600", async (t) => {
+test("initialization repairs an existing lead store to mode 0600", { skip: process.platform === "win32" ? "POSIX file mode test; Windows uses ACLs" : false }, async (t) => {
   const { leadsFilePath, url } = await startTestServer(t, {
     seedStore: { leads: [], mode: 0o644 },
   });

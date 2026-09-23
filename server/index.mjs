@@ -21,6 +21,7 @@ import { resolveAdvisorFocusCode } from "../src/lib/ai/aiReportReferences.js";
 import { resolveTermCode } from "../src/lib/ai/loanAnalystReferences.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
+import { createPromotionHandler } from "./promotion/routes.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1124,6 +1125,7 @@ async function serveStatic(request, response, url) {
 }
 
 async function handleRequest(request, response, {
+  promotionHandler,
   leadsFilePath,
   adminCredentials,
   allowedOrigins,
@@ -1160,6 +1162,7 @@ async function handleRequest(request, response, {
   }
 
   try {
+    if (await promotionHandler(request, response, url)) return;
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
       return;
@@ -1440,6 +1443,8 @@ export function createMeiouServer({
   aiReportService = null,
   now = () => new Date(),
   idFactory = randomUUID,
+  promotionDatabasePath = null,
+  publicSiteUrl = "",
 } = {}) {
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
@@ -1456,7 +1461,21 @@ export function createMeiouServer({
   const configuredAiReportService = aiReportService && typeof aiReportService.generate === "function"
     ? aiReportService
     : localAiReportService;
-  return createServer((request, response) => handleRequest(request, response, {
+  let promotionStorePromise = null;
+  const promotionHandler = createPromotionHandler({
+    publicSiteUrl, now: safeNow,
+    isAuthorized: request => isAuthorized(request, credentials),
+    getStore: () => {
+      if (!promotionStorePromise) {
+        promotionStorePromise = import("./promotion/store.mjs").then(({ openPromotionStore }) =>
+          openPromotionStore({ databasePath: promotionDatabasePath ?? path.join(path.dirname(resolvedLeadsFilePath), "promotions.sqlite"), now: safeNow })
+        ).catch(error => { promotionStorePromise = null; throw error; });
+      }
+      return promotionStorePromise;
+    },
+  });
+  const server = createServer((request, response) => handleRequest(request, response, {
+    promotionHandler,
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,
@@ -1466,6 +1485,8 @@ export function createMeiouServer({
     now: safeNow,
     idFactory: safeIdFactory,
   }));
+  server.on("close", () => { promotionStorePromise?.then(store => store.close()).catch(() => {}); });
+  return server;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -1475,6 +1496,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   createMeiouServer({
     adminCredentials,
     aiReportService,
+    publicSiteUrl: process.env.MEIOU_PUBLIC_SITE_URL ?? "",
+    promotionDatabasePath: process.env.MEIOU_PROMOTION_DB_PATH ?? null,
     allowLocalDevelopmentOrigins: process.env.MEIOU_LOCAL_DEV_ORIGINS === "1",
   }).listen(port, "127.0.0.1", () => {
     console.log(`Meiou lead server running at http://127.0.0.1:${port}`);

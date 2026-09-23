@@ -40,7 +40,10 @@ const customerAiReport = {
 async function loadModule(t, path) {
   const server = await createServer({
     configFile: fileURLToPath(new URL("../vite.config.mjs", import.meta.url)),
-    server: { middlewareMode: true, hmr: false, ws: false },
+    // SSR assertions do not use a browser dependency optimizer. Disabling its
+    // background crawl makes server.close deterministic on Windows as well.
+    optimizeDeps: { noDiscovery: true, include: [] },
+    server: { middlewareMode: true, hmr: false, ws: false, warmup: { clientFiles: [] } },
   });
   t.after(() => server.close());
   return server.ssrLoadModule(path);
