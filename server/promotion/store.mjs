@@ -3,6 +3,7 @@ import { mkdirSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { PromotionError, validateSalespersonInput, validateDateRange, validateVisit } from "./validation.mjs";
+import { createIdentityStore } from "../sales/identityStore.mjs";
 
 export function openPromotionStore({ databasePath, now = () => new Date() }) {
   mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -55,7 +56,7 @@ export function openPromotionStore({ databasePath, now = () => new Date() }) {
   function maintain() {
     if (lastArchiveDay !== now().toISOString().slice(0, 10)) archiveExpiredEvents();
   }
-  return {
+  const store = {
     createSalesperson(input) {
       const data = validateSalespersonInput(input), id = randomUUID(), referralCode = randomBytes(16).toString("hex"), timestamp = now().toISOString();
       db.prepare("INSERT INTO salespeople(id,name,internal_note,referral_code,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)")
@@ -69,6 +70,7 @@ export function openPromotionStore({ databasePath, now = () => new Date() }) {
         if (!current) throw new PromotionError("销售不存在", 404);
         db.prepare("UPDATE salespeople SET name=?,internal_note=?,active=?,updated_at=? WHERE id=?")
           .run(data.name ?? current.name, data.internalNote ?? current.internalNote, Number(data.active ?? current.active), now().toISOString(), id);
+        if (data.active === false) db.prepare('DELETE FROM sales_sessions WHERE account_id IN (SELECT id FROM sales_accounts WHERE salesperson_id=?)').run(id);
         return get(id);
       });
     },
@@ -101,4 +103,8 @@ export function openPromotionStore({ databasePath, now = () => new Date() }) {
     archiveExpiredEvents,
     close() { db.close(); },
   };
+  try {
+    store.identity = createIdentityStore(db, { now, setSalespersonActive: (id, active) => store.updateSalesperson(id, { active }) });
+  } catch (error) { db.close(); throw error; }
+  return store;
 }

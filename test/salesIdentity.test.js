@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { openPromotionStore } from '../server/promotion/store.mjs';
+
+test('sales credentials, reset, promotion disable and expiry revoke sessions persistently', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'sales-identity-'));
+  let instant = new Date('2026-09-23T00:00:00Z');
+  const options = { databasePath: path.join(dir, 'db.sqlite'), now: () => instant };
+  let store = openPromotionStore(options);
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const sale = store.createSalesperson({ name: '销售 A' });
+  const account = await store.identity.createAccount({ salespersonId: sale.id, username: 'Sales.A', password: 'initial-password-123' });
+  assert.equal(account.username, 'sales.a');
+  assert.equal(account.password_hash, undefined);
+  await assert.rejects(store.identity.createAccount({ salespersonId: sale.id, username: 'sales.b', password: 'initial-password-123' }), /已存在/);
+  assert.equal(await store.identity.authenticate('sales.a', 'bad'), null);
+  const authenticated = await store.identity.authenticate('sales.a', 'initial-password-123');
+  let session = store.identity.createSession(authenticated);
+  assert.equal(store.identity.resolveSession(session.token).mustChangePassword, true);
+  await store.identity.changePassword(account.id, 'initial-password-123', 'replacement-password-456');
+  assert.equal(store.identity.resolveSession(session.token), null);
+  session = store.identity.createSession(await store.identity.authenticate('sales.a', 'replacement-password-456'));
+  assert.equal(store.identity.resolveSession(session.token).mustChangePassword, false);
+  store.close(); store = openPromotionStore(options);
+  assert.equal(store.identity.resolveSession(session.token).salespersonId, sale.id);
+  store.updateSalesperson(sale.id, { active: false });
+  assert.equal(store.identity.resolveSession(session.token), null);
+  store.updateSalesperson(sale.id, { active: true });
+  assert.equal(store.identity.resolveSession(session.token), null);
+  session = store.identity.createSession(await store.identity.authenticate('sales.a', 'replacement-password-456'));
+  await store.identity.resetPassword(account.id, 'another-password-789');
+  assert.equal(store.identity.resolveSession(session.token), null);
+  session = store.identity.createSession(await store.identity.authenticate('sales.a', 'another-password-789'));
+  instant = new Date(instant.getTime() + 8 * 3600000);
+  assert.equal(store.identity.resolveSession(session.token), null);
+});
+
+test('stale authentication cannot issue a session after reset and session count is bounded', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'sales-identity-'));
+  const store = openPromotionStore({ databasePath: path.join(dir, 'db.sqlite') });
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const sale = store.createSalesperson({ name: '销售' });
+  const account = await store.identity.createAccount({ salespersonId: sale.id, username: 'sales.a', password: 'initial-password-123' });
+  const stale = await store.identity.authenticate('sales.a', 'initial-password-123');
+  await store.identity.resetPassword(account.id, 'replacement-password-456');
+  assert.throws(() => store.identity.createSession(stale), /重新登录/);
+  const auth = await store.identity.authenticate('sales.a', 'replacement-password-456');
+  const sessions = Array.from({ length: 6 }, () => store.identity.createSession(auth));
+  assert.equal(store.identity.resolveSession(sessions[0].token), null);
+  assert.ok(store.identity.resolveSession(sessions[5].token));
+});
