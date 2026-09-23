@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { salesFixture } from './salesTestSupport.js';
+test('sales authentication enforces cookies, Origin, CSRF, change password, logout and reset', async t => {
+  const f = await salesFixture(t), { account, sale } = await f.create('sales.a');
+  assert.equal((await f.request('/api/admin/sales/accounts')).status, 401);
+  assert.equal((await f.request('/api/sales/login', 'POST', { username: 'sales.a', password: 'wrong' })).status, 401);
+  assert.equal((await f.request('/api/sales/login', 'POST', {}, { Origin: '' })).status, 403);
+  assert.equal((await f.request('/api/sales/login', 'POST', {}, { Origin: 'https://evil.example' })).status, 403);
+  const raw = await f.request('/api/sales/login', 'POST', { username: 'sales.a', password: 'initial-password-123' });
+  for (const pattern of [/HttpOnly/, /SameSite=Strict/, /Secure/, /Path=\/api\/sales/]) assert.match(raw.headers.get('set-cookie'), pattern);
+  const session = await f.login('sales.a');
+  assert.equal((await f.request('/api/sales/password', 'POST', {}, { Cookie: session.cookie })).status, 403);
+  assert.equal((await f.request('/api/sales/password', 'POST', { currentPassword: 'initial-password-123', newPassword: 'replacement-password-456' }, session.headers)).status, 200);
+  assert.equal((await f.request('/api/sales/session', 'GET', undefined, session.headers)).status, 401);
+  const next = await f.login('sales.a', 'replacement-password-456');
+  assert.equal(next.data.mustChangePassword, false);
+  await f.asAdmin('/api/admin/promotions/salespeople/' + sale.id, 'PATCH', { active: false });
+  assert.equal((await f.request('/api/sales/session', 'GET', undefined, next.headers)).status, 401);
+  await f.asAdmin('/api/admin/sales/accounts/' + account.id, 'PATCH', { active: true });
+  const again = await f.login('sales.a', 'replacement-password-456');
+  assert.equal((await f.request('/api/sales/logout', 'POST', {}, again.headers)).status, 200);
+  assert.equal((await f.request('/api/sales/session', 'GET', undefined, again.headers)).status, 401);
+  const beforeReset = await f.login('sales.a', 'replacement-password-456');
+  await f.asAdmin('/api/admin/sales/accounts/' + account.id + '/password', 'POST', { password: 'reset-password-987' });
+  assert.equal((await f.request('/api/sales/session', 'GET', undefined, beforeReset.headers)).status, 401);
+  assert.equal((await f.login('sales.a', 'reset-password-987')).data.mustChangePassword, true);
+});
+test('login rate limit and request size bound unauthenticated work', async t => {
+  const f = await salesFixture(t);
+  assert.equal((await f.request('/api/sales/login', 'POST', { password: 'x'.repeat(5000) })).status, 413);
+  for (let i = 0; i < 20; i++) await f.request('/api/sales/login', 'POST', { username: 'missing', password: 'bad' });
+  assert.equal((await f.request('/api/sales/login', 'POST', {})).status, 429);
+});

@@ -22,6 +22,7 @@ import { resolveTermCode } from "../src/lib/ai/loanAnalystReferences.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
 import { createPromotionHandler } from "./promotion/routes.mjs";
+import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1126,6 +1127,7 @@ async function serveStatic(request, response, url) {
 
 async function handleRequest(request, response, {
   promotionHandler,
+  salesAuthHandler,
   leadsFilePath,
   adminCredentials,
   allowedOrigins,
@@ -1150,7 +1152,7 @@ async function handleRequest(request, response, {
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
       "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
-      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type, X-CSRF-Token",
     });
     response.end();
     return;
@@ -1162,6 +1164,7 @@ async function handleRequest(request, response, {
   }
 
   try {
+    if (await salesAuthHandler(request, response, url)) return;
     if (await promotionHandler(request, response, url)) return;
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
@@ -1445,7 +1448,9 @@ export function createMeiouServer({
   idFactory = randomUUID,
   promotionDatabasePath = null,
   publicSiteUrl = "",
+  salesCookieSecure = true,
 } = {}) {
+  if (salesCookieSecure === false && !allowLocalDevelopmentOrigins) throw new Error('Insecure sales cookies require explicit local development mode');
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
   const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
@@ -1462,20 +1467,24 @@ export function createMeiouServer({
     ? aiReportService
     : localAiReportService;
   let promotionStorePromise = null;
-  const promotionHandler = createPromotionHandler({
-    publicSiteUrl, now: safeNow,
-    isAuthorized: request => isAuthorized(request, credentials),
-    getStore: () => {
+  const getPromotionStore = () => {
       if (!promotionStorePromise) {
         promotionStorePromise = import("./promotion/store.mjs").then(({ openPromotionStore }) =>
           openPromotionStore({ databasePath: promotionDatabasePath ?? path.join(path.dirname(resolvedLeadsFilePath), "promotions.sqlite"), now: safeNow })
         ).catch(error => { promotionStorePromise = null; throw error; });
       }
       return promotionStorePromise;
-    },
+    };
+  const promotionHandler = createPromotionHandler({
+    publicSiteUrl, now: safeNow, getStore: getPromotionStore,
+    isAuthorized: request => isAuthorized(request, credentials),
+  });
+  const salesAuthHandler = createSalesAuthHandler({
+    getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials), now: safeNow, cookieSecure: salesCookieSecure,
   });
   const server = createServer((request, response) => handleRequest(request, response, {
     promotionHandler,
+    salesAuthHandler,
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,
