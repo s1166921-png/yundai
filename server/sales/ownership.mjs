@@ -12,9 +12,19 @@ export async function resolveSubmissionOwnership(ref, getStore) {
     return { ...result, sourceSalespersonId: sale.id, assignedSalespersonId: sale.id, attributionStatus: 'attributed' };
   } catch { return { ...result, attributionStatus: 'unavailable' }; }
 }
+export async function withSalespersonNames(leads, getStore) {
+  let names = new Map();
+  if (leads.some(lead => lead.sourceSalespersonId || lead.assignedSalespersonId)) {
+    try { names = new Map((await getStore()).listSalespeople().map(sale => [sale.id, sale.name])); }
+    catch { /* Customer administration remains available when the promotion store fails. */ }
+  }
+  return leads.map(lead => ({ ...lead,
+    sourceSalespersonName: lead.sourceSalespersonId ? names.get(lead.sourceSalespersonId) ?? '历史销售' : '普通入口 / 未知',
+    assignedSalespersonName: lead.assignedSalespersonId ? names.get(lead.assignedSalespersonId) ?? '历史销售' : '待分配' }));
+}
 export function transferLead(lead, { assignedSalespersonId, expectedRevision, actor, now }) {
-  const revision = Number.isInteger(lead.revision) && lead.revision > 0 ? lead.revision : 1;
-  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) throw new PromotionError('请提供客户版本号');
+  const revision = Number.isInteger(lead.revision) && lead.revision >= 0 ? lead.revision : 0;
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new PromotionError('请提供客户版本号');
   if (revision !== expectedRevision) throw new PromotionError('客户信息已更新，请刷新后重新分配', 409);
   if ((lead.assignedSalespersonId ?? null) === assignedSalespersonId) return lead;
   return { ...lead, assignedSalespersonId, revision: revision + 1,
@@ -38,7 +48,7 @@ export function createOwnershipHandler({ getStore, isAdmin, updateLeads, actor, 
         updated = transferLead(leads[index], { assignedSalespersonId: targetId, expectedRevision: input.expectedRevision, actor, now });
         return leads.map((lead, i) => i === index ? updated : lead);
       });
-      json(response, 200, { id: updated.id, assignedSalespersonId: updated.assignedSalespersonId ?? null, revision: updated.revision ?? 1 }); return true;
+      json(response, 200, { id: updated.id, assignedSalespersonId: updated.assignedSalespersonId ?? null, revision: updated.revision ?? 0 }); return true;
     } catch (error) { failure(response, error); return true; }
   };
 }

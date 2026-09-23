@@ -23,7 +23,7 @@ import { createAiReportService, createAiReportServiceFromEnvironment } from "./a
 import { buildAdminPage } from "./adminPage.mjs";
 import { createPromotionHandler } from "./promotion/routes.mjs";
 import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
-import { createOwnershipHandler, resolveSubmissionOwnership } from "./sales/ownership.mjs";
+import { createOwnershipHandler, resolveSubmissionOwnership, withSalespersonNames } from "./sales/ownership.mjs";
 import { createSalesCustomerHandler } from "./sales/customerRoutes.mjs";
 import { buildSalesPage } from './sales/salesPage.mjs';
 import { buildAccountPage } from './sales/accountPage.mjs';
@@ -1264,14 +1264,9 @@ async function handleRequest(request, response, {
         return;
       }
       const leads = await readLeads(leadsFilePath);
-      let names = new Map();
-      if (leads.some(lead => lead.sourceSalespersonId || lead.assignedSalespersonId)) {
-        try { names = new Map((await getPromotionStore()).listSalespeople().map(s => [s.id, s.name])); } catch { /* Existing admin remains available during promotion outage. */ }
-      }
+      const namedLeads = await withSalespersonNames(filterLeads(url, leads), getPromotionStore);
       sendJson(response, 200, {
-        leads: filterLeads(url, leads).map((lead) => ({ ...adminLead(lead, aiReportService),
-          sourceSalespersonName: lead.sourceSalespersonId ? names.get(lead.sourceSalespersonId) ?? '历史销售' : '普通入口 / 未知',
-          assignedSalespersonName: lead.assignedSalespersonId ? names.get(lead.assignedSalespersonId) ?? '历史销售' : '待分配' })),
+        leads: namedLeads.map(lead => adminLead(lead, aiReportService)),
       });
       return;
     }
@@ -1403,7 +1398,7 @@ async function handleRequest(request, response, {
         sendJson(response, 400, { error: "请选择客户信息后导出" });
         return;
       }
-      const excel = buildExcel(selectedLeads);
+      const excel = buildExcel(await withSalespersonNames(selectedLeads, getPromotionStore));
       response.writeHead(200, {
         "Content-Type": "application/vnd.ms-excel; charset=utf-8",
         "Content-Disposition": `attachment; filename="meiou-leads-${new Date().toISOString().slice(0, 10)}.xls"`,

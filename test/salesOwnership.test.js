@@ -35,6 +35,21 @@ test('direct, invalid and disabled sources stay unassigned; legacy rows are pres
   delete legacy[0].assignedSalespersonId; delete legacy[0].sourceSalespersonId; await writeFile(file, JSON.stringify(legacy));
   assert.equal((await f.asAdmin('/api/leads')).status, 200);
 });
+test('historical leads with no revision can be assigned and exports include salesperson names', async t => {
+  const f = await salesFixture(t), a = await f.create('legacy.sales');
+  await f.request('/api/leads', 'POST', customerInput({ ref: a.sale.referralCode }));
+  const file=path.join(f.dir,'leads.json'), rows=JSON.parse(await readFile(file,'utf8'));
+  delete rows[0].revision; delete rows[0].assignedSalespersonId;
+  await writeFile(file,JSON.stringify(rows));
+  const lead=(await (await f.asAdmin('/api/leads')).json()).leads[0];
+  assert.equal(lead.revision,0);
+  const response=await f.asAdmin('/api/admin/leads/'+lead.id+'/assignment','PATCH',{assignedSalespersonId:a.sale.id,expectedRevision:lead.revision});
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).revision,1);
+  const exported=await (await f.asAdmin('/api/leads/export?ids='+lead.id)).text();
+  assert.match(exported,/>legacy\.sales<\/td>/);
+  assert.equal((exported.match(/>legacy\.sales<\/td>/g)||[]).length,2);
+});
 test('AI completion preserves a transfer committed while generation was in flight', async t => {
   let release, signal;
   const started = new Promise(resolve => { signal = resolve; });

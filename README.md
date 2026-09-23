@@ -16,6 +16,7 @@ See the [setup and usage guide](docs/sales-promotion.md) and
 Sales accounts and customer ownership extend the same admin entry point. See
 [sales access and extension guide](docs/sales-customer-access.md) for account setup,
 assignment rules, security boundaries, and module responsibilities.
+See the [sales access validation record](docs/sales-customer-access-qa.md) for tested flows and deployment limits.
 
 Install the pinned dependencies:
 
