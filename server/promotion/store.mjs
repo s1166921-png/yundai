@@ -87,6 +87,7 @@ export function openPromotionStore({ databasePath, now = () => new Date() }) {
       return stats.map(value => ({ ...row(value), totalViews: value.total_views, periodViews: value.period_views }));
     },
     getSalesperson: get,
+    getSalespersonByReferral(ref) { return row(db.prepare('SELECT * FROM salespeople WHERE referral_code=?').get(ref)); },
     recordVisit(input) {
       const data = validateVisit(input, now());
       maintain();

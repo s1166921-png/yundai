@@ -1,3 +1,4 @@
+import { readPromotionRef } from './promotionRef.js';
 const documents = new WeakMap();
 
 // A document is one page view. No browser identity or cross-device tracking.
@@ -5,9 +6,9 @@ export function startPromotionTracking({ windowObject = window, documentObject =
   try {
     let state = documents.get(documentObject);
     if (!state) {
-      const refs = new URLSearchParams(windowObject.location.search).getAll("ref");
-      if (refs.length !== 1 || !/^[a-f0-9]{32}$/.test(refs[0]) || !windowObject.crypto?.getRandomValues) return () => {};
-      state = { ref: refs[0], attempts: 0, body: null, inFlight: false, done: false, users: 0, timer: null };
+      const ref = readPromotionRef(windowObject.location.search);
+      if (!ref || !windowObject.crypto?.getRandomValues) return () => {};
+      state = { ref, attempts: 0, body: null, inFlight: false, done: false, users: 0, timer: null };
       documents.set(documentObject, state);
     }
     state.users += 1;

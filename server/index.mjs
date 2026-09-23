@@ -23,6 +23,7 @@ import { createAiReportService, createAiReportServiceFromEnvironment } from "./a
 import { buildAdminPage } from "./adminPage.mjs";
 import { createPromotionHandler } from "./promotion/routes.mjs";
 import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
+import { createOwnershipHandler, resolveSubmissionOwnership } from "./sales/ownership.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1128,6 +1129,8 @@ async function serveStatic(request, response, url) {
 async function handleRequest(request, response, {
   promotionHandler,
   salesAuthHandler,
+  ownershipHandler,
+  getPromotionStore,
   leadsFilePath,
   adminCredentials,
   allowedOrigins,
@@ -1164,6 +1167,7 @@ async function handleRequest(request, response, {
   }
 
   try {
+    if (await ownershipHandler(request, response, url)) return;
     if (await salesAuthHandler(request, response, url)) return;
     if (await promotionHandler(request, response, url)) return;
     if (url.pathname === "/api/health") {
@@ -1185,11 +1189,14 @@ async function handleRequest(request, response, {
     if (url.pathname === "/api/leads" && request.method === "POST") {
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const body = await readBody(request);
-      const normalizedLead = normalizeLead(parseJsonBody(body), now);
+      const input = parseJsonBody(body);
+      const normalizedLead = normalizeLead(input, now);
       let lead;
-      await updateLeads(leadsFilePath, (leads) => {
+      await updateLeads(leadsFilePath, async (leads) => {
+        const ownership = await resolveSubmissionOwnership(input.ref, getPromotionStore);
         lead = {
           ...normalizedLead,
+          ...ownership,
           id: uniqueLeadId(leads, idFactory),
           revision: 1,
           aiAnalysis: {
@@ -1482,9 +1489,15 @@ export function createMeiouServer({
   const salesAuthHandler = createSalesAuthHandler({
     getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials), now: safeNow, cookieSecure: salesCookieSecure,
   });
+  const ownershipHandler = createOwnershipHandler({
+    getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials),
+    updateLeads: updater => updateLeads(resolvedLeadsFilePath, updater), actor: credentials?.username ?? 'admin', now: safeNow,
+  });
   const server = createServer((request, response) => handleRequest(request, response, {
     promotionHandler,
     salesAuthHandler,
+    ownershipHandler,
+    getPromotionStore,
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,

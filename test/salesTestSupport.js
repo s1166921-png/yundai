@@ -4,6 +4,13 @@ import path from 'node:path';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import { createMeiouServer } from '../server/index.mjs';
+export const customerInput = (overrides = {}) => ({
+  estimationMode: 'complex', companyName: 'Synthetic Trading', contactName: 'Test Contact', phone: '13800138000',
+  entityRegion: 'mainland', entityType: 'limited_company', businessModels: ['amazon_sc'], primaryPlatformOrBuyerName: 'Amazon',
+  platformHistoryMonths: 13, singleStoreGmvUsd: 6000000, qualifiedStoreCount: 1, acceptsAccountControl: true,
+  hasCompatibleCollectionAccount: false, preferredCurrency: 'usd', requestedAmount: 2000000, preferredTermMonths: 3,
+  fundUse: 'inventory_procurement', preferredRepaymentMethod: 'revolving', consentToDataUse: true, ...overrides,
+});
 export async function salesFixture(t, options = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'sales-http-'));
   const admin = { username: 'test-admin', password: 'test-admin-password' };
