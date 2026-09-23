@@ -24,6 +24,7 @@ import { buildAdminPage } from "./adminPage.mjs";
 import { createPromotionHandler } from "./promotion/routes.mjs";
 import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
 import { createOwnershipHandler, resolveSubmissionOwnership } from "./sales/ownership.mjs";
+import { createSalesCustomerHandler } from "./sales/customerRoutes.mjs";
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1129,6 +1130,7 @@ async function serveStatic(request, response, url) {
 async function handleRequest(request, response, {
   promotionHandler,
   salesAuthHandler,
+  salesCustomerHandler,
   ownershipHandler,
   getPromotionStore,
   leadsFilePath,
@@ -1169,6 +1171,7 @@ async function handleRequest(request, response, {
   try {
     if (await ownershipHandler(request, response, url)) return;
     if (await salesAuthHandler(request, response, url)) return;
+    if (await salesCustomerHandler(request, response, url)) return;
     if (await promotionHandler(request, response, url)) return;
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
@@ -1493,9 +1496,13 @@ export function createMeiouServer({
     getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials),
     updateLeads: updater => updateLeads(resolvedLeadsFilePath, updater), actor: credentials?.username ?? 'admin', now: safeNow,
   });
+  const salesCustomerHandler = createSalesCustomerHandler({
+    getStore: getPromotionStore, readLeads: () => readLeads(resolvedLeadsFilePath), projectCustomerReport: publicLead, publicSiteUrl,
+  });
   const server = createServer((request, response) => handleRequest(request, response, {
     promotionHandler,
     salesAuthHandler,
+    salesCustomerHandler,
     ownershipHandler,
     getPromotionStore,
     leadsFilePath: resolvedLeadsFilePath,
