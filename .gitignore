@@ -3,6 +3,9 @@ dist/
 .DS_Store
 *.log
 server/data/leads.json
+server/data/*.sqlite*
+.superpowers/sdd/2026-09-22-sales-qr-attribution/
+.superpowers/sdd/2026-09-23-sales-customer-access/
 .worktrees/
 
 # Local QA screenshots are generated during visual checks.

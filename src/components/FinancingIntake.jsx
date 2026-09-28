@@ -9,6 +9,7 @@ import {
 } from "../lib/matching/intakeSchema.js";
 import { invalidateIntakeResult } from "../lib/matching/intakeLifecycle.js";
 import { postJson } from "../lib/http/jsonRequest.js";
+import { readPromotionRef } from '../lib/promotionRef.js';
 
 const initialProfile = {
   intakeVersion: INTAKE_VERSION,
@@ -577,6 +578,8 @@ export function FinancingIntake({ onComplete, onInvalidate }) {
     }
 
     const payload = buildProgressiveSubmission(profile);
+    const ref = readPromotionRef(window.location.search);
+    if (ref) payload.ref = ref;
 
     setErrors({});
     invalidateIntakeResult(onInvalidate, "submit_start");

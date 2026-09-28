@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/leads
+
+Sitemap: https://yundai.meiouyuncang.com/sitemap.xml

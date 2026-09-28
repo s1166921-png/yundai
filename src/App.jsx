@@ -8,6 +8,7 @@ import { FinancingIntake } from "./components/FinancingIntake";
 import { ProductMatchCenter } from "./components/ProductMatchCenter";
 import { getJson } from "./lib/http/jsonRequest.js";
 import { scrollProductMatchCenterIntoView } from "./lib/productMatchView.js";
+import { startPromotionTracking } from "./lib/promotionTracking.js";
 
 const commonAdvantages = [
   ["2000万", "最高可贷额度"],
@@ -462,6 +463,7 @@ function AccessAndProcess({ report, products, aiReport }) {
 }
 
 export function App() {
+  useEffect(() => startPromotionTracking(), []);
   useScrollReveal();
   const [leadResult, setLeadResult] = useState(null);
   const [publicProducts, setPublicProducts] = useState(null);
@@ -569,6 +571,7 @@ export function App() {
           </p>
         </div>
         <FinancingIntake onComplete={completeIntake} onInvalidate={() => setLeadResult(null)} />
+        <p className="section-copy">推广链接会记录匿名来源访问次数，用于统计推广效果。</p>
       </section>
     </main>
   );

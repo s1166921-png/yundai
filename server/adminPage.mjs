@@ -109,12 +109,16 @@ export function buildAdminPage({ leadColumns, products }) {
         <div class="tools">
           <input id="username" autocomplete="username" placeholder="管理员账户" />
           <input id="password" type="password" autocomplete="current-password" placeholder="管理员密码" />
+          <a href="/admin/promotions">销售推广</a>
+          <a href="/admin/sales/accounts">账号与客户分配</a>
+          <a href="/admin/sales">销售登录</a>
           <button id="load" type="button">读取客户信息</button>
           <button id="export" class="primary" type="button" disabled>导出选中 Excel</button>
         </div>
       </div>
       <div class="filters" aria-label="客户筛选">
         <label>客户搜索<input id="searchFilter" type="search" placeholder="企业、联系人或电话" /></label>
+        <label>分配状态<select id="assignmentFilter"><option value="">全部</option><option value="unassigned">待分配</option><option value="assigned">已分配</option></select></label>
         <label>第一推荐产品<select id="productFilter"><option value="">全部产品</option>${productOptions}</select></label>
         <label>机构<select id="institutionFilter"><option value="">全部机构</option>${institutionOptions}</select></label>
         <label>币种<select id="currencyFilter"><option value="">全部币种</option><option value="RMB">RMB</option><option value="USD">USD</option></select></label>
@@ -218,6 +222,7 @@ export function buildAdminPage({ leadColumns, products }) {
     const saveReviewButton = document.querySelector("#saveReview");
     const filterInputs = {
       search: document.querySelector("#searchFilter"),
+      assignment: document.querySelector("#assignmentFilter"),
       product: document.querySelector("#productFilter"),
       institution: document.querySelector("#institutionFilter"),
       currency: document.querySelector("#currencyFilter"),

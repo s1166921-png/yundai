@@ -21,6 +21,12 @@ import { resolveAdvisorFocusCode } from "../src/lib/ai/aiReportReferences.js";
 import { resolveTermCode } from "../src/lib/ai/loanAnalystReferences.js";
 import { createAiReportService, createAiReportServiceFromEnvironment } from "./ai/aiReportService.mjs";
 import { buildAdminPage } from "./adminPage.mjs";
+import { createPromotionHandler } from "./promotion/routes.mjs";
+import { createSalesAuthHandler } from "./sales/authRoutes.mjs";
+import { createOwnershipHandler, resolveSubmissionOwnership, withSalespersonNames } from "./sales/ownership.mjs";
+import { createSalesCustomerHandler } from "./sales/customerRoutes.mjs";
+import { buildSalesPage } from './sales/salesPage.mjs';
+import { buildAccountPage } from './sales/accountPage.mjs';
 import { normalizeAdvisorReview, projectStoredAdvisorReview } from "./advisorReview.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,6 +90,8 @@ const leadColumns = [
   ["companyName", "企业名称"],
   ["contactName", "联系人"],
   ["phone", "联系电话"],
+  ["sourceSalespersonName", "来源销售"],
+  ["assignedSalespersonName", "负责销售"],
   ["platform", "主营平台"],
   ["productInterest", "意向产品"],
   ["matching.primaryScenario", "主融资场景"],
@@ -1044,6 +1052,11 @@ function filterLeads(url, leads) {
   const toTime = dateTo ? Date.parse(`${dateTo}T23:59:59.999`) : Number.NaN;
 
   return leads.filter((lead) => {
+    const assignment = url.searchParams.get('assignment');
+    if (assignment === 'unassigned' && lead.assignedSalespersonId) return false;
+    if (assignment === 'assigned' && !lead.assignedSalespersonId) return false;
+    const owner = url.searchParams.get('assignedSalespersonId');
+    if (owner && lead.assignedSalespersonId !== owner) return false;
     const primary = getPrimaryMatch(lead);
     const product = getProductById(primary?.productId);
     const submittedAmount = lead.profile?.requestedAmount?.amount;
@@ -1124,6 +1137,11 @@ async function serveStatic(request, response, url) {
 }
 
 async function handleRequest(request, response, {
+  promotionHandler,
+  salesAuthHandler,
+  salesCustomerHandler,
+  ownershipHandler,
+  getPromotionStore,
   leadsFilePath,
   adminCredentials,
   allowedOrigins,
@@ -1148,7 +1166,7 @@ async function handleRequest(request, response, {
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
       "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
-      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type, X-CSRF-Token",
     });
     response.end();
     return;
@@ -1160,6 +1178,14 @@ async function handleRequest(request, response, {
   }
 
   try {
+    if (request.method === 'GET' && ['/admin/sales', '/admin/sales/accounts'].includes(url.pathname)) {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
+      response.end(url.pathname === '/admin/sales' ? buildSalesPage() : buildAccountPage()); return;
+    }
+    if (await ownershipHandler(request, response, url)) return;
+    if (await salesAuthHandler(request, response, url)) return;
+    if (await salesCustomerHandler(request, response, url)) return;
+    if (await promotionHandler(request, response, url)) return;
     if (url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
       return;
@@ -1179,11 +1205,14 @@ async function handleRequest(request, response, {
     if (url.pathname === "/api/leads" && request.method === "POST") {
       if (!hasJsonContentType(request)) throw new UnsupportedMediaTypeError("application/json is required");
       const body = await readBody(request);
-      const normalizedLead = normalizeLead(parseJsonBody(body), now);
+      const input = parseJsonBody(body);
+      const normalizedLead = normalizeLead(input, now);
       let lead;
-      await updateLeads(leadsFilePath, (leads) => {
+      await updateLeads(leadsFilePath, async (leads) => {
+        const ownership = await resolveSubmissionOwnership(input.ref, getPromotionStore);
         lead = {
           ...normalizedLead,
+          ...ownership,
           id: uniqueLeadId(leads, idFactory),
           revision: 1,
           aiAnalysis: {
@@ -1235,8 +1264,9 @@ async function handleRequest(request, response, {
         return;
       }
       const leads = await readLeads(leadsFilePath);
+      const namedLeads = await withSalespersonNames(filterLeads(url, leads), getPromotionStore);
       sendJson(response, 200, {
-        leads: filterLeads(url, leads).map((lead) => adminLead(lead, aiReportService)),
+        leads: namedLeads.map(lead => adminLead(lead, aiReportService)),
       });
       return;
     }
@@ -1368,7 +1398,7 @@ async function handleRequest(request, response, {
         sendJson(response, 400, { error: "请选择客户信息后导出" });
         return;
       }
-      const excel = buildExcel(selectedLeads);
+      const excel = buildExcel(await withSalespersonNames(selectedLeads, getPromotionStore));
       response.writeHead(200, {
         "Content-Type": "application/vnd.ms-excel; charset=utf-8",
         "Content-Disposition": `attachment; filename="meiou-leads-${new Date().toISOString().slice(0, 10)}.xls"`,
@@ -1440,7 +1470,11 @@ export function createMeiouServer({
   aiReportService = null,
   now = () => new Date(),
   idFactory = randomUUID,
+  promotionDatabasePath = null,
+  publicSiteUrl = "",
+  salesCookieSecure = true,
 } = {}) {
+  if (salesCookieSecure === false && !allowLocalDevelopmentOrigins) throw new Error('Insecure sales cookies require explicit local development mode');
   const credentials = normalizeAdminCredentials(adminCredentials);
   const resolvedLeadsFilePath = path.resolve(leadsFilePath);
   const normalizedOrigins = normalizeAllowedOrigins(allowedOrigins);
@@ -1456,7 +1490,35 @@ export function createMeiouServer({
   const configuredAiReportService = aiReportService && typeof aiReportService.generate === "function"
     ? aiReportService
     : localAiReportService;
-  return createServer((request, response) => handleRequest(request, response, {
+  let promotionStorePromise = null;
+  const getPromotionStore = () => {
+      if (!promotionStorePromise) {
+        promotionStorePromise = import("./promotion/store.mjs").then(({ openPromotionStore }) =>
+          openPromotionStore({ databasePath: promotionDatabasePath ?? path.join(path.dirname(resolvedLeadsFilePath), "promotions.sqlite"), now: safeNow })
+        ).catch(error => { promotionStorePromise = null; throw error; });
+      }
+      return promotionStorePromise;
+    };
+  const promotionHandler = createPromotionHandler({
+    publicSiteUrl, now: safeNow, getStore: getPromotionStore,
+    isAuthorized: request => isAuthorized(request, credentials),
+  });
+  const salesAuthHandler = createSalesAuthHandler({
+    getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials), now: safeNow, cookieSecure: salesCookieSecure,
+  });
+  const ownershipHandler = createOwnershipHandler({
+    getStore: getPromotionStore, isAdmin: request => isAuthorized(request, credentials),
+    updateLeads: updater => updateLeads(resolvedLeadsFilePath, updater), actor: credentials?.username ?? 'admin', now: safeNow,
+  });
+  const salesCustomerHandler = createSalesCustomerHandler({
+    getStore: getPromotionStore, readLeads: () => readLeads(resolvedLeadsFilePath), projectCustomerReport: publicLead, publicSiteUrl,
+  });
+  const server = createServer((request, response) => handleRequest(request, response, {
+    promotionHandler,
+    salesAuthHandler,
+    salesCustomerHandler,
+    ownershipHandler,
+    getPromotionStore,
     leadsFilePath: resolvedLeadsFilePath,
     adminCredentials: credentials,
     allowedOrigins: normalizedOrigins,
@@ -1466,6 +1528,8 @@ export function createMeiouServer({
     now: safeNow,
     idFactory: safeIdFactory,
   }));
+  server.on("close", () => { promotionStorePromise?.then(store => store.close()).catch(() => {}); });
+  return server;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -1475,6 +1539,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   createMeiouServer({
     adminCredentials,
     aiReportService,
+    publicSiteUrl: process.env.MEIOU_PUBLIC_SITE_URL ?? "",
+    promotionDatabasePath: process.env.MEIOU_PROMOTION_DB_PATH ?? null,
     allowLocalDevelopmentOrigins: process.env.MEIOU_LOCAL_DEV_ORIGINS === "1",
   }).listen(port, "127.0.0.1", () => {
     console.log(`Meiou lead server running at http://127.0.0.1:${port}`);
