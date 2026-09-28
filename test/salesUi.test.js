@@ -15,21 +15,20 @@ test('all password-setting forms allow eight characters', () => {
   }
   assert.match(sales.querySelector('#change-panel').textContent, /8–128/);
 });
-test('sales login enforces initial password screen and logout clears late customer responses', async () => {
+test('sales login opens workspace directly and logout clears late customer responses', async () => {
   const { document } = parseHTML(buildSalesPage());
-  let resolveList, initial = true;
+  let resolveList;
   const env = { fetch: async route => {
-    if (route.endsWith('/login')) return ok({ mustChangePassword: initial, csrfToken: 'token', username: 'sales.a' });
+    if (route.endsWith('/login')) return ok({ mustChangePassword: false, csrfToken: 'token', username: 'sales.a' });
     if (route.includes('/leads')) return new Promise(resolve => { resolveList = resolve; });
     if (route.endsWith('/promotion')) return ok({ promotionUrl: null, totalViews: 0 });
     return ok({ ok: true });
   }, URL: { revokeObjectURL() {} } };
   const client = mountSalesClient(document, env);
-  await client.login();
-  assert.equal(document.querySelector('#change-panel').hidden, false);
-  assert.equal(document.querySelector('#workspace').hidden, true);
-  initial = false; const login = client.login();
+  const login = client.login();
   await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(document.querySelector('#change-panel').hidden, true);
+  assert.equal(document.querySelector('#workspace').hidden, false);
   await client.logout();
   resolveList(ok({ leads: [{ id: 'a', companyName: 'PRIVATE COMPANY' }] })); await login;
   assert.equal(document.querySelector('#customers').textContent.includes('PRIVATE COMPANY'), false);

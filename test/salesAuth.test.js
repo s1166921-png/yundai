@@ -16,7 +16,7 @@ test('eight-character passwords work across creation, change and reset; seven ar
   await f.login('eight.test', 'Changed8');
   assert.equal((await f.asAdmin(route + '/' + account.id + '/password', 'POST', { password: 'Seven12' })).status, 400);
   assert.equal((await f.asAdmin(route + '/' + account.id + '/password', 'POST', { password: 'Reset123' })).status, 200);
-  assert.equal((await f.login('eight.test', 'Reset123')).data.mustChangePassword, true);
+  assert.equal((await f.login('eight.test', 'Reset123')).data.mustChangePassword, false);
 });
 test('sales authentication enforces cookies, Origin, CSRF, change password, logout and reset', async t => {
   const f = await salesFixture(t), { account, sale } = await f.create('sales.a');
@@ -41,7 +41,21 @@ test('sales authentication enforces cookies, Origin, CSRF, change password, logo
   const beforeReset = await f.login('sales.a', 'replacement-password-456');
   await f.asAdmin('/api/admin/sales/accounts/' + account.id + '/password', 'POST', { password: 'reset-password-987' });
   assert.equal((await f.request('/api/sales/session', 'GET', undefined, beforeReset.headers)).status, 401);
-  assert.equal((await f.login('sales.a', 'reset-password-987')).data.mustChangePassword, true);
+  assert.equal((await f.login('sales.a', 'reset-password-987')).data.mustChangePassword, false);
+});
+
+test('new and reset sales accounts can immediately access their workspace without changing passwords', async t => {
+  const f = await salesFixture(t), { account } = await f.create('direct.sales');
+  const first = await f.login('direct.sales');
+  assert.equal(first.data.mustChangePassword, false);
+  for (const route of ['/api/sales/leads', '/api/sales/promotion']) {
+    assert.equal((await f.request(route, 'GET', undefined, first.headers)).status, 200);
+  }
+  assert.equal((await f.asAdmin('/api/admin/sales/accounts/' + account.id + '/password', 'POST', { password: 'Reset123' })).status, 200);
+  assert.equal((await f.request('/api/sales/leads', 'GET', undefined, first.headers)).status, 401);
+  const reset = await f.login('direct.sales', 'Reset123');
+  assert.equal(reset.data.mustChangePassword, false);
+  assert.equal((await f.request('/api/sales/leads', 'GET', undefined, reset.headers)).status, 200);
 });
 test('login rate limit and request size bound unauthenticated work', async t => {
   const f = await salesFixture(t);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openPromotionStore } from '../server/promotion/store.mjs';
 
 test('sales credentials, reset, promotion disable and expiry revoke sessions persistently', async t => {
@@ -19,7 +20,7 @@ test('sales credentials, reset, promotion disable and expiry revoke sessions per
   assert.equal(await store.identity.authenticate('sales.a', 'bad'), null);
   const authenticated = await store.identity.authenticate('sales.a', 'initial-password-123');
   let session = store.identity.createSession(authenticated);
-  assert.equal(store.identity.resolveSession(session.token).mustChangePassword, true);
+  assert.equal(store.identity.resolveSession(session.token).mustChangePassword, false);
   await store.identity.changePassword(account.id, 'initial-password-123', 'replacement-password-456');
   assert.equal(store.identity.resolveSession(session.token), null);
   session = store.identity.createSession(await store.identity.authenticate('sales.a', 'replacement-password-456'));
@@ -36,6 +37,31 @@ test('sales credentials, reset, promotion disable and expiry revoke sessions per
   session = store.identity.createSession(await store.identity.authenticate('sales.a', 'another-password-789'));
   instant = new Date(instant.getTime() + 8 * 3600000);
   assert.equal(store.identity.resolveSession(session.token), null);
+});
+
+test('existing accounts awaiting first password change are migrated without changing passwords or sessions', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'sales-migration-'));
+  const options = { databasePath: path.join(dir, 'db.sqlite') };
+  let store = openPromotionStore(options);
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const sale = store.createSalesperson({ name: 'Existing sales' });
+  const account = await store.identity.createAccount({ salespersonId: sale.id, username: 'existing.sales', password: 'Existing123' });
+  const session = store.identity.createSession(await store.identity.authenticate('existing.sales', 'Existing123'));
+  store.close();
+  const legacy = new DatabaseSync(options.databasePath);
+  legacy.prepare('UPDATE sales_accounts SET must_change_password=1 WHERE id=?').run(account.id);
+  const original = legacy.prepare('SELECT password_hash,updated_at FROM sales_accounts WHERE id=?').get(account.id);
+  legacy.close();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    store = openPromotionStore(options);
+    assert.equal(store.identity.listAccounts()[0].mustChangePassword, false);
+    assert.equal(store.identity.resolveSession(session.token).mustChangePassword, false);
+    assert.ok(await store.identity.authenticate('existing.sales', 'Existing123'));
+    if (attempt === 0) store.close();
+  }
+  const check = new DatabaseSync(options.databasePath);
+  assert.deepEqual(check.prepare('SELECT password_hash,updated_at FROM sales_accounts WHERE id=?').get(account.id), original);
+  check.close();
 });
 
 test('stale authentication cannot issue a session after reset and session count is bounded', async t => {

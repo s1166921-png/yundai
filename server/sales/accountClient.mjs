@@ -15,7 +15,7 @@ export function mountAccountClient(document, environment = window) {
   function renderAccounts(){
     $('account-rows').replaceChildren();$('sale-select').replaceChildren();option($('sale-select'),'','请选择销售');
     for(const sale of sales.filter(s=>!accounts.some(a=>a.salespersonId===s.id)))option($('sale-select'),sale.id,sale.name+(sale.active?'':'（已停用）'));
-    for(const account of accounts){const tr=document.createElement('tr');text(tr,'td',saleName(account.salespersonId));text(tr,'td',account.username);text(tr,'td',account.active?(account.mustChangePassword?'待首次改密':'启用'):'已停用');const td=document.createElement('td');td.className='actions';
+    for(const account of accounts){const tr=document.createElement('tr');text(tr,'td',saleName(account.salespersonId));text(tr,'td',account.username);text(tr,'td',account.active?'启用':'已停用');const td=document.createElement('td');td.className='actions';
       const reset=text(td,'button','重置密码');reset.type='button';reset.addEventListener('click',()=>{resetting=account.id;$('reset-title').textContent='重置密码 · '+account.username;$('reset-password').value='';$('reset-panel').hidden=false;});
       const toggle=text(td,'button',account.active?'停用':'启用');toggle.type='button';toggle.addEventListener('click',async()=>{const version=generation;toggle.disabled=true;try{await request('/api/admin/sales/accounts/'+account.id,'PATCH',{active:!account.active});if(version===generation)await load();}catch(error){if(version===generation)status(error.message);}finally{toggle.disabled=false;}});tr.appendChild(td);$('account-rows').appendChild(tr);
     }

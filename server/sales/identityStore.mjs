@@ -13,6 +13,9 @@ export function createIdentityStore(db, { now, setSalespersonActive }) {
     token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES sales_accounts(id),
     csrf_token TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS sales_session_account ON sales_sessions(account_id);`);
+  // Retain the column for compatibility; the current policy permits direct login.
+  // This also upgrades existing accounts without changing credentials or sessions.
+  db.exec('UPDATE sales_accounts SET must_change_password=0 WHERE must_change_password<>0');
   const get = id => db.prepare('SELECT a.*,s.active FROM sales_accounts a JOIN salespeople s ON s.id=a.salesperson_id WHERE a.id=?').get(id);
   const revokeAll = id => db.prepare('DELETE FROM sales_sessions WHERE account_id=?').run(id);
   const transaction = work => {
@@ -38,12 +41,12 @@ export function createIdentityStore(db, { now, setSalespersonActive }) {
       return transaction(() => {
         if (db.prepare('SELECT id FROM sales_accounts WHERE username=? OR salesperson_id=?').get(username, salespersonId)) throw new PromotionError('销售账号或账户名已存在', 409);
         const id = randomUUID(), at = now().toISOString();
-        db.prepare('INSERT INTO sales_accounts VALUES (?,?,?,?,1,?,?)').run(id, salespersonId, username, hash, at, at);
+        db.prepare('INSERT INTO sales_accounts VALUES (?,?,?,?,0,?,?)').run(id, salespersonId, username, hash, at, at);
         return project(get(id));
       });
     },
     listAccounts() { return db.prepare('SELECT a.*,s.active FROM sales_accounts a JOIN salespeople s ON s.id=a.salesperson_id ORDER BY a.created_at,a.id').all().map(project); },
-    async resetPassword(id, password) { return replacePassword(id, await hashPassword(password), true); },
+    async resetPassword(id, password) { return replacePassword(id, await hashPassword(password), false); },
     setActive(id, active) {
       const account = get(id);
       if (!account) throw new PromotionError('账号不存在', 404);

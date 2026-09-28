@@ -29,9 +29,9 @@ test('sales read only assigned customers, cannot access admin endpoints, lose ac
   await f.asAdmin('/api/admin/sales/accounts/' + b.account.id, 'PATCH', { active: false });
   assert.equal((await f.request('/api/sales/leads', 'GET', undefined, b.headers)).status, 401);
 });
-test('initial-password sessions cannot read business data and unavailable storage fails closed', async t => {
+test('initial-password sessions can read their workspace and unavailable storage fails closed', async t => {
   const f = await salesFixture(t); await f.create('sales.a'); const initial = await f.login('sales.a');
-  assert.equal((await f.request('/api/sales/leads', 'GET', undefined, initial.headers)).status, 403);
+  assert.equal((await f.request('/api/sales/leads', 'GET', undefined, initial.headers)).status, 200);
   assert.equal((await f.request('/api/sales/leads')).status, 401);
   const blocker = path.join(f.dir, 'regular-file'); await writeFile(blocker, 'test');
   const broken = await salesFixture(t, { promotionDatabasePath: path.join(blocker, 'broken.sqlite') });
